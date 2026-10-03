@@ -16,10 +16,10 @@ context: |
 
   # Plataforma, en este orden
 
-  1. **Web** — prioridad. Es donde llega la gente que no va a instalar nada.
-  2. **Android** — segundo.
-  3. **Linux y Windows** — tercero.
-  4. **iOS** — DESPUES. No se planifica ahora y ningun change puede
+  1. **Web** - prioridad. Es donde llega la gente que no va a instalar nada.
+  2. **Android** - segundo.
+  3. **Linux y Windows** - tercero.
+  4. **iOS** - DESPUES. No se planifica ahora y ningun change puede
      depender de que exista.
 
   Mobile-first y responsive en todas partes. En web, "responsive" incluye que
@@ -70,33 +70,53 @@ context: |
 
 rules:
   proposal:
-    - Declarar siempre que queda FUERA de alcance, y en que plataformas.
-    - Si el cambio toca web, decir COMO se comprueba en un movil y en un
+    - "Declarar siempre que queda FUERA de alcance, y en que plataformas."
+    - >-
+      Si el cambio toca web, decir COMO se comprueba en un movil y en un
       escritorio. "Funciona en responsive" no es un criterio de verificacion.
-    - No proponer un plan de varios pasos donde un paso dependa de investigar
+    - >-
+      No proponer un plan de varios pasos donde un paso dependa de investigar
       algo. Primero se investiga, luego se propone.
+    - >-
+      Si una tarea depende de algo que no se ha medido todavia, el change
+      incluye la medicion. Una regla que depende de un supuesto no es una
+      regla.
   tasks:
-    - Cada tarea debe ser verificable con algo observable: una prueba que pasa,
-      una pantalla que se abre, un hash que cuadra. "Refinar la UI" no es una
-      tarea.
-    - Ninguna tarea empieza con la palabra "optimizar" o "mejorar" sin decir
+    - >-
+      Cada tarea debe ser verificable con algo observable: una prueba que
+      pasa, una pantalla que se abre, un hash que cuadra. "Refinar la UI" no
+      es una tarea.
+    - >-
+      Ninguna tarea empieza con la palabra "optimizar" o "mejorar" sin decir
       que se mide y cual es el valor actual.
+    - >-
+      Marcar como made la tarea solo cuando su comprobacion se ha ejecutado de
+      verdad, no cuando esta escrita.
   specs:
-    - Los escenarios se escriben como "WHEN algo observable THEN algo
+    - >-
+      Los escenarios se escriben como "WHEN algo observable THEN algo
       observable", con numeros concretos cuando haya numeros. "Carga rapido"
       sin cifra no es un requisito.
-    - Toda pantalla o flujo que se Specify tiene que declarar su
+    - >-
+      Toda pantalla o flujo que se Specify tiene que declarar su
       comportamiento en movil (360 px) y en escritorio, no solo el movil.
 
 operations:
   apply:
     guidance:
-      - Ejecutar `flutter analyze` y `flutter test` antes de dar por hecho que
+      - >-
+        Ejecutar `flutter analyze` y `flutter test` antes de dar por hecho que
         algo funciona. Sin las dos en verde, la tarea no esta hecha.
-      - Si un cambio toca la UI, comprobarlo en tamano de movil Y de
+      - >-
+        Si un cambio toca la UI, comprobarlo en tamano de movil y de
         escritorio. Un widget que revienta en 360 px no esta terminado.
+      - >-
+        Si el change toca el navegador, comprobarlo en un navegador de verdad
+        (headless Chrome sirve) y no solo con `flutter test`, porque Flutter
+        pinta en un canvas y `flutter test` no ejecuta el motor de render.
   archive:
     guidance:
-      - No archivar un change con tareas sin marcar.
-      - Al archivar, decir en una linea que se ha construido y que se ha
+      - "No archivar un change con tareas sin marcar."
+      - >-
+        Al archivar, decir en una linea que se ha construido y que se ha
         verificado.
