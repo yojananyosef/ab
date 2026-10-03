@@ -26,6 +26,8 @@ Si este repositorio contiene una lista de textos, alguien cruzo la frontera.
 - `docs/investigacion/crudo-*.md` — informes de referencia, con citas.
 - `docs/investigacion/transporte-cors.md` — por que la web todavia no puede
   descargar un modulo, medido en navegador real.
+- `docs/investigacion/sqlite-en-navegador.md` — prueba de que un `.amod`
+  real se abre en el navegador.
 - `openspec/` — los cambios del proyecto y sus especificaciones.
 
 ## Desarrollo
