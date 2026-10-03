@@ -24,6 +24,8 @@ Si este repositorio contiene una lista de textos, alguien cruzo la frontera.
 - `AGENTS.md` — reglas del repositorio, para quien trabaje aqui.
 - `docs/investigacion-ux.md` — que se aprendio de las apps que ya existen.
 - `docs/investigacion/crudo-*.md` — informes de referencia, con citas.
+- `docs/investigacion/transporte-cors.md` — por que la web todavia no puede
+  descargar un modulo, medido en navegador real.
 - `openspec/` — los cambios del proyecto y sus especificaciones.
 
 ## Desarrollo
