@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.9.0
+  sdk: ^3.13.5
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -31,9 +31,27 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Abrir un `.amod` (SQLite) real en web (WASM) y en nativo (FFI).
+  sqlite3: ^3.7.0
+
+  # Descargar el manifiesto del catalogo y los modulos.
+  http: ^1.6.0
+
+  # Comprobar el sha256 de lo descargado antes de abrirlo.
+  crypto: ^3.0.7
+
+  # `Uint8Buffer` para escribir un `.amod` en el sistema de ficheros virtual.
+  typed_data: ^1.4.0
+
+  # Solo para escribir en el DOM el resultado de las comprobaciones de
+  # navegador. En codigo normal la UI es Flutter y esto no se usa.
+  web: ^1.1.1
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  typed_data: ^1.4.0
+  web: ^1.1.1
 
 dev_dependencies:
   flutter_test:
@@ -44,7 +62,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

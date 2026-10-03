@@ -72,22 +72,59 @@ Los tres numeros que importan:
    navegador sin problema. El limite real de memoria del navegador esta muy por
    encima.
 
-## 4. Lo que NO queda demostrado, y hay que medir aparte
+## 4. Lo mismo, dentro de Flutter
 
-- **Dentro de Flutter.** Esto se probo con Dart web plano. Falta comprobar que
-  Flutter empaqueta `sqlite3.wasm` como recurso y que el worker o el hilo
-  principal aguantan un modulo de 57 MB sin bloquear la interfaz.
+Lo anterior fue con Dart web plano. Faltaba la comprobacion de dentro de
+Flutter, donde la compilacion es otra, el recurso se sirve como fichero estatico
+y ademas el resultado no se puede leer del DOM porque Flutter pinta en un
+canvas.
+
+El spike puso el resultado en el DOM a proposito, con `package:web`, unicamente
+para poder leerlo desde fuera con `--dump-dom`. `sqlite3.wasm` se copio a
+`web/` y `flutter build web` lo llevo a `build/web/` sin configuracion extra.
+
+Salida de Chrome 154 headless sobre `flutter build web` servido en local:
+
+```
+sqlite3: 3.53.4 (10 ms)
+KJV2006_bible.amod: 22544384 bytes en 10 ms
+  abierto en 0 ms
+  quick_check: ok
+  versiculos: 31102
+  Juan 3:16 = For God so loved the world, that he gave his only begotten Son,
+   that whosoever believeth in him should not perish, but have everlasting life.
+CLARKE_commentary.amod: 57536512 bytes en 550 ms
+  abierto en 0 ms
+  quick_check: ok
+  notas: 19742
+FIN en 570 ms
+```
+
+**80 MB de modulos reales, abiertos y consultados en 570 ms.** Abrirlos es
+gratis; lo que cuesta es traerlos, y por eso el bloqueo de transporte pesa
+tanto.
+
+Nota: `flutter build web` avisa de que la compilacion a `wasm` (dart2wasm, no
+dart2js) tambien funciona. Con `dart2js` esta todo en el hilo principal, que es
+lo que hay que vigilar cuando se lea un capitulo de verdad.
+
+## 5. Lo que NO queda demostrado, y hay que medir aparte
+
 - **Persistir entre recargas.** Aqui el fichero vivio en un sistema de ficheros
   virtuales **en memoria** (`InMemoryFileSystem`), escrito desde los bytes
   descargados. Falta `IndexedDbFileSystem` u OPFS para que sobreviva a cerrar la
   pestana, y medir cuanto tarda con 22 MB.
+- **No bloquear la interfaz.** El `sqlite3` de este paquete es sincrono y, en
+  `dart2js`, corre en el hilo principal. Abrir son 0 ms y leer un capitulo son
+  0 ms, asi que hoy no se nota, pero en cuanto haya busqueda sobre el modulo
+  entero habra que medirlo y probablemente moverlo a un worker.
 - **Sin conexion.** Ni siquiera se ha probado: los bytes vienen de un servidor
-  local. El comportamiento offline es otro cambio.
-- **Escritura.** Solo lectura. Y tiene que seguir siendo solo lectura: un modulo
-  descargado se abre con `mode=ro`. Si algo lo abre en modo escritura, la
-  cabecera cambia y su `sha256` deja de cuadrar con el del catalogo.
+  local. El comportamiento offline es otro change.
+- **Escritura.** Solo lectura. Y tiene que seguir siendo solo lectura: un
+  modulo descargado se abre en modo solo lectura. Si algo lo abre en escritura,
+  la cabecera cambia y su `sha256` deja de cuadrar con el del catalogo.
 
-## 5. La consecuencia
+## 6. La consecuencia
 
 La arquitectura web queda fijada:
 
