@@ -1,0 +1,102 @@
+schema: spec-driven
+
+context: |
+  # Que es este repositorio
+
+  `ab` es una APLICACION LECTORA de Biblia. Su unico trabajo es abrir ficheros
+  de modulo y dejar leerlos bien.
+
+  `ab` NO construye, NO valida, NO licencia, NI publica recursos. De eso se
+  encarga el repositorio hermano `aa`, que es el catalogo. Aqui no hay nada
+  de eso, ni una linea, ni una constante, ni un comentario que lo sugiera.
+
+  La frontera es una API, no una carpeta: `ab` consume `catalog.json` y ficheros
+  `.amod` como un cliente consume cualquier otra API. Si `ab` alguna vez necesita
+  saber COMO se construyo un modulo, la frontera esta mal puesta.
+
+  # Plataforma, en este orden
+
+  1. **Web** — prioridad. Es donde llega la gente que no va a instalar nada.
+  2. **Android** — segundo.
+  3. **Linux y Windows** — tercero.
+  4. **iOS** — DESPUES. No se planifica ahora y ningun change puede
+     depender de que exista.
+
+  Mobile-first y responsive en todas partes. En web, "responsive" incluye que
+  funcione dentro del navegador del telefono, que es donde no hay barra de
+  direcciones ni barra inferior de sistema, y donde el teclado tapa la mitad de
+  la pantalla. Web no es "la version de escritorio en una ventana pequena".
+
+  # Arquitectura
+
+  Capas estrictas, sin mezcla: UI (MVVM, `ChangeNotifier` + vistas delgadas),
+  Data (Services sin estado + Repositories) y Domain (Modelos + Use Cases).
+  El skill `flutter-apply-architecture-best-practices` es la referencia y su
+  estructura de `lib/` es la del proyecto.
+
+  La UI no lee ficheros ni hace SQL. La View pide datos a su ViewModel y pinta
+  lo que le dan.
+
+  # Reglas duras
+
+  - **Nada de logica del catalogo en este repositorio.** Ni gate de licencia,
+    ni construccion de `.amod`, ni verificacion de `sha256` de un modulo recien
+    descargado mas alla de comparar los dos hashes que el propio modulo declara.
+    Descargar y comprobar integridad SI es de la app. Construir y decidir si un
+    recurso es publicable NO.
+
+  - **Todo el contenido es de dominio publico y se declara.** La app no sabe de
+    antemano que textos existen: los lee del catalogo. Si la app contiene una
+    lista de Biblias, es porque la frontera esta mal puesta.
+
+  - **Sin compras dentro de la app, jamas.** Ni modulo de pago, ni suscripcion,
+    ni "version completa". La app es gratuita y completa o el proyecto esta mal.
+
+  - **Sin publicidad.** Un anuncio en un lector de Biblia es un anuncio al lado
+    de la Palabra, y ademas es la queja numero uno de los usuarios de pago de
+    las apps que lo hacen.
+
+  - **Sin telemetria por defecto.** Nada de analisis de uso, nada de
+    identificadores de usuario. Si alguna vez hace falta, es un change
+    explicito que lo pide y lo explica.
+
+  - **Perder los datos del usuario es el peor fallo posible.** Notas,
+    marcadores y resaltados son trabajo de la persona, no un estado
+    descartable. Sync que borre, actualizacion que pierda, o borrado de cache
+    que se lleve notas: NO. Si un cambio arriesga eso, el cambio esta mal.
+
+  - **Todo en castellano en la interfaz.** Es codigo abierto; las
+    traducciones se donaran despues y no se mezclan con el codigo.
+
+rules:
+  proposal:
+    - Declarar siempre que queda FUERA de alcance, y en que plataformas.
+    - Si el cambio toca web, decir COMO se comprueba en un movil y en un
+      escritorio. "Funciona en responsive" no es un criterio de verificacion.
+    - No proponer un plan de varios pasos donde un paso dependa de investigar
+      algo. Primero se investiga, luego se propone.
+  tasks:
+    - Cada tarea debe ser verificable con algo observable: una prueba que pasa,
+      una pantalla que se abre, un hash que cuadra. "Refinar la UI" no es una
+      tarea.
+    - Ninguna tarea empieza con la palabra "optimizar" o "mejorar" sin decir
+      que se mide y cual es el valor actual.
+  specs:
+    - Los escenarios se escriben como "WHEN algo observable THEN algo
+      observable", con numeros concretos cuando haya numeros. "Carga rapido"
+      sin cifra no es un requisito.
+    - Toda pantalla o flujo que se Specify tiene que declarar su
+      comportamiento en movil (360 px) y en escritorio, no solo el movil.
+
+operations:
+  apply:
+    guidance:
+      - Ejecutar `flutter analyze` y `flutter test` antes de dar por hecho que
+        algo funciona. Sin las dos en verde, la tarea no esta hecha.
+      - Si un cambio toca la UI, comprobarlo en tamano de movil Y de
+        escritorio. Un widget que revienta en 360 px no esta terminado.
+  archive:
+    guidance:
+      - No archivar un change con tareas sin marcar.
+      - Al archivar, decir en una linea que se ha construido y que se ha
+        verificado.
