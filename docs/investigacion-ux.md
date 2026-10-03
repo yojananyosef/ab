@@ -131,6 +131,19 @@ tener cuentas.
 
 Por acuerdo propio, y porque leer la Biblia es un acto privado.
 
+**[V]** MyBible tiene un argumento para no aceptar ni una donacion que va mas
+alla de la etica, y conviene tenerlo presente. Un pastor aussitano le pidio, al
+negociar la publicacion libre de textos, que se quitara la mencion de
+donaciones del sitio:
+
+> *"so that Bible societies could have no grounds to question purity of our
+> intentions"*
+
+**Decision.** La ausencia de monetizacion es tambien un argumento de reputacion
+ante quienes tienen los derechos sobre los textos. No es solo que no cobremos:
+es que nadie pueda decir que cobramos. Motivo suficiente para no abrir esa
+puerta ni aunque hiciera falta dinero.
+
 ---
 
 ## 3. Lectura
@@ -203,6 +216,27 @@ un sermon.
 
 Es el fallo mas grave que puede tener esta categoria de aplicacion, y el mas
 facil de no comprobar. `ab` lo prueba de forma explicita.
+
+### Desplazar, no pasar pagina
+
+**[V]** MyBible lo dice en su propio manual:
+
+> *"There are no text pages in MyBible; chapters follow one another. Such an
+> approach to presenting the Bible text is quite intentional -- it allows you to
+> put any place of a book into the center of your screen and study it in its
+> immediate context."*
+
+Despues lo cambio, y en 5.7.0 anadio un modo de capitulo unico, preconfigurado
+solo para Salmos y Proverbios.
+
+**Decision.** En el lector el texto se **desplaza de forma continua**, capitulo a
+capitulo, y pasar de capitulo es un gesto horizontal. El modo de capitulo
+separado es un ajuste, no el comportamiento por defecto. El motivo es el que
+dice MyBible: para estudiar hay que poder poner un pasaje en el centro de la
+pantalla con su contexto inmediato, y eso no cabe en un capitulo de altura fija.
+
+En horizontal, en pantallas anchas, el capitulo separado si es lo razonable. La
+decision es por ancho, no por plataforma.
 
 ### Las unidades de altura
 
@@ -343,7 +377,193 @@ La busqueda **por palabra** es la base y no se toca nunca.
 
 ---
 
-## 6. Datos: la parte que no se negocia
+## 6. La biblioteca: como se descargan los modulos
+
+Esta es la parte que mas se parece a la que hay que construir primero, asi que
+el informe de STEPBible y MyBible se centro aqui. Las dos apps llegan al mismo
+patron desde lados opuestos.
+
+### Lo que ya hacen bien
+
+- **Insignias de capacidad antes de descargar** (STEP). Cada modulo lleva un
+  codigo de una letra: `R` palabras de Jesus en rojo, `N` notas o referencias
+  cruzadas, `G` gramatica, `V` vocabulario al pasar el raton, `I` interlineal,
+  `S` interlineal de la Septuaginta. Cuestan nada y contestan a la pregunta que
+  de verdad importa antes de gastar 40 MB: *vale la pena?*
+- **Descripcion desplegable antes de descargar** (MyBible). Toquemos la flecha
+  y se lee de que va, sin instalar nada.
+- **Filtro de texto sobre el catalogo** (STEP): escribir "Spanish" filtra por la
+  columna de idioma, encima de la tabla.
+- **Progreso dentro de la fila**, no en un modal.
+- **Estado explicito en tres** (MyBible): disponible, descargado, solo local.
+- **Resaltado distinto para "hay version nueva"**, y la pregunta se hace sin
+  miedo porque descargar de mas no cuesta.
+- **Item "[Mas]" al final de cada desplegable de version**, con su interruptor
+  para apagarlo (MyBible 5.7.0). Existe porque alguien se quejaba de que solo
+  habia KJV. Es la solucion mas barata que se ha visto a la reclamacion
+  "solo tengo esto?" dentro de la propia app.
+- **Subconjunto de seleccion rapida + "[Todos]" + conjuntos con nombre y
+  orden** (MyBible). Resuelve "descargue cien traducciones y ahora no
+  encuentro nada" **sin borrar nada**.
+- **Modulos empaquetados** ("bundles") para empezar sin decidir uno por uno.
+
+### Lo que ninguno hace, y aqui esta el hueco
+
+**[V]** Ni STEPBible ni MyBible muestran el **tamano de descarga por modulo**, ni
+el total de un lote, ni comprueban el espacio libre. En MyBible se busco en la
+documentacion y en 7800 lineas de notas de version y no hay ni una sola
+coincidencia. En STEP, la guia de instalacion no lo menciona en ningun momento.
+
+**[V]** Y el consejo de rendimiento ("no pongas mas de veinte comentarios, o la
+busqueda se pone lenta") esta en un PDF escrito por un usuario de la
+comunidad, no en la aplicacion.
+
+**Decision.** El catalogo muestra el tamano de cada modulo --`catalog.json` ya
+trae `sizeBytes`--, el total de la seleccion antes de empezar, y avisa cuando
+la biblioteca crece tanto que la busqueda se va a resentir. Esto no es
+detalle: es la queja de almacenamiento mas repetida del genero, y es gratis.
+
+### El fallo que mas dano ha hecho en este genero
+
+**[V] 25 de agosto de 2024.** MyBible cambio su registro de modulos y **rompio
+la descarga para todo el mundo**. La respuesta de soporte oficial, textual del
+propio desarrollador:
+
+> *"Connect your device via a USB cable to a PC or Mac... Find and delete the
+> file `persisted_registry.json`"*
+
+Es decir: un fichero JSON regenerado, y el soporte fue "conecta un cable USB y
+borra un fichero a mano". La causa era un defecto del codigo que llevaba tiempo
+sin verse porque no se habia visto. MyBible lo arreglo despues, y las dos lecciones
+estan escritas en sus propias notas de version:
+
+> *"When there is a current modules registry downloading problem, updating and
+> downloading of modules (per the last successfully downloaded registry) is no
+> longer blocked."*
+
+> *"Prevented the MyBible 'Downloading...' notification staying indefinitely in
+> case if MyBible cannot reach any of the registry host servers."*
+
+**Decision.** Cuatro reglas, todas con su precedente:
+
+1. **El manifiesto cacheado es el respaldo.** Si el catalogo no se puede leer, se
+   descarga con el ultimo manifiesto bueno y se dice. Un fallo del catalogo
+   nunca bloquea la descarga.
+2. **Reintentos acotados y un estado terminal.** "No he podido contactar con el
+   servidor del catalogo. Reintentar." Nunca un progreso infinito.
+3. **El manifiesto es un puntero, no la fuente de verdad.** Desde 5.8.4 MyBible
+   toma la descripcion de un modulo **del propio modulo descargado**, no del
+   registro. En `ab`, en cuanto un `.amod` esta en disco, lo que se muestra sale
+   de su tabla `info`.
+4. **Nunca una lista corta de servidores escrita a mano.** La de MyBible ha
+   necesitado parches repetidos, tambien en iOS.
+
+### Lo mejor del informe, y aqui no se copia
+
+MyBible permite pegar la URL de un registro externo y sus modulos aparecen en el
+mismo catalogo, con un asterisco de procedencia (5.5.0). Es la mejor idea de
+todo el informe para un catalogo publico, y **no se copia**.
+
+Es logica del catalogo, que es de `aa`. Y ademas rompe la unica garantia que
+tiene esta app: lo que se lee es publico y verificado. Un `.amod` de un
+tercero seria contenido sin comprobar, y esa es justo la linea que este
+proyecto no cruza.
+
+**Decision.** `ab` consume **un** catalogo, el de `aa`, con su `sha256` por
+modulo. No hay registros de terceros, no hay carga de modulos sueltos por URL y
+no hay forma de meter contenido que no venga del catalogo. Cuando `aa` acepte
+modulos de terceros habra que decidir si el lector los distingue, y ese sera un
+change aparte, con su propio debate.
+
+### Los estados de un modulo
+
+MyBible documenta tres: disponible, descargado y "solo local". El tercero es un
+problema: al quedarse sin conexion **reclasifica todo** como "solo local",
+incluidos los modulos que nunca se descargaron. Y "solo local" se lee como "no
+se puede volver a bajar", que es mentira sobre algo que no se tiene.
+
+**Decision.** `ab` distingue cinco estados, y uno de ellos existe precisamente
+por eso:
+
+| Estado | Que significa | Que se puede hacer |
+| --- | --- | --- |
+| `disponible` | esta en el catalogo, no en el dispositivo | descargar |
+| `descargando` | en curso | cancelar |
+| `descargado` | en el dispositivo, su sha256 cuadra | leer |
+| `desactualizado` | en el dispositivo, hay version nueva | leer, volver a bajar |
+| `retirado` | en el dispositivo, ya no esta en el catalogo | leer, avisado |
+
+**Lo que no se ha descargado no se pierde de la vista.** Y lo que se ha
+descargado, aunque el catalogo lo retire, se queda legible y avisado. Nunca
+desaparece de la biblioteca sin decir por que.
+
+### Dos precedentes mas sobre perder datos
+
+**[V]** MyBible tuvo que publicar una advertencia, porque al desinstalar se
+borra todo:
+
+> *"All the MyBible's data are being automatically deleted if you uninstall
+> MyBible, so think about possible losing of your data, do not rush to
+> uninstall MyBible freely as you were able to before."*
+
+**[V]** Y su ruta de sincronizacion recomendada (DropSync o Drive Autosync
+sobre el directorio de datos) dejo de funcionar en Android 13, porque el
+sistema impidio que los gestores de archivos entraran en el directorio privado
+de la app. El rodeo que encontro la comunidad es una APK no oficial.
+
+**Decision.** La copia de seguridad va dentro de la app, en un fichero que la
+persona puede sacar con un toque. Nunca depende de otra aplicacion ni de un
+directorio que el sistema pueda cerrar. Esto no entra en el primer change, pero
+se escribe ahora porque es la clase de fallo que no se ve hasta que ya ha
+pasado.
+
+### Un detalle de formato que nos viene bien
+
+**[V]** MyBible comprime los modulos en `.zip` **porque en muchos Android la
+libreria ZIP del sistema no soporta caracteres nacionales en los nombres de
+fichero dentro del ZIP**. Si algun dia hay modulos con nombre no latino, el
+truco esta ahi.
+
+### Lo que hace mal STEP, que hay que saber
+
+**[V]** STEP guarda los marcadores **en cookies del navegador**. Literal, de su
+propia guia:
+
+> *"STEPBible stores your bookmarks in cookies in your browser... There is no
+> notes feature, no highlighting, and no export."*
+
+Se evaporan al borrar cookies y no hay forma de exportarlos. Es exactamente lo
+contrario de la regla de `AGENTS.md`, y se nota en las resenas: *"I like
+STEPBible a lot... but I wish STEPBible developer would make it to where you
+could highlight certain verses of scripture."*
+
+**[V]** Su primera ejecucion "tardara mucho en indexar", y hay un fallo abierto
+sin causa conocida en el que se para al 70%. El arreglo documentado por el
+propio fabricante es una URL en `localhost`.
+
+**Decision.** **`ab` no indexa nada.** Una `.amod` es un SQLite con sus indices
+ya hechos y se abre. Una app que necesita indexar para buscar es una app a la
+que se le puede romper la busqueda, y eso ya ha pasado dos veces.
+
+Medido en esta maquina sobre el modulo real de 22,5 MB: leer un capitulo
+entero tarda 1,5 ms, y un escaneo de texto completo 15 ms. No hace falta un
+indice invertido para la version 1, y no se construye uno hasta que el numero
+lo justifique.
+
+**[V]** Su repositorio de metadatos lleva desincronizado con el de artefactos
+desde octubre de 2021, segun el issue #35 de STEPBible-Data, y se sigue
+citando como problema vivo. En `ab` el manifiesto y los `.amod` salen del mismo
+build, y si no cuadran lo dice el `sha256`.
+
+Y una leccion sobre el nombre: la app movil de STEP se retiro de Google Play el
+10 de noviembre de 2024, y en las resenas se lee *"having the same exact name
+as a suite of Bible tools with many, many more functions (which is only
+available on PC) is confusing... should be called STEP Bible Lite"*. Un nombre
+que describe algo mas grande de lo que es cuesta usuarios.
+
+---
+
+## 7. Datos: la parte que no se negocia
 
 ### El precedente que manda
 
@@ -398,13 +618,24 @@ formato, no son suyos.
 
 ---
 
-## 7. Lo que queda sin verificar
+## 8. Lo que queda sin verificar
 
-- **`crudo-02-stepbible-mybible.md` no esta todavia.** El informe sobre el
-  sistema de modulos y de descarga de STEPBible y MyBible sigue en curso. Es el
-  que mas directamente afecta a como `ab` presenta su biblioteca de modulos, y
-  cuando termine se anade a este documento antes de escribir los changes de
-  OpenSpec que dependan de el.
+- Los recuentos de catalogo de MyBible (3.000 modulos, 200 traducciones
+  inglesas, 84 diccionarios) vienen de una guia de la comunidad citada como
+  version 5.7.1, o sea de 2021. Han crecido. Sirven para entender la forma del
+  catalogo, no como cifra.
+- STEPBible es un proyecto de **Tyndale House Cambridge**, no una app china. La
+  Version Union China es uno de los dos textos que trae la app movil. Se dice
+  porque el nombre engana y porque el dato cambia el consejo: STEP es una
+  referencia buena de modulos **de escritorio**, y una advertencia de app
+  movil. Su app de Android estuvo en Google Play del principio a noviembre de
+  2024 y ya no esta. Sus marcadores viven en cookies y no tienen exportacion.
+- STEPBible declara sus datos como CC BY 4.0, pero un articulo academico dice
+  que los conjuntos mas nuevos seran CC BY-NC-ND 4.0, que no es abierta en el
+  sentido OSI. **No se depende de nada de STEPBible** hasta verificar conjunto
+  por conjunto.
+- MyBible no tiene un interlineal real: sus modulos llevan numeros Strong en
+  linea. Quien ha llamado "interlineal" a eso se ha equivocado.
 - Los precios de Bible Gateway que circulan en blogs ($4,99/mes) estan
   caducados. El dato bueno es $6,99/mes y $69,99/ano, de su propia pagina de
   suscripcion. Lo que importa para `ab` es la conclusion de fondo: la
