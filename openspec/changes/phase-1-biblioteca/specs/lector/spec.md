@@ -39,6 +39,122 @@ numero, en el orden del capitulo.
 - **THEN** se dice en castellano que ese pasaje no existe en esa traduccion
 - **AND** se propone el ultimo pasaje valido anterior
 
+### Requirement: Los terminos que declara el modulo se ensenan antes de leer
+
+Al abrir un modulo, la app SHALL leer su tabla `info` y SHALL mostrar `copyright`,
+`attribution`, `license`, `license_evidence`, `defects_count` y `content_hash`
+antes de que la persona lea el texto. **NOT** SHALL escondidos en un menu de tres
+niveles ni solo en una pantalla de "acerca de".
+
+La informacion que se muestra despues de obtener un modulo SHALL venir de su
+propia tabla `info`, no del manifiesto.
+
+#### Scenario: Los terminos son visibles sin buscar en ningun sitio
+
+- **WHEN** se abre un modulo de Biblia
+- **THEN** su `copyright` y su `attribution` estan visibles en la pantalla de
+  lectura
+- **AND** su `license` y su `license_evidence` tambien
+- **AND** llegar a ellos no requiere abrir ningun menu
+
+#### Scenario: Un modulo con texto incompleto lo dice
+
+- **WHEN** el modulo declara `defects_count` mayor que 0
+- **THEN** la app avisa, en castellano, de cuantos versiculos vienen incompletos
+  de la fuente
+- **AND** muestra el texto de `defects`
+
+#### Scenario: Un modulo sin defectos no inventa una preocupacion
+
+- **WHEN** el modulo declara `defects_count` igual a 0
+- **THEN** la app **NOT** muestra ningun aviso de texto incompleto
+
+#### Scenario: El manifiesto y el modulo discrepan
+
+- **WHEN** el manifiesto declara una licencia distinta de la que declara la tabla
+  `info` del modulo ya descargado
+- **THEN** la app muestra la del modulo, que es el texto que se esta leyendo
+- **AND** dice que discrepan y muestra las dos
+
+#### Scenario: El hash de contenido es comprobable por fuera
+
+- **WHEN** se consulta el `content_hash` de un modulo abierto
+- **THEN** es el que declara su tabla `info`, y coincide con el que declara el
+  catalogo
+
+### Requirement: Un modulo con un formato que la app no entiende no se abre
+
+La app SHALL declarar que versiones de formato entiende y SHALL negarse a abrir
+un modulo cuya `schema_version` o cuyo `minReaderVersion` exceda lo que soporta.
+
+#### Scenario: Formato mas nuevo que la app
+
+- **WHEN** el modulo declara una `schema_version` mayor que la que la app soporta
+- **THEN** la app **NOT** lo abre
+- **AND** el error dice la `schema_version` del modulo y la que la app soporta
+
+#### Scenario: App demasiado antigua para el modulo
+
+- **WHEN** el modulo declara un `minReaderVersion` mayor que la version de la app
+- **THEN** la app **NOT** lo abre
+- **AND** el error dice que hace falta una version mas nueva de la aplicacion
+
+#### Scenario: Un modulo compatible se abre
+
+- **WHEN** el modulo declara una `schema_version` y un `minReaderVersion` que la
+  app soporta
+- **THEN** se abre normalmente
+
+### Requirement: El numero de capitulos sale del modulo, no de una tabla de la app
+
+La app SHALL obtener el numero de capitulos de cada libro del modulo abierto, con
+una consulta. **NOT** SHALL traer una tabla propia de capitulos o versiculos por
+libro.
+
+El motivo esta medido y es concreto: en el repositorio hermano, la tabla de
+libros se escribio primero de memoria y **21 de 66 libros tenia un numero de
+versiculos equivocado**. Una app que lea sus numeros de una tabla propia repite
+ese fallo con otro nombre.
+
+#### Scenario: Los capitulos de Genesis son 50, no 51
+
+- **WHEN** se abre el selector de capitulos del libro Genesis en un modulo KJV
+- **THEN** ofrece capitulos del **1 al 50**
+- **AND** **NOT** ofrece un capitulo 51, que no existe en esa traduccion
+
+#### Scenario: Un capitulo que el modulo no tiene
+
+- **WHEN** se pide un capitulo que el modulo no contiene
+- **THEN** se dice que esa traduccion no lo tiene
+- **AND** **NOT** se sustituye por el contenido de otro capitulo
+
+#### Scenario: El total de versiculos coincide con el declarado
+
+- **WHEN** se cuenta el numero de versiculos de Juan en un modulo KJV abierto
+- **THEN** son 879
+- **AND** ese numero viene de una consulta al modulo, no de una constante del
+  codigo
+
+### Requirement: La app declara que versificacion usa el modulo y no supone la de KJV
+
+La app SHALL leer y mostrar la `versification` que declara la tabla `info` del
+modulo, y SHALL **NOT** suponer que es `KJV` ni alinear dos textos con
+versificaciones distintas sin decirlo.
+
+#### Scenario: El modulo declara su versificacion
+
+- **WHEN** se abre un modulo
+- **THEN** se muestra el valor de su campo `versification`
+
+#### Scenario: Una referencia que no existe en esa versificacion
+
+- **WHEN** se pide un pasaje que el modulo no tiene, porque su versificacion
+  numera distinto
+- **THEN** se dice en castellano que esa traduccion no lo tiene
+- **AND** se propone el ultimo pasaje valido anterior
+- **AND** **NOT** se recurre a la numeracion de otro modulo como si fueran
+  intercambiables
+
 ### Requirement: Los 66 libros se resuelven por su nombre en castellano
 
 La app SHALL traducir los nombres de libro en castellano a la clave con la que

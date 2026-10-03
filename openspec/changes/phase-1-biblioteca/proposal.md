@@ -53,6 +53,15 @@ tambien entra.
   cambia su cabecera y su `sha256` deja de cuadrar con el del catalogo.
 - Lector de un capitulo, con los versiculos numerados y tocables, y una **URL
   canonica por pasaje** de la forma `/leer/<id-modulo>?ref=<LIBRO>.<CAP>.<V>`.
+- **Los terminos que declara el modulo se ensenan antes de leer**: `copyright`,
+  `attribution`, `license`, `license_evidence`, `defects_count` y `content_hash`,
+  tomados de la tabla `info` del propio modulo y no del manifiesto. Si el
+  modulo declara texto incompleto, la app lo dice y con cuantos versiculos.
+- **Los numeros de capitulo y de versiculos salen del modulo**, con una
+  consulta. La app no trae ninguna tabla de numeros, y hay una comprobacion que
+  lo verifica: Genesis ofrece 50 capitulos y no un 51.
+- Un modulo con una `schema_version` o un `minReaderVersion` que la app no
+  entiende **no se abre**, y el error dice las dos versiones.
 - Movil primero y responsive: la misma pantalla sirve a 360 px y a 1440 px.
 
 **No es un cambio de comportamiento rompiente**: la app no tiene
@@ -118,8 +127,9 @@ catalogo: no dice que Biblias hay, solo donde se pregunta.
 - **Notas, resaltados y marcadores.** Es el change siguiente, y es el sistema de
   Accordance entero. Aqui no se escribe ni una nota.
 - **Comentarios en pantalla.** `CLARKE` estara en la biblioteca y se podra
-  abrir, pero no se mostrara su texto junto al versiculo hasta el change
-  siguiente.
+  abrir, pero su texto **no** se mostrara junto al versiculo hasta el change
+  siguiente. Lo que si entra aqui son los terminos del propio modulo, que no son
+  comentario: son lo que el modulo declara sobre si mismo.
 - **Busqueda**, ni por palabra ni semantica.
 - **Traducciones en paralelo.**
 - **Audio.** Ni de narracion ni de lectura en voz alta.

@@ -16,6 +16,8 @@
 - [ ] 2.4 Abrir un `.amod` real en modo solo lectura y ejecutar `PRAGMA quick_check`, `SELECT value FROM info WHERE key='id'` y `SELECT count(*) FROM verses`; verificar que salen `ok`, `KJV2006` y `31102`, usando el `.amod` real de `aa` como fixture, y **NOT** uno inventado de 10 filas
 - [ ] 2.5 Calcular el sha256 del fichero antes y despues de leer y verificar que es `ce0cb1bc4edbf3341d673739539421bbfed3972e39cbac5fc129f35f25324fe9` en los dos momentos, o sea, que leer no lo altera
 - [ ] 2.6 Comprobar que abrir en modo escritura **NOT** es posible por la via que usa la app, para que un modulo no se pueda modificar por descuido; verificar que el intento falla con error de solo lectura
+- [ ] 2.7 Leer la tabla `info` del modulo a modelos de dominio: `copyright`, `attribution`, `license`, `license_evidence`, `defects`, `defects_count`, `content_hash`, `versification`, `schema_version`, `minReaderVersion`. Verificar contra el KJV real que salen los 15 campos y que `defects_count` es 0
+- [ ] 2.8 Comparar la `schema_version` y el `minReaderVersion` del modulo con los que la app soporta, y negar la apertura si exceden. Verificar con tres pruebas: uno con `schema_version` mayor, uno con `minReaderVersion` mayor, y el KJV real que si abre. Que el error nombre las dos versiones
 
 ## 3. Catalogo: manifiesto, verificacion y respaldo
 
@@ -29,8 +31,9 @@
 
 - [ ] 4.1 Obtener por rango con progreso en bytes reales; verificar que un modulo de 22.544.384 bytes reporta de 0 a 22.544.384, sin saltos y sin pasar del total
 - [ ] 4.2 Calcular el sha256 mientras llegan los bytes y no despues; verificar que la memoria no llega a tener el modulo entero dos veces, midiendo el pico en la prueba
-- [ ] 4.3 Distinguir el fallo de origen cruzado del fallo de red, en vez de tratarlos igual; verificar contra la URL real de GitHub que sale el estado de origen no legible y no el de fallo generico
+- [ ] 4.3 Distinguir el fallo de origen cruzado del fallo de red, en vez de tratarlos igual. **La URL real que falla es `downloadUrl`, no `browserUrl`**: `browserUrl` ya funciona, y probarla esperando que falle seria una prueba que pasa por lo que no toca. Verificar las dos ramas: con la `downloadUrl` del catalogo publicado, que esta medida como bloqueada, sale el estado de origen no legible; y con un servidor local sin la cabecera, tambien
 - [ ] 4.4 Hacer que el mismo codigo funcione contra un servidor local que envie `Access-Control-Allow-Origin: *`; verificar que el modulo queda `descargado` y no sale ningun aviso
+- [ ] 4.4b **Probar la via principal contra el sitio real, no solo contra el mock.** Descargar un `.amod` desde la `browserUrl` del catalogo publicado y comprobar que el sha256 recibido es el que declara el manifiesto. Es la unica prueba de que este change sirve de algo: todo lo demas del grupo va contra un servidor que controlamos nosotros y que no puede fallar como el de verdad
 - [ ] 4.5 Obtener desde fichero local, por selector y por arrastrar y soltar; verificar que el hash se comprueba contra el manifiesto y que un fichero ajeno se rechaza mostrando su sha256
 - [ ] 4.6 Acotar los reintentos a 3 y terminar en estado final con boton de reintentar; verificar que tras 3 intentos el progreso **NOT** sigue animado y que el error dice cuantos bytes llegaron de los esperados
 - [ ] 4.7 Cancelar una descarga en curso; verificar que tras cancelar no queda ninguna fila en estado `descargando` ni un fichero a medias abierto
@@ -47,7 +50,7 @@
 - [ ] 6.2 Anadir filtro por texto, por idioma y "solo lo que ya tengo"; verificar que filtrar por un idioma que no existe deja la lista vacia **con aviso**, y no un error
 - [ ] 6.3 Mostrar el estado con texto y no solo con color; verificar con una prueba de widget que los cinco estados tienen texto legible
 - [ ] 6.4 Mostrar el aviso de manifiesto copiado cuando se usa el respaldo; verificar con una prueba de widget que aparece y desaparece segun el estado
-- [ ] 6.5 Mostrar en la fila el motivo por el que el modulo no se puede descargar desde el navegador, y el boton de fichero local; verificar contra la URL real que el texto aparece y que el boton existe
+- [ ] 6.5 Mostrar en la fila el motivo por el que un modulo no se puede descargar, y el boton de fichero local. Verificar **las dos ramas por separado**: con la `downloadUrl` real, que si falla, el texto aparece y el boton existe; y con la `browserUrl` real, que funciona, el texto **NOT** aparece. Un aviso que sale siempre no informa de nada
 - [ ] 6.6 Comprobar la pantalla a 360x640 y a 1440x900 sin excepciones; verificar ademas que a 360 px el boton de cada fila se alcanza sin desplazar horizontalmente
 
 ## 7. Pantalla de lector y rutas
@@ -59,6 +62,13 @@
 - [ ] 7.5 Usar `replaceState` para cambiar de version o de ajuste, y `pushState` para cambiar de capitulo; verificar que tras cambiar de version, "atras" **NO** deshace ese cambio
 - [ ] 7.6 Anadir el campo de referencia con validacion en vivo y el boton de buscar deshabilitado mientras no sea valido; verificar a 360 px con el teclado abierto que el campo y el boton quedan por encima del teclado y que el texto de entrada es de al menos 16 px
 - [ ] 7.7 Limitar la columna de texto a 90 caracteres por linea como maximo y centrarla en pantallas anchas; verificar a 1440 px que el ancho de la columna no supera ese limite
+- [ ] 7.8 Obtener el numero de capitulos de cada libro con una consulta al modulo, sin ninguna tabla de capitulos en el codigo; verificar que Genesis ofrece del 1 al 50 y **NOT** un 51, y que Juan suma 879 versiculos. El 51 es el numero que da la RVR, y el fallo de escribirlo de memoria esta documentado en el repositorio hermano
+- [ ] 7.9 Comprobar que en el codigo no hay ninguna tabla de numeros de libro: verificar que `grep -rnE "chapterCount|versiculosPorLibro|numCapitulos" lib/` no devuelve nada, igual que en `aa` se evita la tabla de libros
+- [ ] 7.10 Mostrar en la pantalla de lectura los terminos del modulo: `copyright` y `attribution` visibles sin abrir ningun menu; verificar con una prueba de widget que aparecen sin pulsar nada
+- [ ] 7.11 Mostrar `license` y `license_evidence` junto a la atribucion; verificar con una prueba de widget que tambien son accesibles en un solo toque
+- [ ] 7.12 Si el manifiesto y el `info` del modulo discrepan de licencia, mostrar la del modulo y avisar de la discrepancia con las dos; verificar con una prueba que usa un manifiesto alterado a proposito
+- [ ] 7.13 Si `defects_count` es mayor que 0, avisar en castellano de cuantos versiculos vienen incompletos y mostrar el texto de `defects`; verificar con una prueba con un modulo de defecto, y la inversa: con `defects_count` 0 **NOT** aparece ningun aviso de texto incompleto
+- [ ] 7.14 Mostrar el valor de `versification` del modulo; verificar con una prueba de widget que aparece el `KJV` del KJV real
 
 ## 8. Comprobacion en navegador de verdad
 
@@ -74,6 +84,6 @@ las pruebas de los grupos anteriores y no funcionar en ningun navegador.
 
 ## 9. Documentacion
 
-- [ ] 9.1 Explicar en `README.md`, con su enlace, por que la descarga en navegador esta bloqueada por CORS y por que el camino del fichero local es el que funciona hoy; verificar que el enlace apunta a un fichero que esta en el repositorio
+- [ ] 9.1 Explicar en `README.md` que los modulos se bajan de `browserUrl` y **NOT** de `downloadUrl`, y por que: la segunda es correcta para nativo y en navegador da `Failed to fetch`. Verificar que el enlace a `transporte-cors.md` apunta a un fichero que esta en el repositorio, y que el texto no dice que la descarga este bloqueada, porque ya no lo esta
 - [ ] 9.2 Anadir a `docs/investigacion/sqlite-en-navegador.md` la salida del grupo 8 junto a la del spike; verificar que las dos cifras se distinguen explicitamente, para que nadie las confunda
 - [ ] 9.3 Dejar escrito en `AGENTS.md` que el SDK es Flutter 3.47.6 y que Android, Linux y Windows no estan verificados; verificar que el numero de version coincide con el de `flutter --version`

@@ -100,6 +100,42 @@ Un anuncio en un lector de Biblia es un anuncio al lado de la Palabra. Ademas,
 la queja numero uno y mas repetida de los usuarios de pago de las apps que lo
 hacen: han pagado y les aparece un banner.
 
+### Los terminos del modulo se ensenan, no se esconden
+
+Cada `.amod` declara en su tabla `info` su `copyright`, su `attribution`, su
+`license`, su `license_evidence`, sus `defects` y su `content_hash`. La app los
+muestra **antes de dejar leer**, en la propia pantalla de lectura y sin abrir
+ningun menu.
+
+No es cortesia. YouVersion, que tiene los terminos de cada traduccion en su
+base, los renderiza junto al pasaje porque la atribucion **es una obligacion de
+la licencia**, no un adorno. Y aqui hay un caso que obliga mas: un modulo puede
+declarar `defects_count` mayor que 0 cuando la fuente no traia algunos
+versiculos. Un lector que no lo dice esta ensenando texto incompleto sin
+avisar, y quien lo esta leyendo no tiene forma de saberlo.
+
+La informacion se toma del **modulo**, no del manifiesto. El manifiesto es un
+puntero: cuando los dos discrepan, gana el modulo, que es el texto que se esta
+leyendo, y se dice que discrepan.
+
+### Los numeros salen del modulo
+
+La app no trae ninguna tabla de capitulos ni de versiculos por libro. Se leen
+del modulo abierto, con una consulta.
+
+El motivo esta medido en el repositorio hermano: su tabla de libros se escribio
+primero de memoria y **21 de 66 libros tenia un numero de versiculos
+equivocado**. Repetir eso en la app seria el mismo fallo con otro nombre. La
+comprobacion es concreta: Genesis ofrece 50 capitulos, y un 51 es exactamente el
+error.
+
+### Un modulo con formato desconocido no se abre
+
+Si la `schema_version` o el `minReaderVersion` de un modulo excede lo que la app
+soporta, **no se abre**, y el error dice las dos versiones. Abrir un formato que
+no se entiende produce texto equivocado con toda la pinta de texto bueno, que es
+peor que negarse a leer.
+
 ### Sin telemetria por defecto
 
 Nada de analisis de uso, nada de identificadores. Si alguna vez hace falta, es

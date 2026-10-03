@@ -63,5 +63,8 @@ y ningun cambio depende de que exista.
 ## Licencia
 
 Codigo bajo MIT. Los textos que se descargan del catalogo **no** son codigo de
-este repositorio: cada modulo declara sus propios terminos en el campo `info`
-de su cabecera, y la app los muestra antes de dejarlo leer.
+este repositorio: cada modulo declara sus propios terminos en el campo `info` de
+su cabecera, y la app los ensena antes de dejar leer, sin esconderlos en un menu.
+
+Que se ensenen es un requisito del change `phase-1-biblioteca`, no una promesa
+de este texto: `specs/lector/spec.md` lo recoge con escenarios.
