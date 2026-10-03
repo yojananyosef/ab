@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-10-03
+# Publicar el repositorio y desplegar la web no cambia el comportamiento del
+# sistema: no hay requisito que un usuario pueda observar. Es tooling.
+skip_specs: true

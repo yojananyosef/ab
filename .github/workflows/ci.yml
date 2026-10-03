@@ -1,0 +1,82 @@
+# Analisis, pruebas y publicacion de la version web.
+#
+# Un solo workflow a proposito. Las tres cosas van juntas porque un despliegue
+# que no pasa las pruebas no debe llegar a existir, y porque separarlas
+# significaria que alguien puede publicar saltandose las comprobaciones.
+#
+# La compilacion lleva `--base-href=/ab/` porque GitHub Pages sirve el sitio en
+# `https://<usuario>.github.io/ab/` y sin ese prefijo la app busca sus recursos
+# en la raiz y no arranca.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Que una pusgada nueva cancele la anterior: si alguien empuja cinco veces
+# seguidas, no tiene sentido desplegar las cinco builds.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  verificar-y-publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.desplegar.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.6"
+          channel: stable
+          cache: true
+
+      # Las tres ordenes de AGENTS.md, en el orden en que estan escritas.
+      # `flutter analyze` y `flutter test` en verde son parte de terminar una
+      # tarea, no un extra.
+      - name: flutter analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: flutter test
+        run: flutter test
+
+      - name: construir la version web
+        run: flutter build web --release --base-href=/ab/
+
+      # GitHub Pages no sabe servir el documento de entrada para rutas que no
+      # existen: devuelve 404 con su propia pagina de error. Copiar `index.html`
+      # a `404.html` hace que sirva la aplicacion con estado 404 y el
+      # navegador la pinta igual, conservando la direccion, que es lo que
+      # necesita el enrutador para saber que pasaje se ha pedido.
+      # Sin esto, /ab/leer/KJV2006 no abre nada.
+      - name: 404 para los enlaces profundos
+        run: cp build/web/index.html build/web/404.html
+
+      # `sqlite3.wasm` tiene que llegar al sitio como fichero estatico: es el
+      # motor SQLite compilado, no se puede incrustar en el paquete. Si falta,
+      # la app arranca y luego falla al abrir el primer modulo, que es el peor
+      # sitio posible para descubrirlo.
+      - name: comprobar que el motor SQLite viaja en el paquete
+        run: |
+          set -e
+          test -f build/web/sqlite3.wasm
+          echo "sqlite3.wasm: $(stat -c%s build/web/sqlite3.wasm) bytes"
+          test -f build/web/404.html
+          test -f build/web/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+      - id: desplegar
+        uses: actions/deploy-pages@v4
