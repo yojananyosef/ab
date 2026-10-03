@@ -2,11 +2,21 @@
 
 ## 1. Estructura de capas y dominio
 
-- [ ] 1.1 Crear `lib/domain/models/` con `Modulo` (id, nombre, tipo, idioma, licencia, tamano, sha256, url), `Manifiesto`, `Referencia`, `Pasaje` y `Versiculo`, y verificar con `flutter analyze` que no hay avisos
-- [ ] 1.2 Crear `lib/domain/models/estado_modulo.dart` con los cinco estados (`disponible`, `descargando`, `descargado`, `desactualizado`, `retirado`), y verificar con una prueba que cada estado se obtiene de comparar manifiesto y dispositivo y que **ninguno** se persiste en ningun sitio
-- [ ] 1.3 Crear `lib/data/models/` con los equivalentes de API: `ModuloCatalogo`, `ManifiestoApi`, `UltimoJson`; verificar que el mapeo a dominio convierte `sizeBytes` a entero y falla si el manifiesto no trae los campos obligatorios
-- [ ] 1.4 Anadir `REPOSITORIO` y la derivacion de URLs en `lib/data/services/origen.dart`, sobrescribible con `--dart-define=AB_ORIGEN_CATALOGO=...`; verificar que `grep -rnE "KJV|RVR|RVR60|ASV|Douay|Young|Geneva|Sefarad|Lenguer" lib/` no devuelve nada, y que el cambio es el unico sitio donde vive una direccion
-- [ ] 1.5 Escribir `lib/domain/models/libros.dart` con los 66 nombres de libro en castellano y su clave de modulo, y **nada mas**: ni capitulos, ni versiculos, ni totales; verificar con una prueba que el fichero no contiene ningun numero de capitulo
+- [x] 1.1 Crear `lib/domain/models/` con `Modulo` (id, nombre, tipo, idioma, licencia, tamano, sha256, url), `Manifiesto`, `Referencia`, `Pasaje` y `Versiculo`, y verificar con `flutter analyze` que no hay avisos
+- [x] 1.2 Crear `lib/domain/models/estado_modulo.dart` con los cinco estados (`disponible`, `descargando`, `descargado`, `desactualizado`, `retirado`), y verificar con una prueba que cada estado se obtiene de comparar manifiesto y dispositivo y que **ninguno** se persiste en ningun sitio
+- [x] 1.3 Crear `lib/data/models/` con los equivalentes de API: `ModuloCatalogo`, `ManifiestoApi`, `UltimoJson`; verificar que el mapeo a dominio convierte `sizeBytes` a entero y falla si el manifiesto no trae los campos obligatorios
+- [x] 1.4 Anadir `REPOSITORIO` y la derivacion de URLs en `lib/data/services/origen.dart`, sobrescribible con `--dart-define=AB_ORIGEN_CATALOGO=...`. Verificar **con el grep anclado**, no suelto:
+
+  ```
+  grep -rnE '^[^/]*\b(KJV|RVR60|ASV|Douay|Young|Geneva|Sefarad|Lenguer)\b' lib/
+  ```
+
+  Sin anclar, el patron tambien casa con los comentarios, y hay un comentario
+  que menciona la RVR precisamente para explicar por que no hay tabla de
+  numeros. Una comprobacion que da falsas alarmas acaba ignorandose, que es peor
+  que no comprobar. Anclado, `lib/` queda limpio y el motivo esta escrito. Y el
+  cambio es el unico sitio donde vive una direccion
+- [x] 1.5 Escribir `lib/domain/models/libros.dart` con los 66 nombres de libro en castellano y su clave de modulo, y **nada mas**: ni capitulos, ni versiculos, ni totales; verificar con una prueba que el fichero no contiene ningun numero de capitulo
 
 ## 2. Services: red, hash y SQLite
 
@@ -63,7 +73,7 @@
 - [ ] 7.6 Anadir el campo de referencia con validacion en vivo y el boton de buscar deshabilitado mientras no sea valido; verificar a 360 px con el teclado abierto que el campo y el boton quedan por encima del teclado y que el texto de entrada es de al menos 16 px
 - [ ] 7.7 Limitar la columna de texto a 90 caracteres por linea como maximo y centrarla en pantallas anchas; verificar a 1440 px que el ancho de la columna no supera ese limite
 - [ ] 7.8 Obtener el numero de capitulos de cada libro con una consulta al modulo, sin ninguna tabla de capitulos en el codigo; verificar que Genesis ofrece del 1 al 50 y **NOT** un 51, y que Juan suma 879 versiculos. El 51 es el numero que da la RVR, y el fallo de escribirlo de memoria esta documentado en el repositorio hermano
-- [ ] 7.9 Comprobar que en el codigo no hay ninguna tabla de numeros de libro: verificar que `grep -rnE "chapterCount|versiculosPorLibro|numCapitulos" lib/` no devuelve nada, igual que en `aa` se evita la tabla de libros
+- [ ] 7.9 Comprobar que en el codigo no hay ninguna tabla de numeros de libro, con el grep anclado a codigo: `grep -rnE '^[^/]*\b(chapterCount|versiculosPorLibro|numCapitulos|capitulosPorLibro)\b' lib/`. Sin anclar casaria con los comentarios que explican que no hay tabla, y una comprobacion que siempre falla no verifica nada
 - [ ] 7.10 Mostrar en la pantalla de lectura los terminos del modulo: `copyright` y `attribution` visibles sin abrir ningun menu; verificar con una prueba de widget que aparecen sin pulsar nada
 - [ ] 7.11 Mostrar `license` y `license_evidence` junto a la atribucion; verificar con una prueba de widget que tambien son accesibles en un solo toque
 - [ ] 7.12 Si el manifiesto y el `info` del modulo discrepan de licencia, mostrar la del modulo y avisar de la discrepancia con las dos; verificar con una prueba que usa un manifiesto alterado a proposito
