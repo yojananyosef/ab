@@ -16,15 +16,18 @@ medir, y estan medidas:
    (22.544.384 y 57.536.512 bytes), `PRAGMA quick_check` da `ok` en los dos,
    Juan 3:16 sale exacto, y todo en **570 ms**. Detalle en
    `docs/investigacion/sqlite-en-navegador.md`.
-2. **Un `.amod` no se puede descargar desde el navegador.** Ni `releases/download`
-   ni la API de assets de GitHub devuelven `Access-Control-Allow-Origin` en la
-   respuesta final. El manifiesto si se lee. Detalle en
-   `docs/investigacion/transporte-cors.md`.
+2. **Un `.amod` no se puede descargar desde GitHub Releases**, pero **si desde
+   GitHub Pages**, que responde `Access-Control-Allow-Origin: *` tambien en los
+   binarios. El repositorio hermano `aa` ya publica sus artefactos ahi y cada
+   entrada del catalogo declara su `browserUrl`. Verificado con `fetch` real en
+   Chrome 154 headless. Detalle en `docs/investigacion/transporte-cors.md`.
 
-El punto 2 es un bloqueante de la plataforma que va primera, y es trabajo de
-`aa`, no de `ab`. Por eso este change **no puede depender de el**: ademas de
-tener un camino que hoy falla con un mensaje honesto, tiene el camino que hoy
-si funciona, que es abrir un fichero local.
+El punto 2 **se resolvio antes de escribir este change**, que es el orden
+correcto: si la app se hubiera escrito primero y el catalogo adaptandose
+despues, la via principal habria estado semanas dando un mensaje de error
+honesto en vez de funcionando. Aun asi, este change no depende de que eso siga
+siendo cierto: el camino del fichero local es independiente de la red, y por eso
+tambien entra.
 
 ## What Changes
 
@@ -40,7 +43,9 @@ si funciona, que es abrir un fichero local.
   local** que la persona elija o arrastre.
 - Si el origen de la URL no sirve CORS, la app lo detecta y lo dice con
   palabras, en castellano, en la propia fila del modulo, y ofrece el fichero
-  local. No se queda girando, no inventa un error generico, no hides el problema.
+  local. No se queda girando, no inventa un error generico, no esconde el
+  problema. Ahora el origen existe y funciona; esta deteccion esta porque
+  `browserUrl` puede dejar de funcionar.
 - Antes de abrir nada se comprueba el `sha256` del `.amod` contra el que declara
   el manifiesto. Si no cuadra, no se abre y se dice cual era el hash esperado y
   cual se obtuvo.

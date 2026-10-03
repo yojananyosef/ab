@@ -12,9 +12,11 @@ con su salida completa en `docs/investigacion/`:
 1. `docs/investigacion/sqlite-en-navegador.md` -- un `.amod` se abre en el
    navegador con SQLite compilado a WASM: los dos modulos reales de `aa`,
    `quick_check: ok`, Juan 3:16 exacto, 570 ms en total.
-2. `docs/investigacion/transporte-cors.md` -- el manifiesto se lee desde el
-   navegador, pero ningun `.amod` se puede descargar: GitHub no responde con
-   `Access-Control-Allow-Origin` en la respuesta final.
+2. `docs/investigacion/transporte-cors.md` -- GitHub Releases no sirve para un
+   navegador, pero **GitHub Pages si**. El repositorio hermano `aa` ya publica
+   sus artefactos ahi y cada entrada del catalogo declara su `browserUrl`.
+   Verificado con `fetch` real en Chrome headless antes de escribir este change,
+   no despues.
 3. El SDK es Flutter 3.47.6 / Dart 3.13.5. `package:sqlite3` 3.7.0 ya trae
    SQLite compilado por *build hooks*, sin dependencia nativa aparte.
 4. En esta maquina no hay SDK de Android, ni `gtk+-3.0`, ni Windows, y no hay
@@ -82,6 +84,13 @@ Medido: `catalog.json` y `latest.json` estan **versionados en el repositorio** y
 **Alternativa descartada:** la URL de la release que declara `latest.json`
 (`github.com/.../releases/download/...`). Es correcta para nativo y no lo es
 para web, por el motivo medido.
+
+**Nota de campo:** el manifiesto se lee de `yojananyosef.github.io/aa/latest.json`
+y no de `raw.githubusercontent.com`. Los dos funcionan, pero el primero es el
+mismo origen que los modulos, y asi el cliente habla con **un** sitio. Los
+modulos se bajan de `browserUrl`, nunca de `downloadUrl`: en nativo esta
+funcionaria y en web daria `Failed to fetch`, que es el fallo mas caro que
+existe, porque compila, pasa las pruebas y no funciona.
 
 **Consecuencia:** una constante, `REPOSITORIO`, de la que se derivan las URLs.
 Es configuracion de donde vive una API, no logica del catalogo: no dice que
@@ -186,10 +195,11 @@ exacta del fallo de MyBible, donde al quedarse sin conexion **todo** pasaba a
 
 ## Risks / Trade-offs
 
-**[El modulo no se puede descargar en el navegador]** -> Es un bloqueante
-conocido, medido y documentado, y es trabajo de `aa`. Mitigacion: el camino del
-fichero local funciona hoy y es el que el mercado necesita igualmente. Cuando
-`aa` publique con CORS, este change no se toca.
+**[El modulo no se puede descargar en el navegador]** -> **Resuelto antes de
+escribir este change.** `aa` publica sus artefactos en GitHub Pages y el
+catalogo declara `browserUrl`; comprobado con `fetch` real en Chrome headless.
+Mitigacion ya aplicada: la app tiene las dos vias y la de URL detecta si el
+origen deja de ser legible, en vez de quedarse girando.
 
 **Flutter pinta en un canvas y `flutter test` no ejecuta el motor de render**
 -> Una app puede pasar todas las pruebas y no funcionar en ningun navegador. Es

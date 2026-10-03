@@ -29,6 +29,14 @@ Se publica con GitHub Pages desde `main`, en cada push. El workflow de
 viaja en el paquete: si faltara, la app arrancaria y fallaria al abrir el
 primer modulo, que es el peor sitio para descubrirlo.
 
+## Catalogo
+
+<https://yojananyosef.github.io/aa/latest.json> es el puntero flotante del
+catalogo. De ahi sale el manifiesto, y de ahi se baja cada modulo por su
+`browserUrl`.
+
+El repositorio hermano es <https://github.com/yojananyosef/aa>.
+
 ## Documentacion
 
 - `AGENTS.md` - reglas del repositorio, para quien trabaje aqui.

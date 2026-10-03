@@ -94,51 +94,59 @@ cortesia. Pero la restriccion nueva --que la web no puede leerlos-- aparece con
 **dos** modulos. No hay ningun numero de modulos a partir del cual GitHub
 Releases empiece a servir bien a un navegador: no lo sirve nunca.
 
-### Opcion A: GitHub Pages. Medida, y funciona
+### Opcion A: GitHub Pages. Medida, en marcha
 
-**Es la que se ha elegido.** Y no hace falta ninguna cuenta ni proveedor de
+**Es la que se ha ejecutado.** Y no hizo falta ninguna cuenta ni proveedor de
 nube.
 
-Medido el 3 de octubre de 2026 sobre el sitio ya publicado en
-`https://yojananyosef.github.io/ab/`, con una cabecera `Origin:` de un dominio
-distinto:
+Medido el 3 de octubre de 2026 sobre el sitio ya publicado, con una cabecera
+`Origin:` de un dominio distinto:
 
 | Fichero | `ACAO` | `Content-Type` |
 | --- | --- | --- |
-| `/ab/` | `*` | `text/html` |
-| `/ab/sqlite3.wasm` | `*` | `application/wasm` |
-| `/ab/manifest.json` | `*` | `application/json` |
+| `/aa/latest.json` | `*` | `application/json` |
+| `/aa/catalog.json` | `*` | `application/json` |
+| `/aa/` | `*` | `text/html` |
+| `/aa/modulos/v0.1.1/KJV2006_bible.amod` | `*` | `application/octet-stream` |
+| `/aa/modulos/v0.1.1/CLARKE_commentary.amod` | `*` | `application/octet-stream` |
 
-GitHub Pages responde **`Access-Control-Allow-Origin: *` en todas las
-respuestas, incluidos los binarios**. Eso es justo lo que GitHub Releases no
-hace, y lo que hace la diferencia entre que el navegador pueda leer un `.amod` y
-que no.
+Y no solo con `curl`: con `fetch` real en Chrome 154 headless, desde una pagina
+servida en otro origen, leyendo el `catalog.json` y bajando despues cada
+`browserUrl`:
 
-Como se hace: un workflow de GitHub Actions descarga los assets de la release y
-los publica como sitio. Los assets de release siguen siendo el registro
-inmutable con su tag, y el sitio es solo el transporte. `aa` no cambia de
-formato ni de versionado: cambia de donde se sirven los bytes.
+    latest.json: tag=v0.1.1
+    KJV2006  -> HTTP 200, 22544384 bytes, 10 ms   cabecera "SQLite format 3"
+    CLARKE   -> HTTP 200, 57536512 bytes, 10 ms   cabecera "SQLite format 3"
+    CONTRASTE (downloadUrl) -> BLOQUEADO: Failed to fetch
+
+Ese ultimo renglon es el que importa: **las dos URLs conviven, y solo una
+funciona**. Por eso el catalogo declara las dos en vez de sustituir una por otra.
+
+Como se hace, en el repositorio hermano `aa`:
+
+- Un workflow baja los artefactos del release publicado y los sube a Pages.
+  **Desde el release, nunca desde el repositorio**: los `.amod` siguen sin
+  entrar en el historial de git.
+- `latest.json` y `catalog.json` se copian tambien a la raiz del sitio, porque su
+  trabajo es ser el puntero flotante y no pueden vivir bajo una etiqueta que
+  habria que conocer de antemano.
+- El manifiesto gana un campo `browserUrl` por modulo. `downloadUrl` no cambia:
+  es la URL correcta para clientes nativos.
 
 **El techo, medido contra la documentacion de Pages:**
 
-- Sitio publicado: maximo **1 GB**. Hoy son 80 MB.
-- Ancho de banda: **100 GB/mes**, y es un limite blando.
+- Sitio publicado: maximo **1 GB**. Hoy son 80 MB, y el workflow falla si se pasa.
+- Ancho de banda: **100 GB/mes**, limite blando.
 
-Traducido al caso real: con el comentario de Clarke, de 57.536.512 bytes,
-100 GB dan unas **1.740 descargas al mes** antes de rozar el limite. Con la
-Biblia de KJV, de 22.544.384 bytes, unas 4.400. Para un proyecto con unos
-cientos de usuarios que leen sin conexion y descargan una vez, es de sobra. Para
-un million de usuarios, no.
+Traducido: con el comentario de Clarke, de 57.536.512 bytes, unas **1.740
+descargas al mes**; con KJV, unas 4.400. Y hay un factor que lo estira mucho: un
+modulo descargado se lee sin conexion y **no se vuelve a descargar**, asi que el
+ancho de banda se paga una vez por usuario y no una vez por lectura.
 
-Asi que Pages es la respuesta correcta **hoy** y R2 es la respuesta correcta
-cuando el numero de descargas lo pida. La documentacion de Pages dice
-literalmente que, al pasarse de cuota, lo sensato es "make use of other GitHub
-features such as releases", o sea, que Pages no es un CDN de binarios pesados.
-
-Un detalle que hay que tener en cuenta y que es gratis: **un modulo descargado se
-lee sin conexion y no se vuelve a descargar.** El ancho de banda se paga una vez
-por usuario, no una vez por lectura. Es la razon por la que el limite aguanta
-mucho mas de lo que parece.
+Pages es la respuesta correcta mientras eso aguante. R2 es la respuesta correcta
+cuando deje de aguantar, y es cambiar la URL de origen en un sitio. La propia
+documentacion de Pages dice que al pasarse de cuota lo sensato es usar otras
+funciones de GitHub, como los releases: no es un CDN de binarios.
 
 ### Opcion B: almacenamiento de objetos con CORS
 
@@ -159,10 +167,11 @@ Un `.amod` por libro, o por testamento, seria de 2 MB. Pero cambia el formato AM
 y rompe el modelo de "un modulo, un fichero". Es la decision mas limpia a largo
 plazo y la mas caro de corto. No es para ahora.
 
-### Opcion D: GitHub Pages en `aa` con los modulos en el repositorio
+### Opcion D: los modulos en el repositorio
 
-Descartada. Obliga a meter 80 MB en el historial de git de forma permanente, que
-es justo lo que `aa` decide no hacer con `.gitignore`.
+Descartada, y sigue descartada. Obligaria a meter 80 MB en el historial de git de
+forma permanente, que es justo lo que `aa` decide no hacer con `.gitignore`. El
+sitio de Pages se construye desde el release y por eso el repositorio no crece.
 
 ## 5. Lo que se descarta, y por que
 
@@ -178,26 +187,28 @@ es justo lo que `aa` decide no hacer con `.gitignore`.
 
 ## 6. Efecto en el primer change de `ab`
 
-Mientras `aa` no publique por Pages, el primer change **no puede contar**
-con descargar modulos en el navegador. Si lo hiciera, entregaria algo que
-compila, pasa las pruebas y no funciona: la forma mas pequena de repetir el
-historial de este proyecto.
+`aa` ya publica por Pages, asi que **el bloqueo esta resuelto**. Se
+comprobo que la descarga funciona **antes** de escribir `phase-1-biblioteca`, no
+despues: si la app se hubiera escrito primero y el catalogo luego, la via
+principal habria estado semanas dando un mensaje de error honesto en vez de
+funcionando.
 
-Por eso `phase-1-biblioteca` tiene las dos vias --descarga por URL y fichero
-local-- y la de URL **detecta el fallo y lo dice**, en vez de quedarse girando.
-Cuando `aa` publique por Pages, esa misma via empieza a funcionar sin tocar la
-interfaz.
+`phase-1-biblioteca` tiene las dos vias igualmente --descarga por URL y fichero
+local-- porque las dos hacen falta:
 
-Y ya se sabe que funcionara, porque esta medido: Pages envia
-`Access-Control-Allow-Origin: *` en el mismo sitio donde esta publicada la
-aplicacion.
+- La **descarga por URL** es el camino normal, y **tiene que usar `browserUrl`**,
+  no `downloadUrl`. Si usara la segunda, en nativo funcionaria y en web daria
+  `Failed to fetch`, que es el fallo mas caro de este proyecto porque
+  compila, pasa las pruebas y no funciona.
+- El **fichero local** es el camino de quien ya tiene el modulo, o esta sin
+  conexion. STEPBible y MyBible lo tienen por eso.
 
-Lo que si se puede hacer y verificar mientras tanto:
+Y la deteccion del fallo de origen cruzado se queda, porque `browserUrl` puede
+dejar de funcionar: si el sitio de Pages deja de mandar cabeceras, o el modulo se
+sustituye en nativo, la app lo dice en vez de quedarse girando.
 
-- Leer el manifiesto real desde `raw.githubusercontent.com` y pintar la
-  biblioteca. Medido: funciona en navegador.
-- Abrir un `.amod` **local** en SQLite y leer Juan 3:16. Es lo que decide la
-  arquitectura (SQLite real en WASM, no IndexedDB con SQL emulado), y se
-  verifica entero sin depender de la red.
-- Toda la UI de biblioteca, estados y tamanos, con datos de prueba que imiten
-  el manifiesto real.
+El manifiesto se lee ahora desde `https://yojananyosef.github.io/aa/latest.json`,
+que es el puntero flotante del sitio, y no desde `raw.githubusercontent.com`. Los
+dos funcionan, pero el primero es el mismo origen que los modulos: asi el
+cliente tiene **un** sitio del que hablar y no dos que pueden desincronizarse.
+`raw` queda como alternativa si el sitio se cae.
