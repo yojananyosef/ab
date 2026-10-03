@@ -94,63 +94,110 @@ cortesia. Pero la restriccion nueva --que la web no puede leerlos-- aparece con
 **dos** modulos. No hay ningun numero de modulos a partir del cual GitHub
 Releases empiece a servir bien a un navegador: no lo sirve nunca.
 
-### Opcion A: almacenamiento de objetos con CORS
+### Opcion A: GitHub Pages. Medida, y funciona
 
-Un bucket publico de Cloudflare R2 (o S3, o el equivalente) con
-`Access-Control-Allow-Origin: *` en los `.amod`. GitHub Releases se queda como
-registro inmutable con su tag, y el bucket es solo el transporte.
+**Es la que se ha elegido.** Y no hace falta ninguna cuenta ni proveedor de
+nube.
 
-- A favor: coincide con lo que `aa` ya dijo que haria; anade unas pocas lineas;
-  anade Range requests de verdad y sin limite de peticiones por hora.
-- En contra: hay que crear el bucket y pagar (R2 no cobra por salida y cobra
-  por GB guardado, centsimos al mes para este catalogo).
-- **No verificado aqui:** no hay cuenta con la que probar un bucket. Que R2
-  permita `ACAO` en un bucket publico esta documentado, pero conviene probarlo
-  antes de dar el change por bueno.
+Medido el 3 de octubre de 2026 sobre el sitio ya publicado en
+`https://yojananyosef.github.io/ab/`, con una cabecera `Origin:` de un dominio
+distinto:
 
-### Opcion B: GitHub Pages
+| Fichero | `ACAO` | `Content-Type` |
+| --- | --- | --- |
+| `/ab/` | `*` | `text/html` |
+| `/ab/sqlite3.wasm` | `*` | `application/wasm` |
+| `/ab/manifest.json` | `*` | `application/json` |
 
-`https://<user>.github.io/<repo>/...` responde con `ACAO: *` -- medido en la
-pagina de Flutter. Pero obliga a que los `.amod` esten **en el repositorio**, y
-hoy son 80 MB que `aa` gitignora a proposito. Meter 80 MB en el historial de
-git es una decision con consecuencias permanentes, y no compensa mientras haya
-una opcion A.
+GitHub Pages responde **`Access-Control-Allow-Origin: *` en todas las
+respuestas, incluidos los binarios**. Eso es justo lo que GitHub Releases no
+hace, y lo que hace la diferencia entre que el navegador pueda leer un `.amod` y
+que no.
+
+Como se hace: un workflow de GitHub Actions descarga los assets de la release y
+los publica como sitio. Los assets de release siguen siendo el registro
+inmutable con su tag, y el sitio es solo el transporte. `aa` no cambia de
+formato ni de versionado: cambia de donde se sirven los bytes.
+
+**El techo, medido contra la documentacion de Pages:**
+
+- Sitio publicado: maximo **1 GB**. Hoy son 80 MB.
+- Ancho de banda: **100 GB/mes**, y es un limite blando.
+
+Traducido al caso real: con el comentario de Clarke, de 57.536.512 bytes,
+100 GB dan unas **1.740 descargas al mes** antes de rozar el limite. Con la
+Biblia de KJV, de 22.544.384 bytes, unas 4.400. Para un proyecto con unos
+cientos de usuarios que leen sin conexion y descargan una vez, es de sobra. Para
+un million de usuarios, no.
+
+Asi que Pages es la respuesta correcta **hoy** y R2 es la respuesta correcta
+cuando el numero de descargas lo pida. La documentacion de Pages dice
+literalmente que, al pasarse de cuota, lo sensato es "make use of other GitHub
+features such as releases", o sea, que Pages no es un CDN de binarios pesados.
+
+Un detalle que hay que tener en cuenta y que es gratis: **un modulo descargado se
+lee sin conexion y no se vuelve a descargar.** El ancho de banda se paga una vez
+por usuario, no una vez por lectura. Es la razon por la que el limite aguanta
+mucho mas de lo que parece.
+
+### Opcion B: almacenamiento de objetos con CORS
+
+Un bucket publico de Cloudflare R2 (o S3) con `Access-Control-Allow-Origin: *`
+en los `.amod`.
+
+- A favor: anade unas pocas lineas, Range requests de verdad y sin limite de
+  peticiones por hora.
+- En contra: hay que abrir una cuenta, y mientras Pages aguante sobra.
+- **No verificado aqui:** no hay cuenta con la que probar un bucket.
+
+Se queda como el paso siguiente cuando el ancho de banda de Pages deje de
+aguantar, y el cambio de Pages a R2 es cambiar la URL de origen en un sitio.
 
 ### Opcion C: partir los modulos
 
-Un `.amod` por libro, o por testamento, seria de 2 MB y cabria en cualquier
-sitio. Pero cambia el formato AMF y rompe el modelo de "un modulo, un
-fichero". Es la decision mas limpia a largo plazo y la mas caro de corto. No es
-para ahora.
+Un `.amod` por libro, o por testamento, seria de 2 MB. Pero cambia el formato AMF
+y rompe el modelo de "un modulo, un fichero". Es la decision mas limpia a largo
+plazo y la mas caro de corto. No es para ahora.
+
+### Opcion D: GitHub Pages en `aa` con los modulos en el repositorio
+
+Descartada. Obliga a meter 80 MB en el historial de git de forma permanente, que
+es justo lo que `aa` decide no hacer con `.gitignore`.
 
 ## 5. Lo que se descarta, y por que
 
 - **Proxy propio en `ab`.** Anadir un servidor a una app que no lo tiene es
   exactamente la decision que este proyecto lleva catorce intentos evitando.
-- **Pedir CORS a GitHub.** No es configurable porPublicacion.
+- **Pedir CORS a GitHub.** No es configurable por publicacion.
 - **Meter los modulos en git "solo mientras sean pocos".** Es un umbral que se
   cruza sin avisar y deja 80 MB de historia permanente.
-- **Usar `api.github.com` con `octet-stream`.** Medido: bloqueado adespues de la
+- **Usar `api.github.com` con `octet-stream`.** Medido: bloqueado tras la
   redireccion. Ademas son 60 peticiones por hora e IP sin autenticar, y detras
   de un CGNAT --que es lo normal en un operador movil de Latinoamerica-- eso es
   una tarifa compartida entre cientos de personas.
 
-## 6. While reating el primer change de `ab`
+## 6. Efecto en el primer change de `ab`
 
-Mientras no haya un origen con CORS, el primer change **no puede incluir
-descarga de modulos**. Si se incluye, entrega algo que compila, pasa las
-pruebas y no funciona en el navegador: la forma mas pequena de repetir el
+Mientras `aa` no publique por Pages, el primer change **no puede contar**
+con descargar modulos en el navegador. Si lo hiciera, entregaria algo que
+compila, pasa las pruebas y no funciona: la forma mas pequena de repetir el
 historial de este proyecto.
 
-Lo que si se puede hacer y verificar:
+Por eso `phase-1-biblioteca` tiene las dos vias --descarga por URL y fichero
+local-- y la de URL **detecta el fallo y lo dice**, en vez de quedarse girando.
+Cuando `aa` publique por Pages, esa misma via empieza a funcionar sin tocar la
+interfaz.
+
+Y ya se sabe que funcionara, porque esta medido: Pages envia
+`Access-Control-Allow-Origin: *` en el mismo sitio donde esta publicada la
+aplicacion.
+
+Lo que si se puede hacer y verificar mientras tanto:
 
 - Leer el manifiesto real desde `raw.githubusercontent.com` y pintar la
   biblioteca. Medido: funciona en navegador.
 - Abrir un `.amod` **local** en SQLite y leer Juan 3:16. Es lo que decide la
   arquitectura (SQLite real en WASM, no IndexedDB con SQL emulado), y se
   verifica entero sin depender de la red.
-- Toda la UI de biblioteca, estados y tamanos, con datos de prueba que
-  imiten el manifiesto real.
-
-Y la descarga entra en el change siguiente, cuando `aa` publique donde el
-navegador pueda leer.
+- Toda la UI de biblioteca, estados y tamanos, con datos de prueba que imiten
+  el manifiesto real.

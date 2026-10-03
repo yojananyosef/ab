@@ -19,16 +19,26 @@ construirlo ni decidir que es publicable.
 
 Si este repositorio contiene una lista de textos, alguien cruzo la frontera.
 
+## Version web
+
+<https://yojananyosef.github.io/ab/>
+
+Se publica con GitHub Pages desde `main`, en cada push. El workflow de
+`.github/workflows/ci.yml` ejecuta `flutter analyze`, `flutter test` y
+`flutter build web` **antes** de desplegar, y comprueba que el motor SQLite
+viaja en el paquete: si faltara, la app arrancaria y fallaria al abrir el
+primer modulo, que es el peor sitio para descubrirlo.
+
 ## Documentacion
 
-- `AGENTS.md` — reglas del repositorio, para quien trabaje aqui.
-- `docs/investigacion-ux.md` — que se aprendio de las apps que ya existen.
-- `docs/investigacion/crudo-*.md` — informes de referencia, con citas.
-- `docs/investigacion/transporte-cors.md` — por que la web todavia no puede
-  descargar un modulo, medido en navegador real.
-- `docs/investigacion/sqlite-en-navegador.md` — prueba de que un `.amod`
+- `AGENTS.md` - reglas del repositorio, para quien trabaje aqui.
+- `docs/investigacion-ux.md` - que se aprendio de las apps que ya existen.
+- `docs/investigacion/crudo-*.md` - informes de referencia, con citas.
+- `docs/investigacion/transporte-cors.md` - por que la web todavia no puede
+  descargar un modulo, medido en navegador real, y por donde se arregla.
+- `docs/investigacion/sqlite-en-navegador.md` - prueba de que un `.amod`
   real se abre en el navegador.
-- `openspec/` — los cambios del proyecto y sus especificaciones.
+- `openspec/` - los cambios del proyecto y sus especificaciones.
 
 ## Desarrollo
 
