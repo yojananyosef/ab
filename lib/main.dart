@@ -33,10 +33,12 @@ import 'data/services/http_service.dart';
 import 'data/repositories/modulo_repository.dart';
 import 'data/services/sqlite_service.dart';
 import 'domain/models/referencia.dart';
+import 'domain/models/tipo_de_contenido.dart';
 import 'domain/use_cases/obtener_modulo.dart';
 import 'domain/use_cases/resultado_obtencion.dart';
 import 'ui/core/rutas.dart';
 import 'ui/core/tema.dart';
+import 'ui/features/biblioteca/view_models/aviso.dart';
 import 'ui/features/biblioteca/view_models/biblioteca_view_model.dart';
 import 'ui/features/lector/view_models/lector_view_model.dart';
 
@@ -251,7 +253,11 @@ class _AbAppState extends State<AbApp> {
       'modulos': _catalogo.manifiesto.modulos.length,
       'idsLocales': _biblioteca.idsLocales.toList()..sort(),
       'bytesDescargados': _sonda.bytesDescargados,
-      'avisos': _biblioteca.avisos,
+      // Y TAMBIEN AQUI, POR EL MISMO MOTIVO: `jsonEncode` no sabe escribir un
+      // `Aviso`. Este es el informe de diagnostico que se escribe **antes** de mirar el
+      // pasaje, asi que si revienta aqui se pierde justo el que dice si el texto se
+      // bajo. Ver `sonda.dart`.
+      'avisos': <String>[for (final a in _biblioteca.avisos) a.texto],
     });
 
     // 1. El pasaje. Es lo que comprueban 8.2 y 8.4.
@@ -420,6 +426,22 @@ class _AbAppState extends State<AbApp> {
     }
   }
 
+  /// Que clase de contenido declara un modulo ya descargado.
+  ///
+  /// Y NO ES LO MISMO QUE ABRIRLO. Abrir hace `quick_check` sobre las 57 MB de un
+  /// comentario, y esta pregunta solo lee una fila de la tabla `info`. La diferencia
+  /// son segundos en un movil, y es la razon de que la biblioteca **no** abra un
+  /// modulo entero para pintar una etiqueta.
+  ///
+  /// Y DEVUELVE NULL SI NO SE PUEDE SABER, en vez de suponer. Un modulo que no se ha
+  /// descargado, o cuya tabla `info` no se puede leer, no tiene etiqueta, y la fila lo
+  /// dira como "no se sabe" en vez de mentir con "Biblia".
+  Future<TipoDeContenido?> tipoDeContenido(String id) async {
+    final bytes = await _bytesDe(id);
+    if (bytes == null) return null;
+    return ModuloAbierto.tipoDeContenidoDe(_modulos.ponerEnMemoria(id, bytes));
+  }
+
   /// Descargar un modulo y guardarlo.
   ///
   /// ESTO YA ES EL CODIGO DE VERDAD, no un boton de mentira. Y el orden es el que
@@ -444,37 +466,50 @@ class _AbAppState extends State<AbApp> {
     final obtener = ObtenerModulo(http: _http);
     var ultimoTramo = 0;
 
-    await for (final evento in obtener.obtener(
-      modulo,
-      hashEsperado: modulo.sha256,
-      // En navegador va la URL de Pages; en nativo las dos valen. No se decide
-      // leyendo el User-Agent: `kIsWeb` lo sabe el framework, y un User-Agent se
-      // puede falsear.
-      usarUrlDeNavegador: kIsWeb,
-    )) {
-      if (!mounted) return;
-      if (evento is Progreso) {
-        // El progreso va como un aviso, y no en una barra: la barra por modulo vive
-        // en la fila y es del grupo 7. Y **solo cada diez por ciento**, porque un
-        // aviso por cada trozo de 4 MiB llenaria la pantalla en un comentario de
-        // 57 MiB: catorce avisos apilados que hay que subir con el dedo.
-        final pct = evento.fraccion;
-        if (pct != null) {
-          final tramo = (pct * 10).floor();
-          if (tramo > ultimoTramo) {
-            ultimoTramo = tramo;
-            _biblioteca.anadirAviso('Bajando $id: ${tramo * 10} por ciento');
+    try {
+      await for (final evento in obtener.obtener(
+        modulo,
+        hashEsperado: modulo.sha256,
+        // En navegador va la URL de Pages; en nativo las dos valen. No se decide
+        // leyendo el User-Agent: `kIsWeb` lo sabe el framework, y un User-Agent se
+        // puede falsear.
+        usarUrlDeNavegador: kIsWeb,
+      )) {
+        if (!mounted) return;
+        if (evento is Progreso) {
+          // Solo cada diez por ciento, porque un aviso por cada trozo de 4 MiB seria
+          // catorce actualizaciones en un comentario de 57 MiB. Y con la barra se
+          // reemplaza en el sitio, sin historial.
+          final pct = evento.fraccion;
+          if (pct != null) {
+            final tramo = (pct * 10).floor();
+            if (tramo > ultimoTramo) {
+              ultimoTramo = tramo;
+              // Y NO ES UN AVISO, ES UN PROGRESO. La distincion no es de estilo:
+              // antes cada diez por ciento anadia un aviso, y como nada los quitaba,
+              // un comentario de 57 MiB dejaba diez lineas "Bajando CLARKE: N por
+              // ciento" para siempre, todas en rojo. Y al terminar seguian ahi,
+              // diciendo que se estaba bajando algo que ya estaba bajado.
+              //
+              // `progresoDeDescarga` reemplaza el anterior del mismo modulo, y el
+              // `finally` de abajo lo quita cuando acaba, salga bien o mal.
+              _biblioteca.progresoDeDescarga(id, tramo * 10);
+            }
           }
         }
+        if (evento is Terminada) {
+          await _terminarDescarga(id, evento.resultado, modulo.sha256);
+          return;
+        }
       }
-      if (evento is Terminada) {
-        await _terminarDescarga(id, evento.resultado, modulo.sha256);
-        if (!mounted) return;
-        _biblioteca.marcarCargando(false);
-        return;
-      }
+    } finally {
+      // Y AQUI SE QUITA, Y NO EN CADA RAMA DEL `switch` QUE HAY DEBAJO. Hay siete
+      // finales posibles y con el `finally` es imposible olvidarse en uno: un progreso
+      // que se queda puesto despues de que la descarga acabe --bien o mal-- es una
+      // linea que miente sobre lo que esta haciendo la app.
+      _biblioteca.quitarProgreso(id);
+      _biblioteca.marcarCargando(false);
     }
-    _biblioteca.marcarCargando(false);
   }
 
   /// Lo que se hace con el resultado de una descarga.
@@ -504,7 +539,9 @@ class _AbAppState extends State<AbApp> {
             _biblioteca.quitarOrigenNoLegible(id);
             _biblioteca.anadirAviso('$id descargado y guardado.');
           case NoCabe(:final texto):
-            // NO CABE NO IMPIDE LEER. Solo se pierde la proxima vez.
+            // NO CABE NO IMPIDE LEER. Solo se pierde la proxima vez. Y por eso no es
+            // un error: una advertencia que salta al descargar es roja, y aqui la
+            // descarga ha ido bien.
             _biblioteca.anadirAviso(texto);
           case FalloAlPersistir(:final texto):
             _biblioteca.anadirAviso(texto);
@@ -520,37 +557,81 @@ class _AbAppState extends State<AbApp> {
         // Se anota para que la fila lo explique y ofrezca el fichero local, y no un
         // reintentar que se sabe que va a fallar igual.
         _biblioteca.anotarOrigenNoLegible(id);
-        _biblioteca.anadirAviso(descripcionDe(resultado));
+        _biblioteca.anadirAviso(descripcionDe(resultado), clase: ClaseDeAviso.error);
 
+      // Y ESTOS CINCO SI SON ERRORES: no se ha podido bajar el modulo o no ha quedado
+      // entero, y sin el no se puede leer nada.
       case HashIncorrecto():
       case DescargaIncompleta():
       case OrigenCaido():
       case Cancelado():
       case FalloInesperado():
+        _biblioteca.anadirAviso(descripcionDe(resultado), clase: ClaseDeAviso.error);
+
       case HayVersionNueva():
         _biblioteca.anadirAviso(descripcionDe(resultado));
     }
   }
 
   /// Abrir el modulo y mirar que tiene dentro. Si no abre, se dice.
+  ///
+  /// Y ESTA FUNCION TENIA EL CRASH DE LA CAPTURA. Medido el 4 de octubre de 2026 con
+  /// el CLARKE real, aqui salia:
+  ///
+  ///     No se ha podido abrir CLARKE: SqliteException(1): while preparing statement,
+  ///     no such table: verses
+  ///
+  /// Porque hacia `SELECT count(*) FROM verses` **de todo lo que se descarga**, y un
+  /// comentario no tiene esa tabla: tiene `commentary`. El modulo se descargaba bien, se
+  /// guardaba bien, y aqui reventaba -- y como el aviso se guardaba como error rojo,
+  /// lo primero que se veia era un error gigante en una pantalla con veinte cajas.
+  ///
+  /// Y NO SE COMPRUEBA SI HAY TABLA `verses`, SINO QUE DICE EL MODULO QUE ES. Se lee
+  /// `info.type` y se pregunta por lo que corresponde: un comentario no tiene
+  /// versiculos que contar, y no es un fallo que no los tenga. Ver
+  /// `tipo_de_contenido.dart`, donde esta el motivo de fondo.
   Future<void> _comprobarQueAbre(String ruta, String id) async {
+    Sqlite? sqlite;
     try {
-      final sqlite = Sqlite.abrir(ruta);
-      try {
-        if (sqlite.comprobacionRapida() != 'ok') {
-          _biblioteca.anadirAviso(
-            'El modulo de $id esta danado y no se va a abrir. Se puede borrar y bajar otra vez.',
-          );
-          return;
-        }
-        final n = sqlite.valor('SELECT count(*) FROM verses');
-        final nombre = sqlite.info('name') ?? id;
-        _biblioteca.anadirAviso('$nombre: $n versiculos, listo para leer.');
-      } finally {
-        sqlite.cerrar();
+      sqlite = Sqlite.abrir(ruta);
+      final check = sqlite.comprobacionRapida();
+      if (check != 'ok') {
+        _biblioteca.anadirAviso(
+          'El modulo de $id esta danado y no se va a abrir. Se puede borrar y bajar otra vez.',
+          clase: ClaseDeAviso.error,
+        );
+        return;
       }
+
+      final nombre = sqlite.info('name') ?? id;
+      final tipo = TipoDeContenido.fromModulo(sqlite.info('type'));
+
+      // Y LO QUE SE DICE DE CADA TIPO ES DISTINTO A PROPOSITO. A un comentario no se le
+      // anuncia "0 versiculos": eso suena a que esta vacio o a que la descarga fallo, y
+      // las dos cosas son mentira. Se le dice lo que es y que se podra leer cuando haya
+      // pantalla para el.
+      if (tipo == TipoDeContenido.comentario) {
+        _biblioteca.anadirAviso(
+          '$nombre: comentario descargado. Todavia no se puede leer en la app: '
+          'falta la pantalla de comentarios.',
+        );
+        return;
+      }
+      if (tipo == TipoDeContenido.desconocido) {
+        _biblioteca.anadirAviso(
+          '$nombre declara un tipo de contenido que la app no conoce, asi que no se '
+          'puede abrir. Se ha descargado bien.',
+          clase: ClaseDeAviso.error,
+        );
+        return;
+      }
+
+      final n = sqlite.valor('SELECT count(*) FROM verses');
+      _biblioteca.anadirAviso('$nombre: $n versiculos, listo para leer.');
     } catch (e) {
-      _biblioteca.anadirAviso('No se ha podido abrir $id: $e');
+      _biblioteca.anadirAviso('No se ha podido abrir $id: $e', clase: ClaseDeAviso.error);
+    } finally {
+      sqlite?.cerrar();
     }
   }
 

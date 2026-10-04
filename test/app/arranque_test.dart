@@ -27,6 +27,7 @@ import 'package:ab/data/services/almacenamiento_de_modulos.dart';
 import 'package:ab/domain/models/estado_modulo.dart';
 import 'package:ab/domain/models/manifiesto.dart';
 import 'package:ab/domain/models/modulo.dart';
+import 'package:ab/ui/features/biblioteca/view_models/aviso.dart';
 import 'package:ab/ui/features/biblioteca/view_models/biblioteca_view_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -198,7 +199,7 @@ void main() {
       // Y se dice, en vez de quedarse muda.
       expect(r.hayIdsLocales, isFalse);
       expect(r.avisos, isNotEmpty);
-      expect(vista.avisos.first, contains('almacenamiento'),
+      expect(vista.avisos.first.texto, contains('almacenamiento'),
           reason: 'el aviso tiene que decir QUE es lo que no ha contestado');
     });
 
@@ -214,7 +215,7 @@ void main() {
       expect(vista.filas.length, 2);
       expect(r.hayIdsLocales, isFalse);
       expect(vista.avisos, isNotEmpty);
-      expect(vista.avisos.first, contains('No se ha podido leer'));
+      expect(vista.avisos.first.texto, contains('No se ha podido leer'));
     });
 
     test('el aviso dice que se puede leer lo que se baje', () async {
@@ -228,7 +229,7 @@ void main() {
         plazo: plazoCorto,
       );
 
-      expect(vista.avisos.first.toLowerCase(), contains('leer'));
+      expect(vista.avisos.first.texto.toLowerCase(), contains('leer'));
     });
 
     test('si el CATALOGO falla, se dice, y no se inventa una lista', () async {
@@ -253,7 +254,7 @@ void main() {
 
       expect(r.sabeLoQuePasa, isFalse);
       expect(vista.catalogoVacio, isTrue);
-      expect(vista.avisos, contains('No se ha podido contactar con el catalogo.'));
+      expect(textosDe(vista.avisos), contains('No se ha podido contactar con el catalogo.'));
     });
 
     test('si el repositorio LANZA, no se queda sin pintar nada', () async {
@@ -269,7 +270,7 @@ void main() {
 
       expect(r.sabeLoQuePasa, isFalse);
       expect(vista.avisos, isNotEmpty);
-      expect(vista.avisos.first, contains('fallo del repositorio'));
+      expect(vista.avisos.first.texto, contains('fallo del repositorio'));
       expect(vista.cargando, isFalse, reason: 'y no se queda en "cargando" para siempre');
     });
   });
@@ -354,7 +355,7 @@ void main() {
       expect(r.hayIdsLocales, isTrue);
       expect(r.hayHashesLocales, isFalse);
       expect(vista.filas.firstWhere((f) => f.id == 'KJV2006').estado, EstadoModulo.descargado);
-      expect(vista.avisos.any((a) => a.toLowerCase().contains('version')), isTrue);
+      expect(vista.avisos.any((a) => a.texto.toLowerCase().contains('version')), isTrue);
     });
 
     test('un modulo retirado del catalogo sigue apareciendo', () async {
@@ -454,7 +455,7 @@ void main() {
         plazo: plazoCorto,
       );
 
-      expect(vista.avisos.first, contains('motor'));
+      expect(vista.avisos.first.texto, contains('motor'));
     });
   });
 }
@@ -470,3 +471,13 @@ Future<List<String>> conPlazaNula() =>
       plazo: const Duration(milliseconds: 50),
       mensaje: 'el almacenamiento',
     );
+
+
+/// Los textos de una lista de avisos, para comparar con `contains`.
+///
+/// Y ES UN AYUDANTE Y NO UN `.map` EN CADA SITIO porque son ocho comparaciones y
+/// cada una con su `.texto` se queda sin leer a la tercera. Ademas, comparar el objeto
+/// entero contra un `String` da un fallo que no dice nada --"Expected: '...', Actual:
+/// Aviso:<...>"-- cuando lo que se quiere comprobar es el texto.
+List<String> textosDe(List<Aviso> avisos) =>
+    <String>[for (final a in avisos) a.texto];

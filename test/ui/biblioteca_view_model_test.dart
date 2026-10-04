@@ -383,9 +383,18 @@ void main() {
       );
       vm.anadirAviso('No se ha podido preparar el motor.');
 
-      expect(vm.avisos.first, 'No se ha podido preparar el motor.',
+      expect(vm.avisos.first.texto, 'No se ha podido preparar el motor.',
           reason: 'el aviso de la pantalla va primero: es lo que impide usar la app');
-      expect(vm.avisos.last, contains('copia guardada'));
+      expect(vm.avisos.last.texto, contains('copia guardada'));
+
+      // Y LA COPIA GUARDADA **NO** ES UN ERROR. Es informacion: el catalogo de hoy no
+      // se ha podido leer y se ensena el de antes, que funciona. Si esto fuera un error,
+      // saldria en rojo con un triangulo, y una app que funciona bien se veria como rota.
+      // Es la mitad de lo que se estaba viendo en la pantalla: todo en rojo.
+      expect(vm.avisos.last.esError, isFalse,
+          reason: 'una copia guardada es un hecho, no un fallo');
+      expect(vm.hayErrores, isFalse,
+          reason: 'nada de lo de arriba ha fallado de verdad');
     });
 
     test('filtrar por texto igual no avisa', () {

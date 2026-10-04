@@ -467,6 +467,104 @@ modulo descargado quiere decir que el indice se perdio, no que no haya nada que 
 Y eso ocurre de verdad: el indice se escribe al guardar, y un modulo escrito por una
 version anterior no lo tiene.
 
+### Un modulo no es una Biblia porque lo diga la app
+
+Medido el 4 de octubre de 2026 con los dos `.amod` reales:
+
+    KJV2006   info.type = 'bible'       tablas: ['info', 'verses']
+    CLARKE    info.type = 'commentary'   tablas: ['info', 'commentary']
+
+Y la app hacia `SELECT count(*) FROM verses` de **todo** lo que se descargaba, con lo
+que al abrir el comentario reventaba con:
+
+    SqliteException(1): while preparing statement, no such table: verses
+
+El modulo se descargaba entero, se guardaba bien y era **imposible de abrir**. Y no lo
+detectaba ninguna de las 338 pruebas, porque todas las que abren un modulo usan el KJV.
+
+Tres reglas:
+
+- **El tipo de contenido lo declara el modulo**, en `info.type`. No lo deduce la app de
+  que tablas encuentra: `sqlite_master` es la **implementacion** del fichero, y si
+  manana un comentario guardara tambien referencias en `verses` la comprobacion dejaria
+  de pasar sin que nadie hubiera cambiado nada.
+- **Un modulo con un tipo que no se conoce no se supone una Biblia.** Es el enum
+  `TipoDeContenido.desconocido`, y `abrir` no lo deja pasar. Un `switch` al que le
+  falta un caso inventa siempre "es una Biblia", y esa suposicion es el crash.
+- **Una peticion que no tiene sentido no devuelve una lista vacia, lanza.** Una lista
+  vacia se confunde con "este modulo no tiene ese capitulo", que es una informacion y no
+  un fallo: pinta una pantalla en blanco y dice que el texto no esta ahi.
+
+### Un aviso no es un error, y un progreso no es un aviso
+
+Medido el 4 de octubre de 2026. La biblioteca era un `Column` de cajas, una por aviso,
+encima de la lista, y los avisos eran `List<String>`. Consecuencias, todas medidas:
+
+| | Que pasaba |
+| --- | --- |
+| Todo en rojo | un `String` no sabe si es un error, asi que **el progreso tambien salia como error** |
+| Veinte lineas | un modulo de 57 MiB a trozos de 4 MiB da diez tramos, y **cada uno anadia un aviso** que no se quitaba nunca |
+| Ni un modulo en pantalla | veinte cajas de texto se comen la pantalla entera, y los avisos van **encima** de la lista |
+
+Y lo peor: al terminar la descarga seguia diciendo "Bajando CLARKE: 90 por ciento".
+
+Tres reglas:
+
+- **Un tipo de aviso, no un `String`.** Un `bool esError` devuelve el mismo fallo: el
+  progreso tambien es un `esError: false`, y entonces comparte caja, color y ciclo de
+  vida con lo que no es un error.
+- **Un progreso se reemplaza a si mismo, y necesita una clave.** La clave es
+  `progreso:$id`: dos mensajes con la misma clave son el mismo mensaje en dos momentos.
+  Y el `finally` de la descarga lo quita **siempre**, porque hay siete finales posibles
+  y con `finally` no se puede olvidar en uno.
+- **La banda de avisos tiene un tope de ALTURA con scroll propio**, no un tope de lineas:
+  un aviso de tres lineas y uno de una ocupan distinto, y a 360 px la diferencia entre
+  "caben cuatro" y "caben uno" es la diferencia entre ver la lista y no verla.
+
+### Una sonda que se traga sus errores no es una sonda
+
+Medido el 4 de octubre de 2026. La sonda paso a mandar `List<Aviso>` --que es lo
+correcto, porque los avisos tienen tipo-- y `jsonEncode` **lanza** con un objeto dentro
+en vez de escribirlo. La excepcion salio de `escribir`, se subio por la cadena y, como
+quien llama esta en un `addPostFrameCallback` y no hay nadie que la coja, se perdio.
+
+Lo que se vio desde fuera: la app **funcionaba**, Juan 3:16 se leia en la pantalla del
+navegador, la descarga iba bien... y la sonda no escribia nada. El script dijo "la sonda
+no ha escrito nada en 900 s", que parece un fallo de la comprobacion y era un fallo de
+la sonda.
+
+Y **"no ha comprobado nada" y "no ha dicho nada" se ven igual desde fuera**. Una
+comprobacion que se traga sus errores es peor que no tenerla, porque ocupa el hueco de
+una que funciona.
+
+Dos reglas, y hacen falta las dos:
+
+- **Al informe no se mete nada que `jsonEncode` no sepa escribir.** Los avisos viajan
+  como `List<String>`, no como `List<Aviso>`.
+- **`escribir` no lanza nunca.** Si aun asi falla, escribe un informe que diga que ha
+  fallado y por que. Un `try` que devuelve un informe vacio sigue mintiendo.
+
+### La barra y el cuerpo tienen que caer en la misma columna
+
+Medido el 4 de octubre de 2026 a 1900 px de ancho: el contenido se centraba en una
+columna de 560 --la lista, los filtros-- y el titulo se quedaba en la esquina de la
+ventana, a 1345 pixeles de lo que titula. Parece una pantalla hecha de dos.
+
+Y el margen de la fila estaba escrito a `14` mientras el del filtro salia de
+`Medidas.margenPara`, que da `24` en pantallas anchas: diez pixeles de desfase entre el
+campo de busqueda y lo que filtra. Se ve mas a 1440 que a 360, y por eso solo se nota
+mirando la ancha.
+
+Dos reglas:
+
+- **El margen sale de `Medidas.margenPara`, siempre.** Un `14` escrito en un sitio y un
+  `margenPara` en otro son dos medidas que divergen en cuanto alguien cambia una.
+- **El `AppBar` no alinea su `title` con el cuerpo**, y no hay `titleSpacing` que lo
+  arregle. La unica forma de que las dos cosas caigan donde deben es poner **el mismo
+  `ContenidoCentrado` en los dos sitios**, y pegar el texto a la izquierda **dentro** de
+  el --con un `Align` hijo, no con una opcion del `ContenidoCentrado`: asi se mueve el
+  texto y no la columna.
+
 ### En web, cuatro cosas que funcionan en Dart y no en un navegador
 
 Medido el 4 de octubre de 2026, con Brave 154 en headless, montando la comprobacion en

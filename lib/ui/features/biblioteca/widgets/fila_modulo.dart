@@ -83,8 +83,18 @@ class FilaModulo extends StatelessWidget {
     return Container(
       // El ancho maximo va aqui y no en la lista: asi cada fila se centra sola y
       // no hace falta un `Center` que envuelva a la lista entera.
+      //
+      // Y EL MARGEN SE CALCULA COMO EL DEL RESTO DE LA PANTALLA, y no con un 14 fijo.
+      // Medido el 4 de octubre de 2026 a 768 px: el filtro de busqueda empezaba en 128 y
+      // las filas en 118, porque el filtro usa `Medidas.margenPara` --24 en pantallas
+      // anchas-- y la fila usaba 14 siempre. Diez pixeles de desfase entre el campo y lo
+      // que filtra, y es el tipo de cosa que hace que una pantalla parezca junta con
+      // cinta. Se ve mas a 1440 que a 360, y por eso solo se nota mirando la ancha.
       constraints: const BoxConstraints(maxWidth: Medidas.anchoMaximoDeFila),
-      padding: const EdgeInsets.symmetric(horizontal: Medidas.margenEstrecho, vertical: 14),
+      padding: EdgeInsets.symmetric(
+        horizontal: Medidas.margenPara(MediaQuery.sizeOf(context).width),
+        vertical: 14,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

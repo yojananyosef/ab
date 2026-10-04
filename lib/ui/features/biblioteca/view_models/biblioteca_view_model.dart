@@ -30,6 +30,8 @@ import 'package:ab/domain/models/estado_modulo.dart';
 import 'package:ab/domain/models/manifiesto.dart';
 import 'package:ab/domain/models/modulo.dart';
 
+import 'aviso.dart';
+
 /// Una fila de la biblioteca.
 ///
 /// No es un `Modulo`: es un `Modulo` **mas** su estado, y a veces no hay `Modulo`.
@@ -171,7 +173,14 @@ class BibliotecaViewModel extends ChangeNotifier {
   /// y se compara con el del manifiesto para calcular el estado.
   Map<String, String> _hashesLocales;
   FiltroDeBiblioteca _filtro = const FiltroDeBiblioteca();
-  List<String> _avisos = const <String>[];
+
+  /// Los avisos, con su tipo.
+  ///
+  /// Y NO ES UNA LISTA DE CADENAS PORQUE ESO ES LO QUE ROMPIO LA PANTALLA. Medido el 4
+  /// de octubre de 2026: con `List<String>` no hay forma de distinguir un error de un
+  /// progreso, asi que todo salia en rojo, y no hay forma de reemplazar un progreso con
+  /// el siguiente, asi que se acumulaban. Ver `aviso.dart`.
+  List<Aviso> _avisos = const <Aviso>[];
   EstadoLectura _estadoLectura = EstadoLectura.sinConexion;
   bool _cargando = false;
   Set<String> _idsConOrigenNoLegible = <String>{};
@@ -214,7 +223,30 @@ class BibliotecaViewModel extends ChangeNotifier {
   bool origenNoLegible(String id) => _idsConOrigenNoLegible.contains(id);
 
   /// Los avisos del repositorio, mas los propios de la pantalla.
-  List<String> get avisos => List.unmodifiable(_avisos);
+  List<Aviso> get avisos => List.unmodifiable(_avisos);
+
+  /// Solo los que son un fallo. Para ensenarlos como errores.
+  List<Aviso> get avisosDeError =>
+      List<Aviso>.unmodifiable(_avisos.where((a) => a.esError));
+
+  /// Si hay algo que no ha ido bien.
+  bool get hayErrores => _avisos.any((a) => a.esError);
+
+  /// El progreso de cada modulo que se esta bajando ahora mismo, por id.
+  ///
+  /// Y ES UN MAPA Y NO UNA LISTA PORQUE SE BUSCA POR ID. La fila de un modulo esta
+  /// preguntando "cuanto lleva mi descarga", y con una lista habria que recorrerla
+  /// entera por fila y por fotograma. Ademas, con dos descargas a la vez --que se puede
+  /// -- el mapa no se confunde: cada modulo tiene su entrada.
+  Map<String, int> get progresoPorModulo {
+    final salida = <String, int>{};
+    for (final a in _avisos) {
+      final id = a.id;
+      final pct = a.porcentaje;
+      if (id != null && pct != null) salida[id] = pct;
+    }
+    return Map<String, int>.unmodifiable(salida);
+  }
 
   // --- lo que se calcula ---
 
@@ -329,7 +361,15 @@ class BibliotecaViewModel extends ChangeNotifier {
   }) {
     _manifiesto = resultado.manifiesto;
     _estadoLectura = resultado.estado;
-    _avisos = List<String>.from(resultado.avisos);
+
+    // Y LOS DEL REPOSITORIO SON **INFORMACION**, salvo los que el propio repositorio
+    // marco como error. El repositorio ya los separa, y convertirlos todos a
+    // informacion seria tirar esa distincion; convertirlos todos a error seria lo que
+    // hay: una columna de cajas rojas. Se respeta lo que cada uno es.
+    _avisos = <Aviso>[
+      for (final a in resultado.avisos)
+        Aviso.esteTexto(a, clase: _claseDe(a, resultado.estado)),
+    ];
     if (idsLocales != null) _idsLocales = Set<String>.from(idsLocales);
     if (hashesLocales != null) _hashesLocales = Map<String, String>.from(hashesLocales);
     notifyListeners();
@@ -414,10 +454,111 @@ class BibliotecaViewModel extends ChangeNotifier {
   ///
   /// Los avisos de la pantalla van **encima** de los del repositorio, no
   /// mezclados: son cosas distintas y no tienen que verse juntas.
-  void anadirAviso(String aviso) {
-    _avisos = <String>[aviso, ..._avisos];
+  void anadirAviso(
+    String aviso, {
+    ClaseDeAviso clase = ClaseDeAviso.informacion,
+  }) {
+    _avisos = <Aviso>[Aviso.esteTexto(aviso, clase: clase), ..._avisos];
+    _recortar();
     notifyListeners();
   }
+
+  /// El progreso de una descarga, **reemplazando** el anterior del mismo modulo.
+  ///
+  /// Y ESTO ES LO QUE ARREGLA LA PANTALLA DE LA CAPTURA. Antes se anadia un aviso por
+  /// cada diez por ciento y ninguno se iba: un comentario de 57 MiB dejaba diez lineas
+  /// "Bajando CLARKE: X por ciento" para siempre, y como no cabian, tapaban la lista de
+  /// modulos. Aqui la clave `progreso:$id` hace que el 90 por ciento **sustituya** al 80.
+  void progresoDeDescarga(String id, int porcentaje) {
+    final clave = 'progreso:$id';
+    _avisos = <Aviso>[
+      Aviso.progreso(id, porcentaje),
+      // Y SE QUITA EL ANTERIOR DE ESE MISMO MODULO, y solo ese: los progresos de los
+      // demas siguen. Con dos descargas a la vez, quitar todos los de progreso habria
+      // borrado el de la que iba bien.
+      for (final a in _avisos)
+        if (a.clave != clave) a,
+    ];
+    _recortar();
+    notifyListeners();
+  }
+
+  /// Quita el progreso de un modulo. Cuando ha terminado, deja de estar bajandose.
+  ///
+  /// Y SE QUITA Y NO SE CAMBIA POR "listo", porque el progreso ya no es verdad: el
+  /// modulo ya esta en el dispositivo, y la fila lo dice con su estado. Dejarlo
+  ///("", "al 100 por ciento de bajando X") para siempre es mentira.
+  void quitarProgreso(String id) {
+    final clave = 'progreso:$id';
+    if (!_avisos.any((a) => a.clave == clave)) return;
+    _avisos = <Aviso>[for (final a in _avisos) if (a.clave != clave) a];
+    notifyListeners();
+  }
+
+  /// Quita un aviso, por su texto.
+  ///
+  /// Para los que se resuelven solos: "este modulo no se ha podido abrir" deja de ser
+  /// verdad en cuanto se abre, y si se queda teaches que hay un problema que no hay.
+  void quitarAviso(String texto) {
+    final antes = _avisos.length;
+    _avisos = <Aviso>[for (final a in _avisos) if (a.texto != texto) a];
+    if (_avisos.length != antes) notifyListeners();
+  }
+
+  /// Quita todos los errores, y solo los errores.
+  ///
+  /// Que es el boton de "se han ido los avisos" de la pantalla. No quita los de
+  /// informacion: el aviso de "estas viendo una copia del catalogo del martes" no lo
+  /// ha pedido la persona y no se quita porque a ella le parezca molesto.
+  void quitarErrores() {
+    if (!_avisos.any((a) => a.esError)) return;
+    _avisos = <Aviso>[for (final a in _avisos) if (!a.esError) a];
+    notifyListeners();
+  }
+
+  /// Deja los avisos en un numero que cabe en la pantalla.
+  ///
+  /// Y SE CUENTA EN AVISOS, NO EN LINEAS, y no se corta la lista a un numero fijo de
+  /// lineas porque un aviso largo ocupa mas que uno corto y a 360 px eso es la
+  /// diferencia entre "caben cuatro" y "caben uno".
+  ///
+  /// Y EL CORTE ES POR LO **ULTIMO**, que es como se lee: lo mas reciente esta mas
+  /// cerca de donde esta el ojo. Un aviso de hace media hora no se ve, y no se ve a
+  /// proposito: si sigue siendo verdad, esta en su fila.
+  void _recortar() {
+    const maximo = 4;
+    if (_avisos.length <= maximo) return;
+    _avisos = _avisos.take(maximo).toList();
+  }
+
+  /// De que clase es un aviso del repositorio.
+  ///
+  /// Y NO SE ADIVINA POR EL TEXTO, aunque el texto delata el caso: es una regla
+  /// escrito dos veces, y las dos se rompen por separado la primera que cambia un
+  /// texto. Lo que decide es el **estado de la lectura**, que es un dato, y el estado
+  /// no cambia de texto.
+  static ClaseDeAviso _claseDe(String aviso, EstadoLectura estado) => switch (estado) {
+    // Sin catalogo no se puede ni ofrecer la lista: eso es un fallo, y no
+    // informar de ello y ensenar una lista vacia es justo el fallo que ya se cometio
+    // una vez y esta escrito en `AGENTS.md`.
+    EstadoLectura.sinConexion => ClaseDeAviso.error,
+    EstadoLectura.hashIncorrecto => ClaseDeAviso.error,
+    EstadoLectura.ilegible => ClaseDeAviso.error,
+    // Del servidor y de una copia guardada si sale bien: no hay nada roto.
+    EstadoLectura.delServidor => ClaseDeAviso.informacion,
+    EstadoLectura.deCopiaGuardada => _claseDeCopiaGuardada(aviso),
+  };
+
+  /// El unico aviso de "todo va bien pero con una copia vieja", que es informacion.
+  ///
+  /// Y SE DISTINGUE POR EL TEXTO PORQUE ES EL UNICO CASO QUE LO NECESITA: el estado
+  /// `deCopiaGuardada` significa "funciona, con lo de ayer", y eso no es un error. El
+  /// resto de avisos de ese estado son de la propia lectura del manifiesto y ya llevan
+  /// su clase.
+  static ClaseDeAviso _claseDeCopiaGuardada(String aviso) =>
+      aviso.toLowerCase().contains('copia guardada')
+      ? ClaseDeAviso.informacion
+      : ClaseDeAviso.error;
 }
 
 /// La licencia como se ensena. Va aqui porque el filtro tiene que buscar **lo que la

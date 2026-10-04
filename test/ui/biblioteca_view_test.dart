@@ -28,6 +28,7 @@ import 'package:ab/domain/models/estado_modulo.dart';
 import 'package:ab/domain/models/manifiesto.dart';
 import 'package:ab/domain/models/modulo.dart';
 import 'package:ab/ui/core/tema.dart';
+import 'package:ab/ui/features/biblioteca/view_models/aviso.dart';
 import 'package:ab/ui/features/biblioteca/view_models/biblioteca_view_model.dart';
 import 'package:ab/ui/features/biblioteca/views/biblioteca_view.dart';
 import 'package:ab/ui/features/biblioteca/widgets/fila_modulo.dart';
@@ -96,6 +97,152 @@ Future<void> _montar(
 }
 
 void main() {
+  group('la barra y el contenido van en la misma columna', () {
+    // MEDIDO EL 4 DE OCTUBRE DE 2026 a 1900 px de ancho: el contenido --la lista, los
+    // filtros-- se centraba en una columna de 560 pixeles y el titulo "Biblioteca" se
+    // quedaba en la esquina de la ventana, a mas de mil pixeles de lo que titula. Parece
+    // una pantalla hecha de dos: una vacia a la izquierda y la otra en el medio.
+    //
+    // Y NO ES UN DETALLE DE ESTETICA. El titulo dice que pantalla es, y si no esta
+    // encima de lo que ensena, quien llega y ya esta leyendo un texto --que es lo que
+    // pasa cuando se vuelve de la pantalla de lectura-- no sabe donde esta la biblioteca.
+    for (final ancho in <double>[360, 768, 1440, 1900]) {
+      testWidgets('a $ancho px el titulo cae donde cae el contenido', (tester) async {
+        await _montar(
+          tester,
+          vm: bibliotecaDePrueba(),
+          tamano: Size(ancho, 900),
+        );
+
+        final titulo = tester.getTopLeft(find.text('Biblioteca'));
+        final primeraFila = tester.getTopLeft(find.text('Reina-Valera 1960 (español, revisada)'));
+        final busqueda = tester.getTopLeft(find.byType(TextField).first);
+
+        // Y LAS TRES COSAS TIENEN QUE CAER DENTRO DE LA MISMA COLUMNA. La tolerancia es
+        // de dos pixeles porque los bordes se dibujan justos y una comparacion exacta
+        // falla por decimales del motor, no por un problema real.
+        const tolerancia = 2.0;
+        expect(titulo.dx, closeTo(busqueda.dx, tolerancia),
+            reason: 'el titulo y el campo de busqueda tienen que empezar en el mismo sitio');
+        expect(busqueda.dx, closeTo(primeraFila.dx, tolerancia),
+            reason: 'el filtro y la lista tienen que empezar en el mismo sitio');
+      });
+
+      testWidgets('a $ancho px nada se sale de la columna', (tester) async {
+        await _montar(
+          tester,
+          vm: bibliotecaDePrueba(),
+          tamano: Size(ancho, 900),
+        );
+
+        // Y QUE LA COLUMNA NO SE ESTIRE. El tope de 560 px es lo que hace que a 1900 px
+        // no haya un desert en medio con el boton de leer al otro extremo de la ventana.
+        // Sin el, "responsive" quiere decir "estirado".
+        final contenido = tester.getRect(find.byType(TextField).first);
+        expect(contenido.width, lessThanOrEqualTo(Medidas.anchoMaximoDeFila + 2));
+      });
+    }
+  });
+
+  group('con veinte avisos, la pantalla sigue siendo una biblioteca', () {
+    // MEDIDO EL 4 DE OCTUBRE DE 2026. La captura que motivo todo esto era una pantalla
+    // de 1900 px con veinte cajas rojas apiladas --"Bajando CLARKE: 90 por ciento",
+    // "Bajando KJV2006: 100 por ciento", y asi hasta veinte-- y **ni un solo modulo**.
+    //
+    // Lo que no se puede comprobar en Dart es "que se vea bien". Lo que si se puede, y
+    // es lo que importa, es que el modulo siga estando en pantalla y que la pantalla no
+    // desborde. Eso es geometria, y la geometria se mide.
+    testWidgets('el modulo se ve, y no hay ni un solo desborde', (tester) async {
+      tester.view.physicalSize = const Size(360, 760);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final vm = bibliotecaDePrueba();
+      // Y DIEZ PROGRESOS DE DOS MODULOS, que son veinte lineas. Es el caso exacto de la
+      // captura: dos descargas a la vez, la KJV y el comentario.
+      for (var pct = 10; pct <= 100; pct += 10) {
+        vm.progresoDeDescarga('CLARKE', pct);
+        vm.progresoDeDescarga('KJV2006', pct);
+      }
+
+      await _montar(tester, vm: vm);
+
+      expect(find.text('Reina-Valera 1960 (español, revisada)'), findsOneWidget,
+          reason: 'el modulo tiene que verse; la pantalla es para esto');
+
+      // Y NADA SE SALE DE LA PANTALLA. Un `overflow` en Flutter no lanza: se dibuja
+      // fuera y avisa con una raya, asi que `takeException` no lo pilla y hace falta
+      // medir.
+      expect(tester.takeException(), isNull);
+      final caja = tester.getRect(find.text('Reina-Valera 1960 (español, revisada)'));
+      expect(caja.left, greaterThanOrEqualTo(0.0));
+      expect(caja.right, lessThanOrEqualTo(360.0));
+      expect(caja.bottom, lessThanOrEqualTo(760.0),
+          reason: 'y dentro de la altura: una fila que se sale por abajo no se puede pulsar');
+    });
+
+    testWidgets('el progreso es una BARRA y no una linea de texto de aviso', (tester) async {
+      // Y PORQUE ES UNA BARRA Y NO "90 por ciento" EN UNA CAJA. Un progreso no es un
+      // aviso: no hay nada que este mal. Y quien no distingue el color --baja vision,
+      // escala de grises-- tiene que poder saber cuanto lleva, y por eso lleva el
+      // porcentaje escrito al lado.
+      tester.view.physicalSize = const Size(360, 760);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final vm = bibliotecaDePrueba()..progresoDeDescarga('CLARKE', 90);
+      await _montar(tester, vm: vm);
+
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      expect(find.text('90 %'), findsOneWidget);
+      // Y NO esta escrito como un aviso de error. Este es el texto exacto que salia
+      // veinte veces en la captura.
+      expect(find.textContaining('Bajando CLARKE: 90 por ciento'), findsNothing);
+    });
+
+    testWidgets('el progreso de un modulo NO borra el de otro', (tester) async {
+      // Y ESTE ES EL CASO QUE NECESITA UNA CLAVE POR ID. Con dos descargas a la vez --
+      // que se puede, pulsando dos filas-- y con una lista de un solo progreso, una de
+      // las dos descargas se queda sin barra y parece parada cuando no lo esta.
+      tester.view.physicalSize = const Size(360, 760);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final vm = bibliotecaDePrueba()
+        ..progresoDeDescarga('CLARKE', 30)
+        ..progresoDeDescarga('KJV2006', 70)
+        ..progresoDeDescarga('CLARKE', 60);
+      await _montar(tester, vm: vm);
+
+      expect(find.byType(LinearProgressIndicator), findsNWidgets(2));
+      // El CLARKE va por 60 --su ultimo-- y la KJV por 70, que no se ha tocado.
+      expect(find.text('60 %'), findsOneWidget);
+      expect(find.text('70 %'), findsOneWidget);
+      // Y NO hay un 30: el 60 ha **sustituido** al 30 del CLARKE, no se ha anadido
+      // debajo. Un progreso que se acumula deja la barra con un numero que ya no es
+      // el de verdad, y quien mira ve dos lineas pensando que bajan dos cosas.
+      expect(find.text('30 %'), findsNothing);
+    });
+
+    testWidgets('un error se ve en rojo y se puede quitar', (tester) async {
+      // Y EL BOTON DE QUITAR ES POR CADA ERROR. Un error que ya no es verdad y que no
+      // se puede quitar ensena que hay un problema que no hay, y quien lo ve ya no se
+      // fia de lo que dice el resto de la pantalla.
+      tester.view.physicalSize = const Size(360, 760);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final vm = bibliotecaDePrueba()
+        ..anadirAviso('No se ha podido abrir el modulo.', clase: ClaseDeAviso.error);
+      await _montar(tester, vm: vm);
+
+      expect(find.text('No se ha podido abrir el modulo.'), findsOneWidget);
+      await tester.tap(find.byTooltip('Quitar este aviso'));
+      await tester.pumpAndSettle();
+      expect(find.text('No se ha podido abrir el modulo.'), findsNothing);
+    });
+  });
+
   group('6.1 la fila pinta lo que declara el manifiesto', () {
     testWidgets('un modulo desconocido aparece con su tamano exacto en MB', (tester) async {
       final vm = BibliotecaViewModel(

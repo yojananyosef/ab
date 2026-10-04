@@ -243,7 +243,48 @@ class Sonda {
   /// que nadie mira.
   void escribir(Map<String, Object?> campos) {
     if (!kSondaActiva || !kIsWeb) return;
-    final texto = const JsonEncoder.withIndent('  ').convert(campos);
+    escribirConEsteCodigo(campos);
+  }
+
+  /// El mismo [escribir], **sin** las dos guardas de plataforma.
+  ///
+  /// Y ES UNA FUNCION DISTINTA Y NO UN PARAMETRO PORQUE LAS DOS GUARDAS SON EL
+  /// PROBLEMA. `escribir` vuelve sin hacer nada si la sonda no esta activa o si no es
+  /// web, asi que en una prueba --que no es web-- no escribiria **nada** y pasaria
+  /// siempre. Y una prueba que pasa siempre es una prueba que no comprueba nada, que es
+  /// justo el fallo que este fichero existe para no repetir.
+  ///
+  /// Y LO UNICO QUE HACE ES LO MISMO, con el `try` dentro. La conversion del JSON y
+  /// el guardado del texto son los dos momentos en los que esto puede fallar, y estan
+  /// aqui para que se puedan probar sin un navegador.
+  @visibleForTesting
+  void escribirConEsteCodigo(Map<String, Object?> campos) {
+    // Y EL `JsonEncoder` ESTA DENTRO DE UN `try`, y por que importa mas de lo que
+    // parece.
+    //
+    // MEDIDO EL 4 DE OCTUBRE DE 2026: la sonda empezo a mandar `List<Aviso>` en vez de
+    // `List<String>`, y `convert` **lanza** con un objeto dentro en vez de escribirlo.
+    // La excepcion salio de aqui, se subio por `escribir`, y --porque quien llama esta
+    // dentro de un `addPostFrameCallback` y no hay nadie que la coja-- se perdio
+    // **enteramente**.
+    //
+    // El resultado fue el peor posible para una sonda: la app **funcionaba**, Juan 3:16
+    // se leia en pantalla, y la sonda no escribia nada. Desde fuera, "la comprobacion no
+    // ha dicho nada" y "la comprobacion no ha comprobado nada" son lo mismo.
+    //
+    // Y NO SE ARREGLA INTENTANDO QUE EL JSON SIEMPRE SALGA. Se arregla de dos maneras a
+    // la vez: **no metiendo en el informe nada que `jsonEncode` no sepa escribir** --que
+    // es una regla, y la respeta el `map` del informe-- y **sin tragarse el fallo** si
+    // aun asi pasa, que es lo que hace este `try`.
+    late final String texto;
+    try {
+      texto = const JsonEncoder.withIndent('  ').convert(campos);
+    } catch (e) {
+      texto = const JsonEncoder.withIndent('  ').convert(<String, Object?>{
+        'resultado': 'la sonda no ha podido escribir su informe',
+        'motivo': 'un valor del informe no se sabe convertir a JSON: $e',
+      });
+    }
     _ultimoTextoEscrito = texto;
 
     // Los dos caminos, y en este orden. El del DOM primero porque es el que no puede
@@ -338,6 +379,9 @@ Map<String, Object?>? mirarLaAplicacion({
       // se comprueba en la tarea 8.4 --que el manifiesto es el de hoy-- se mira aqui y
       // no contando los avisos: los avisos incluyen los de la descarga --"Bajando X: 50
       // por ciento"-, y con avisos siempre hay alguno, se mire lo que se mire.
+      //
+      // Y ADEMAS, CONTAR LOS ERRORES ES MAS BARATO QUE MIRAR LOS AVISOS, y sale de aqui
+      // gratis porque los avisos ya llevan su clase.
       'estado': estado.name,
       'modulos': <Map<String, Object?>>[
         for (final m in catalogo.manifiesto.modulos)
@@ -349,7 +393,22 @@ Map<String, Object?>? mirarLaAplicacion({
             'bytes': m.tamanoBytes,
           },
       ],
-      'avisos': biblioteca.avisos,
+      // Y LOS AVISOS SE CONVIERTEN A TEXTO AQUI, y no se mandan como son.
+      //
+      // MEDIDO EL 4 DE OCTUBRE DE 2026: la sonda paso a mandar `List<Aviso>` --que es lo
+      // correcto, porque los avisos tienen tipo-- y `jsonEncode` **lanza** con un objeto
+      // dentro en vez de escribirlo. Lo que pasó entonces es lo peor que puede pasar
+      // con una sonda: la excepcion salio de `escribir`, se trago en el
+      // `addPostFrameCallback`, y la sonda se quedo **callada**. De la pantalla se veia
+      // Juan 3:16 y todo funcionaba; lo unico que faltaba era el informe.
+      //
+      // Y NO SE ARREGLA CON UN `try` ALREDEDOR DEL `jsonEncode`, porque eso devolveria
+      // un informe vacio y seguiria sin decir nada. Se arregla no metiendo en el informe
+      // nada que `jsonEncode` no sepa escribir.
+      'avisos': <String>[
+        for (final a in biblioteca.avisos)
+          '${a.esError ? 'ERROR' : 'info'}: ${a.texto}',
+      ],
       'idsLocales': biblioteca.idsLocales.toList()..sort(),
     },
     if (sonda.historial != null) 'historial': sonda.historial,

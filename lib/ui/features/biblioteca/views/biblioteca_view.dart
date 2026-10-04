@@ -13,6 +13,12 @@
 // copia del catalogo del martes" no puede desaparecer solo: es la diferencia entre
 // ver la lista de hoy y la de hace una semana.
 //
+// LA BANDA DE AVISOS NO PUEDE COMERSE LA LISTA. Medido el 4 de octubre de 2026: veinte
+// cajas de aviso se comian la pantalla entera y la lista de modulos no se veia. Ver
+// `_Avisos`: la banda tiene un tope de altura con scroll propio, el progreso de cada
+// modulo es una barra que **reemplaza** a la anterior en vez de acumularse, y solo lo
+// que de verdad fallo se pinta como error.
+//
 // Y VACIO NO ES LO MISMO QUE ERROR. "No hay nada en el catalogo" es un problema del
 // servidor. "No hay nada que case con lo que has escrito" es un problema de lo que
 // ha escrito la persona, y la solucion es quitar el filtro. Ensenar un error
@@ -25,6 +31,7 @@ import 'package:ab/data/repositories/catalogo_repository.dart';
 import 'package:ab/ui/core/idiomas.dart';
 import 'package:ab/ui/core/tema.dart';
 
+import '../view_models/aviso.dart';
 import '../view_models/biblioteca_view_model.dart';
 import '../widgets/fila_modulo.dart';
 
@@ -92,95 +99,268 @@ class _BibliotecaViewState extends State<BibliotecaView> {
   }
 }
 
+/// La barra de arriba: el titulo, alineado con el contenido.
+///
+/// Y EL TITULO VA DENTRO DE UN `ContenidoCentrado`, Y NO EN EL `title` DEL `AppBar`.
+/// Medido el 4 de octubre de 2026 a 1900 px de ancho: el contenido se centraba en una
+/// columna de 560 --la lista, los filtros, los avisos-- y el titulo se quedaba clavado
+/// en la esquina izquierda, a 1345 pixeles de distancia de lo que titula. Parece una
+/// pantalla hecha de dos.
+///
+/// Y NO SE USA UN `titleSpacing` NI UN `AppBar` con `flexibleSpace`: el `AppBar` alinea
+/// su `title` con el `leading` y no con el cuerpo, y no hay forma de que coincidan con
+/// el `Center` + `ConstrainedBox` del cuerpo. La unica forma de que las dos cosas esten
+/// donde deben es **poner el mismo contenedor en los dos sitios**.
 class _BarraSuperior extends StatelessWidget implements PreferredSizeWidget {
   const _BarraSuperior({required this.vm});
 
   final BibliotecaViewModel vm;
 
   @override
-  Size get preferredSize => const Size.fromHeight(58);
+  Size get preferredSize => const Size.fromHeight(60);
 
   @override
   Widget build(BuildContext context) => AppBar(
-    title: const Text('Biblioteca'),
     backgroundColor: Colores.fondo,
     surfaceTintColor: Colors.transparent,
-    titleTextStyle: Theme.of(context).textTheme.titleLarge,
+    elevation: 0,
+    scrolledUnderElevation: 0,
+    titleSpacing: 0,
+    title: ContenidoCentrado(
+      // Y LA COLUMNA SE CENTRA Y EL TEXTO SE PEGA A LA IZQUIERDA DENTRO DE ELLA. Son
+      // dos cosas distintas, y por eso el `Align` va **dentro** del `ContenidoCentrado` y
+      // no como una opcion suya.
+      //
+      // La primera version paso `alignment: centerStart` al `ContenidoCentrado`, y con
+      // eso el titulo salia a 24 pixeles mientras el contenido salia a 128: el
+      // `centerStart` movia la **columna** entera a la izquierda, no el texto dentro de
+      // la columna. Medido en la prueba a 768 px.
+      child: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Text(
+          'Biblioteca',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+      ),
+    ),
+    // Y SIN `actions`. Medido el 4 de octubre de 2026: con un boton de recarga al
+    // derecha, el boton caia en el borde de la ventana a 1900 px y el titulo en la
+    // esquina, con el contenido en medio. Ademas el gesto de tirar para recargar ya
+    // esta, y en movil se llega antes asi.
   );
 }
 
 /// Los avisos: los del repositorio mas los de la pantalla.
 ///
-/// Un `Column` y no un `Card` por aviso: en un movil el borde de un `Card` con
-/// texto largo se ve como una caja de la que hay que salir, y lo que se quiere es
-/// que se lea.
+/// LO QUE SE CAMBIA Y POR QUE, MEDIDO EL 4 DE OCTUBRE DE 2026. Antes esto era un
+/// `Column` de cajas, una por aviso, **encima** de la lista. Con los veinte mensajes
+/// que deja descargar dos modulos, las cajas se comian la pantalla entera y la lista de
+/// modulos --que es para lo que esta la pantalla-- no se veia. Ademas:
+///
+///   - Todo salia en **rojo**, porque la lista era de `String` y no sabia que un
+///     "Bajando X: 90 por ciento" no es un error.
+///   - Los de "Bajando X: N por ciento" se **acumulaban**, uno por cada diez por ciento,
+///     y no se quitaban al terminar.
+///
+/// AHORA SON TRES COSAS DISTINTAS, en una banda que ocupa lo justo:
+///
+///  1. **Los errores**, arriba, y solo ellos. Con un boton para quitarlos cuando ya no
+///     son verdad.
+///  2. **Los avisos de informacion**, debajo, sin icono de alarma: "se esta usando
+///     una copia del catalogo del martes" no es un fallo y no puede verse como uno.
+///  3. **Los progresos de descarga**, que no son avisos sino **barras** en su propia
+///     fila. Y como el ViewModel los reemplaza por clave, hay **una** barra por modulo
+///     bajandose, no diez lineas.
+///
+/// Y LA BANDA TIENE UN TOPE DE ALTURA Y SCROLL PROPIO. Eveno que seSolvera la barra
+/// crece, no puede comerse la lista: la lista es lo principal y los avisos son
+/// contexto. Con veinte avisos se ven los primeros y hay mas, y en una pantalla de
+/// 360 px caben cuatro.
 class _Avisos extends StatelessWidget {
   const _Avisos({required this.vm});
 
   final BibliotecaViewModel vm;
+
+  /// Cuanto puede crecer la banda antes de tener scroll propio.
+  ///
+  /// Un tope pequeno a proposito: si los avisos ocupan media pantalla, el fallo
+  /// original vuelve por otra ruta. Y es un tope de **altura**, no de numero de
+  /// avisos, porque un aviso de tres lineas y uno de una ocupan distinto.
+  static const double _altoMaximo = 168;
 
   @override
   Widget build(BuildContext context) {
     if (vm.avisos.isEmpty) return const SizedBox.shrink();
 
     return ContenidoCentrado(
-      child: Column(
-        children: <Widget>[
-          for (final aviso in vm.avisos)
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: _CajaAviso(texto: aviso, esAvisoDeCopia: _esCopiaGuardada(aviso)),
-            ),
-          const SizedBox(height: 4),
-        ],
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: _altoMaximo),
+        child: SingleChildScrollView(
+          // Con scroll propio y sin fisica de "nunca", porque tira hacia arriba
+          // produce un aviso de rebote en una caja de texto, que en un movil se lee
+          // como un fallo.
+          physics: const ClampingScrollPhysics(),
+          padding: const EdgeInsets.only(top: 10, bottom: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              for (final aviso in vm.avisos)
+                if (aviso.esProgreso)
+                  _BarraDeProgreso(aviso: aviso)
+                else
+                  _LineaAviso(aviso: aviso, alQuitar: () => vm.quitarAviso(aviso.texto)),
+              if (vm.hayErrores)
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: TextButton.icon(
+                    onPressed: vm.quitarErrores,
+                    icon: const Icon(Icons.check_circle_outline, size: 18),
+                    label: const Text('Quitar los errores'),
+                    style: TextButton.styleFrom(foregroundColor: Colores.peligro),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
-
-  /// Si el aviso es el de la copia guardada, que tiene su propio estilo.
-  ///
-  /// Se distingue por el **texto**, y no por un parametro que se pasa desde el
-  /// repositorio. Es lo unico que no puede quedar viejo: si el texto del aviso
-  /// cambia, este cambia con el, y si el aviso deja de mentionar la copia guardada,
-  /// deja de ensenarrse como tal.
-  static bool _esCopiaGuardada(String aviso) =>
-      aviso.toLowerCase().contains('copia guardada');
 }
 
-class _CajaAviso extends StatelessWidget {
-  const _CajaAviso({required this.texto, required this.esAvisoDeCopia});
+/// Un aviso que no es de progreso: una linea de texto con su icono.
+///
+/// Y UNA CAJA CON BORDE Y FONDO SOLO SI ES UN ERROR. Un aviso de informacion es texto
+/// con un icono al lado, sin caja: una caja alrededor de "se esta usando una copia
+/// guardada" lo convierte en visualmente en un fallo, que es exactamente el problema
+/// que se esta arreglando.
+class _LineaAviso extends StatelessWidget {
+  const _LineaAviso({required this.aviso, required this.alQuitar});
 
-  final String texto;
-  final bool esAvisoDeCopia;
+  final Aviso aviso;
+  final VoidCallback alQuitar;
 
   @override
   Widget build(BuildContext context) {
-    final color = esAvisoDeCopia ? Colores.primario : Colores.peligro;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Icon(
-            esAvisoDeCopia ? Icons.cloud_off_outlined : Icons.warning_amber_outlined,
-            size: 19,
-            color: color,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              texto,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
-              softWrap: true,
+    final color = aviso.esError ? Colores.peligro : Colores.textoSuave;
+
+    if (!aviso.esError) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Icon(Icons.info_outline, size: 17, color: Colores.textoSuave),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                aviso.texto,
+                style: Theme.of(context).textTheme.bodySmall,
+                softWrap: true,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+        decoration: BoxDecoration(
+          color: Colores.peligro.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colores.peligro.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Icon(Icons.error_outline, size: 19, color: Colores.peligro),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                aviso.texto,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
+                softWrap: true,
+              ),
+            ),
+            // Y EL BOTON DE QUITAR EL ERROR INDIVIDUAL. Un error que ya no es verdad
+            // --"no se ha podido abrir" cuando ya se ha abierto-- y que no se puede
+            // quitar ensena que hay un problema que no hay.
+            IconButton(
+              icon: const Icon(Icons.close, size: 17),
+              // Sin `tooltip` este boton no tiene nombre, y quien va con lector de
+              // pantalla solo oiria "boton".
+              tooltip: 'Quitar este aviso',
+              onPressed: alQuitar,
+              visualDensity: VisualDensity.compact,
+              color: Colores.peligro,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// El progreso de una descarga: una barra, no una caja de texto.
+///
+/// Y NO ES UNA CAJA ROJA CON "90 por ciento". Un progreso no es un aviso: no hay nada
+/// que este mal, y una barra lo dice de un vistazo y sin ocupar cinco lineas.
+///
+/// Y LA BARRA TIENE ETIQUETA CON EL PORCENTAJE Y NO SOLO COLOR, por la misma razon que
+/// los estados de la fila: quien tiene baja vision, o el movil en escala de grises, o
+/// simplemente no distingue el color, tiene que poder saber cuanto lleva.
+class _BarraDeProgreso extends StatelessWidget {
+  const _BarraDeProgreso({required this.aviso});
+
+  final Aviso aviso;
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = (aviso.porcentaje ?? 0).clamp(0, 100) / 100;
+    final nombre = aviso.id ?? '';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Semantics(
+        label: 'Descargando $nombre, $aviso.porcentaje por ciento',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                const Icon(Icons.downloading_outlined, size: 17, color: Colores.acento),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Descargando $nombre',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Text(
+                  '${aviso.porcentaje ?? 0} %',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colores.texto,
+                    fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: pct,
+                minHeight: 6,
+                backgroundColor: Colores.linea,
+                valueColor: const AlwaysStoppedAnimation<Color>(Colores.acento),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
