@@ -20,14 +20,14 @@
 
 ## 2. Services: red, hash y SQLite
 
-- [ ] 2.1 Crear `lib/data/services/http_service.dart` con `rango(Uri, from, to)`, y verificar contra un servidor local que un rango `bytes=0-1023` devuelve exactamente 1024 bytes y que la respuesta final se ve en las cabeceras
-- [ ] 2.2 Crear `lib/data/services/hash_service.dart` que calcule el sha256 por tramos con `AccumulatorSink`; verificar que el hash calculado por tramos de un fichero real es el mismo que da `sha256sum`
-- [ ] 2.3 Crear `lib/data/services/sqlite_nativo.dart`, `sqlite_web.dart` y `sqlite_service.dart` con import condicional; verificar con `flutter analyze` que solo los dos primeros mencionan `package:sqlite3/sqlite3.dart` o `package:sqlite3/wasm.dart`
-- [ ] 2.4 Abrir un `.amod` real en modo solo lectura y ejecutar `PRAGMA quick_check`, `SELECT value FROM info WHERE key='id'` y `SELECT count(*) FROM verses`; verificar que salen `ok`, `KJV2006` y `31102`, usando el `.amod` real de `aa` como fixture, y **NOT** uno inventado de 10 filas
-- [ ] 2.5 Calcular el sha256 del fichero antes y despues de leer y verificar que es `ce0cb1bc4edbf3341d673739539421bbfed3972e39cbac5fc129f35f25324fe9` en los dos momentos, o sea, que leer no lo altera
-- [ ] 2.6 Comprobar que abrir en modo escritura **NOT** es posible por la via que usa la app, para que un modulo no se pueda modificar por descuido; verificar que el intento falla con error de solo lectura
-- [ ] 2.7 Leer la tabla `info` del modulo a modelos de dominio: `copyright`, `attribution`, `license`, `license_evidence`, `defects`, `defects_count`, `content_hash`, `versification`, `schema_version`, `minReaderVersion`. Verificar contra el KJV real que salen los 15 campos y que `defects_count` es 0
-- [ ] 2.8 Comparar la `schema_version` y el `minReaderVersion` del modulo con los que la app soporta, y negar la apertura si exceden. Verificar con tres pruebas: uno con `schema_version` mayor, uno con `minReaderVersion` mayor, y el KJV real que si abre. Que el error nombre las dos versiones
+- [x] 2.1 Crear `lib/data/services/http_service.dart` con `rango(Uri, from, to)`, y verificar contra un servidor local que un rango `bytes=0-1023` devuelve exactamente 1024 bytes y que la respuesta final se ve en las cabeceras
+- [x] 2.2 Crear `lib/data/services/hash_service.dart` que calcule el sha256 por tramos con `AccumulatorSink`; verificar que el hash calculado por tramos de un fichero real es el mismo que da `sha256sum`
+- [x] 2.3 Crear `lib/data/services/sqlite_nativo.dart`, `sqlite_web.dart` y `sqlite_service.dart` con import condicional; verificar con `flutter analyze` que solo los dos primeros mencionan `package:sqlite3/sqlite3.dart` o `package:sqlite3/wasm.dart`
+- [x] 2.4 Abrir un `.amod` real en modo solo lectura y ejecutar `PRAGMA quick_check`, `SELECT value FROM info WHERE key='id'` y `SELECT count(*) FROM verses`; verificar que salen `ok`, `KJV2006` y `31102`, usando el `.amod` real de `aa` como fixture, y **NOT** uno inventado de 10 filas
+- [x] 2.5 Calcular el sha256 del fichero antes y despues de leer y verificar que es `ce0cb1bc4edbf3341d673739539421bbfed3972e39cbac5fc129f35f25324fe9` en los dos momentos, o sea, que leer no lo altera
+- [x] 2.6 Comprobar que abrir en modo escritura **NOT** es posible por la via que usa la app, para que un modulo no se pueda modificar por descuido; verificar que el intento falla con error de solo lectura
+- [x] 2.7 Leer la tabla `info` del modulo a modelos de dominio: `copyright`, `attribution`, `license`, `license_evidence`, `defects`, `defects_count`, `content_hash`, `versification`, `schema_version`, `minReaderVersion`. Verificar contra el KJV real que salen los 15 campos y que `defects_count` es 0
+- [x] 2.8 Comparar la `schema_version` y el `minReaderVersion` con los que la app soporta, y negar la apertura si exceden. **Medido: los dos NO vienen del mismo sitio.** La `schema_version` esta en la tabla `info` del modulo; el `minReaderVersion` **no esta**, y hay que leerlo del manifiesto, porque es compatibilidad del cliente. Verificar con tres pruebas: `schema_version` mayor, `minReaderVersion` mayor, y el KJV real que si abre. Que el error nombre las dos versiones
 
 ## 3. Catalogo: manifiesto, verificacion y respaldo
 

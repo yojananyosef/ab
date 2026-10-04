@@ -100,6 +100,26 @@ Un anuncio en un lector de Biblia es un anuncio al lado de la Palabra. Ademas,
 la queja numero uno y mas repetida de los usuarios de pago de las apps que lo
 hacen: han pagado y les aparece un banner.
 
+### El `.amod` no lleva `minReaderVersion`
+
+Medido sobre el KJV real: su tabla `info` tiene **15 claves**, y `minReaderVersion`
+no esta entre ellas. Las dos versiones de compatibilidad estan en sitios
+distintos:
+
+| Campo | Donde vive | Que es |
+| --- | --- | --- |
+| `schema_version` | tabla `info` del `.amod` | como esta escrito el fichero |
+| `minReaderVersion` | `catalog.json` | que version de la app lo entiende |
+
+La razon de que sea asi tiene sentido: `minReaderVersion` es una declaracion
+sobre el **cliente**, y el modulo no sabe nada del cliente. El que lo publica si.
+
+Consecuencia practica: para comprobar compatibilidad hay que mirar en los dos
+sitios, y un `null` en el segundo no es un fallo de lectura, es que la
+informacion no esta ahi. Hay una prueba que comprueba precisamente eso: que el
+modulo **no** tiene el campo, para que si alguien anade el campo al formato y
+empieza a leerlo de ahi, salte en vez de dar un null en silencio.
+
 ### Los terminos del modulo se ensenan, no se esconden
 
 Cada `.amod` declara en su tabla `info` su `copyright`, su `attribution`, su
@@ -264,6 +284,26 @@ una estrella, todas sobre lo mismo: no se puede crear la cuenta, el boton de
 ayuda lleva a un foro y no hay forma de cambiar la contrasena. Es el fallo mas
 barato de arreglar y el mas vergonzoso posible. En una app sin cuentas ni
 suscripcion, esto no puede ocurrir por construccion: es una ventaja.
+
+### `TMPDIR` va fuera de `/tmp`
+
+`/tmp` en esta maquina es un tmpfs de **3,7 GB**, no un disco. El compilador de
+`flutter test` escribe ahi el `.dill` que genera, y si se llena:
+
+    FileSystemException: writeFrom failed ... (OS Error: Disk quota exceeded)
+
+Lo que pasa entonces no es un error claro: `flutter test` **se queda colgado**
+sin decir nada, y parece un problema de las pruebas. Se pierden minutos
+buscando un test que no cuelga cuando el problema es que no hay sitio.
+
+Por eso, antes de `flutter test` o `flutter build`:
+
+```bash
+export TMPDIR=/home/j/.tmp
+```
+
+Y si `/tmp` se llena otra vez, mirar primero `/tmp/opencode`: el tarball de
+Flutter son 1,5 GB y se puede borrar en cuanto esta extraido.
 
 ## 6. Como trabajar aqui
 

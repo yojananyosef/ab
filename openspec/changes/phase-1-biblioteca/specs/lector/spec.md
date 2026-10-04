@@ -85,25 +85,36 @@ propia tabla `info`, no del manifiesto.
 ### Requirement: Un modulo con un formato que la app no entiende no se abre
 
 La app SHALL declarar que versiones de formato entiende y SHALL negarse a abrir
-un modulo cuya `schema_version` o cuyo `minReaderVersion` exceda lo que soporta.
+un modulo cuya `schema_version` exceda lo que soporta. La `schema_version` se lee
+del **modulo**; el `minReaderVersion` se lee del **catalogo**, porque el modulo no
+lo guarda.
 
 #### Scenario: Formato mas nuevo que la app
 
-- **WHEN** el modulo declara una `schema_version` mayor que la que la app soporta
+- **WHEN** el modulo declara en su tabla `info` una `schema_version` mayor que la
+  que la app soporta
 - **THEN** la app **NOT** lo abre
 - **AND** el error dice la `schema_version` del modulo y la que la app soporta
 
 #### Scenario: App demasiado antigua para el modulo
 
-- **WHEN** el modulo declara un `minReaderVersion` mayor que la version de la app
+- **WHEN** el catalogo declara para ese modulo un `minReaderVersion` mayor que la
+  version de la app
 - **THEN** la app **NOT** lo abre
 - **AND** el error dice que hace falta una version mas nueva de la aplicacion
 
 #### Scenario: Un modulo compatible se abre
 
-- **WHEN** el modulo declara una `schema_version` y un `minReaderVersion` que la
-  app soporta
+- **WHEN** la `schema_version` del modulo y el `minReaderVersion` del catalogo
+  son los que la app soporta
 - **THEN** se abre normalmente
+
+#### Scenario: Las dos versiones vienen de sitios distintos
+
+- **WHEN** se pide la `schema_version` a la tabla `info` del modulo
+- **THEN** el modulo **NOT** tiene un campo `minReaderVersion`: se ha medido que su
+  tabla `info` tiene 15 claves y esa no esta entre ellas
+- **AND** el `minReaderVersion` se ha leido del manifiesto, no del modulo
 
 ### Requirement: El numero de capitulos sale del modulo, no de una tabla de la app
 
