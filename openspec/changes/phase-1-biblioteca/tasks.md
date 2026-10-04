@@ -31,11 +31,11 @@
 
 ## 3. Catalogo: manifiesto, verificacion y respaldo
 
-- [ ] 3.1 Leer `latest.json` y `catalog.json` desde el origen; verificar contra el manifiesto real publicado que se leen 2 modulos con los 12 campos obligatorios presentes y no vacios
-- [ ] 3.2 Verificar el `catalogSha256` antes de usar el manifiesto; verificar con dos pruebas, una con hash coincidente y otra con un byte alterado, que la segunda **NOT** pinta ningun modulo y que el error dice los dos hashes
-- [ ] 3.3 Guardar el ultimo manifiesto leido con exito y usarlo cuando el servidor no responde; verificar que con origen caido y manifiesto guardado se pinta la biblioteca y se avisa de que es una copia guardada
-- [ ] 3.4 Comprobar que con origen caido y **sin** manifiesto guardado hay error con boton de reintentar y **NOT** una espera indefinida; verificar que la prueba termina antes de 10 s y no con un temporizador colgado
-- [ ] 3.5 Calcular el estado de cada modulo a partir de manifiesto y dispositivo; verificar con una prueba que cubre los cinco estados, incluido que un modulo descargado que desaparece del manifiesto queda `retirado` y no desaparece de la biblioteca
+- [x] 3.1 Leer `latest.json` y `catalog.json` desde el origen; verificar contra el manifiesto real publicado que se leen 2 modulos con los 12 campos obligatorios presentes y no vacios
+- [x] 3.2 Verificar el `catalogSha256` antes de usar el manifiesto; verificar con dos pruebas, una con hash coincidente y otra con un byte alterado, que la segunda **NOT** pinta ningun modulo y que el error dice los dos hashes
+- [x] 3.3 Guardar el ultimo manifiesto leido con exito y usarlo cuando el servidor no responde; verificar que con origen caido y manifiesto guardado se pinta la biblioteca y se avisa de que es una copia guardada
+- [x] 3.4 Comprobar que con origen caido y **sin** manifiesto guardado hay error con boton de reintentar y **NOT** una espera indefinida; verificar que la prueba termina antes de 10 s y no con un temporizador colgado
+- [x] 3.5 Calcular el estado de cada modulo a partir de manifiesto y dispositivo; verificar con una prueba que cubre los cinco estados, incluido que un modulo descargado que desaparece del manifiesto queda `retirado` y no desaparece de la biblioteca
 
 ## 4. Obtencion de modulos
 

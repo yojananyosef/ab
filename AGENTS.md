@@ -100,6 +100,28 @@ Un anuncio en un lector de Biblia es un anuncio al lado de la Palabra. Ademas,
 la queja numero uno y mas repetida de los usuarios de pago de las apps que lo
 hacen: han pagado y les aparece un banner.
 
+### Una prueba que declara el hash de lo que ella misma sirve no comprueba nada
+
+Esta se pago al escribir las pruebas del catalogo, y es la clase de error que
+mas caro sale en las pruebas, porque **dan verde**.
+
+Lo que se habia hecho: un servidor de pruebas que servia un `latest.json` cuyo
+`catalogSha256` se calculaba con el manifiesto que el propio servidor estaba
+sirviendo. Con eso, el hash **siempre cuadra**, y la prueba de "que pasa si el
+manifiesto esta alterado" pasaba sin comprobar nada. Verde y vacia.
+
+La separacion que hace falta:
+
+| | Que es |
+| --- | --- |
+| **lo que se sirve** | el manifiesto que llega al repositorio |
+| **lo que declara el indice** | el manifiesto **bueno**, cuyo hash se anuncia |
+
+Alterar uno y dejar el otro quieto es lo que produce el caso que hay que cazar.
+Y un `latest.json` de pruebas tiene que traer `browserUrl` **apuntando al
+servidor de pruebas**, porque el de verdad trae URLs absolutas a otro sitio y
+entonces la prueba se descarga el manifiesto de verdad y no ve ningun cambio.
+
 ### El `.amod` no lleva `minReaderVersion`
 
 Medido sobre el KJV real: su tabla `info` tiene **15 claves**, y `minReaderVersion`

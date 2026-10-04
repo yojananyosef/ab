@@ -75,8 +75,8 @@ class ModuloCatalogo {
     if (schemaVersion is! int || minReaderVersion is! int) return null;
     if (sizeBytes is! int) return null;
     if (sha256 is! String || sha256.length != 64) return null;
-    if (downloadUrl is! String || !downloadUrl.startsWith('https://')) return null;
-    if (browserUrl is! String || !browserUrl.startsWith('https://')) return null;
+    if (downloadUrl is! String || !_esUrlSegura(downloadUrl)) return null;
+    if (browserUrl is! String || !_esUrlSegura(browserUrl)) return null;
 
     return ModuloCatalogo(
       id: id,
@@ -160,9 +160,29 @@ class UltimoJson {
     final browserUrl = j['browserUrl'];
     final sha = j['catalogSha256'];
     if (tag is! String || tag.isEmpty) return null;
-    if (url is! String || !url.startsWith('https://')) return null;
-    if (browserUrl is! String || !browserUrl.startsWith('https://')) return null;
+    if (url is! String || !_esUrlSegura(url)) return null;
+    if (browserUrl is! String || !_esUrlSegura(browserUrl)) return null;
     if (sha != null && (sha is! String || sha.length != 64)) return null;
     return UltimoJson(tag: tag, url: url, browserUrl: browserUrl, catalogSha256: sha as String?);
   }
+}
+
+/// Una URL del manifiesto tiene que ser `https`... salvo que apunte a la propia
+/// maquina.
+///
+/// Por que se permite `http` en loopback: porque hay dos razones legitimas y las
+/// dos son reales. Una prueba, que necesita un servidor al que apagar y al que
+/// cambiar lo que sirve. Y un espejo propio en una red local, que es lo que
+/// haria alguien que va a una iglesia con wifi y quiere que la gente descargue de
+/// ahi.
+///
+/// Lo que **no** se permite es `http` a un host de verdad, que es donde un
+/// manifiesto podria ir cambiado por el camino. La excepcion es al bucle local
+/// y solo al bucle local.
+bool _esUrlSegura(String url) {
+  final u = Uri.tryParse(url);
+  if (u == null || u.host.isEmpty) return false;
+  if (u.scheme == 'https') return true;
+  if (u.scheme != 'http') return false;
+  return u.host == '127.0.0.1' || u.host == 'localhost' || u.host == '::1';
 }
