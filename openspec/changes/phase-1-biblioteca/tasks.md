@@ -50,9 +50,14 @@
 
 ## 5. Persistencia del modulo en el dispositivo
 
-- [ ] 5.1 Volcar el `.amod` obtenido a IndexedDB en web y a fichero en nativo, escribiendo primero en memoria y volcando despues, porque la API de SQLite es sincrona y el almacenamiento es asincrono; verificar con una prueba de que el volcado termina y el modulo se vuelve a abrir
-- [ ] 5.2 Comprobar la cuota del navegador **antes** de escribir y decirlo con palabras si no cabe, en vez de fallar en silencio; verificar que el modulo ya se puede leer en memoria aunque no se haya podido guardar
-- [ ] 5.3 Recuperar en el arranque siguiente el modulo guardado sin volver a traer los bytes; verificar en el grupo 8 con dos ejecuciones del mismo perfil de navegador
+- [x] 5.1 Volcar el `.amod` obtenido a IndexedDB en web y a fichero en nativo, escribiendo primero en memoria y volcando despues, porque la API de SQLite es sincrona y el almacenamiento es asincrono; verificar con una prueba de que el volcado termina y el modulo se vuelve a abrir
+- [x] 5.2 Comprobar la cuota del navegador **antes** de escribir y decirlo con palabras si no cabe, en vez de fallar en silencio; verificar que el modulo ya se puede leer en memoria aunque no se haya podido guardar
+- [x] 5.3 Recuperar en el arranque siguiente el modulo guardado sin volver a traer los bytes; verificar en el grupo 8 con dos ejecuciones del mismo perfil de navegador
+
+  **La parte de dominio esta hecha y probada con un doble**: la segunda sesion
+  recupera el modulo con `bytesPorRed` intacto, o sea sin bajar un byte. La de
+  navegador **NO** esta hecha, y es la tarea 8.3: un doble en memoria daria verde
+  para siempre y no probaria que IndexedDB acepte 57 MiB ni que los recupere
 
 ## 6. Pantalla de biblioteca
 
