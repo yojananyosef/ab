@@ -43,7 +43,7 @@ void main() {
   ///
   /// Hace falta porque el de verdad trae URLs absolutas a `yojananyosef.github.io`
   /// y el repositorio las sigue tal cual. Sin esto, una prueba de "el manifiesto
-  /// esta alterado" estaría leyendo el manifiesto de verdad del sitio real y no
+  /// esta alterado" estaria leyendo el manifiesto de verdad del sitio real y no
   /// veria ningun cambio: pasaria probando nada.
   String indiceLocal() {
     final j = jsonDecode(_ultimoReal) as Map<String, dynamic>;

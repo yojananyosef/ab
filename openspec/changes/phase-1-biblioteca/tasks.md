@@ -61,12 +61,12 @@
 
 ## 6. Pantalla de biblioteca
 
-- [ ] 6.1 Pintar cada modulo con nombre, tipo, idioma, licencia y tamano en megabytes con un decimal, todo leido del manifiesto; verificar con una prueba de widget que un modulo declarado solo en el manifiesto aparece con su tamano exacto
-- [ ] 6.2 Anadir filtro por texto, por idioma y "solo lo que ya tengo"; verificar que filtrar por un idioma que no existe deja la lista vacia **con aviso**, y no un error
-- [ ] 6.3 Mostrar el estado con texto y no solo con color; verificar con una prueba de widget que los cinco estados tienen texto legible
-- [ ] 6.4 Mostrar el aviso de manifiesto copiado cuando se usa el respaldo; verificar con una prueba de widget que aparece y desaparece segun el estado
-- [ ] 6.5 Mostrar en la fila el motivo por el que un modulo no se puede descargar, y el boton de fichero local. Verificar **las dos ramas por separado**: con la `downloadUrl` real, que si falla, el texto aparece y el boton existe; y con la `browserUrl` real, que funciona, el texto **NOT** aparece. Un aviso que sale siempre no informa de nada
-- [ ] 6.6 Comprobar la pantalla a 360x640 y a 1440x900 sin excepciones; verificar ademas que a 360 px el boton de cada fila se alcanza sin desplazar horizontalmente
+- [x] 6.1 Pintar cada modulo con nombre, tipo, idioma, licencia y tamano en megabytes con un decimal, todo leido del manifiesto; verificar con una prueba de widget que un modulo declarado solo en el manifiesto aparece con su tamano exacto
+- [x] 6.2 Anadir filtro por texto, por idioma y "solo lo que ya tengo"; verificar que filtrar por un idioma que no existe deja la lista vacia **con aviso**, y no un error
+- [x] 6.3 Mostrar el estado con texto y no solo con color; verificar con una prueba de widget que los cinco estados tienen texto legible
+- [x] 6.4 Mostrar el aviso de manifiesto copiado cuando se usa el respaldo; verificar con una prueba de widget que aparece y desaparece segun el estado
+- [x] 6.5 Mostrar en la fila el motivo por el que un modulo no se puede descargar, y el boton de fichero local. Verificar **las dos ramas por separado**: con la `downloadUrl` real, que si falla, el texto aparece y el boton existe; y con la `browserUrl` real, que funciona, el texto **NOT** aparece. Un aviso que sale siempre no informa de nada
+- [x] 6.6 Comprobar la pantalla a 360x640 y a 1440x900 sin excepciones; verificar ademas que a 360 px el boton de cada fila se alcanza sin desplazar horizontalmente
 
 ## 7. Pantalla de lector y rutas
 

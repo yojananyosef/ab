@@ -25,6 +25,7 @@
 
 import 'dart:io';
 
+import 'package:ab/data/services/hash_service.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'almacenamiento_de_modulos.dart';
@@ -53,7 +54,7 @@ class AlmacenamientoDeModulosNativo implements AlmacenamientoDeModulos {
     } catch (_) {
       // Un directorio que no se puede crear es una app que no puede guardar
       // nada, pero no una app que no arranca. Se devuelve null y el resultado
-      // dice "no se ha podido guardar", que la pantalla enseña. Propagar el error
+      // dice "no se ha podido guardar", que la pantalla ensena. Propagar el error
       // dejaria la app sin arranque, que es peor que perder el modo sin conexion.
       return null;
     }
@@ -83,9 +84,21 @@ class AlmacenamientoDeModulosNativo implements AlmacenamientoDeModulos {
       // destino deja medio modulo si la app se cierra a mitad, y un `.amod` a
       // medias es peor que ninguno: ocupa 22 MiB, no se abre, y parece que hay una
       // Biblia guardada.
+      final sha = sha256DeBytes(contenido);
+
       final parcial = File('${destino.path}.parcial');
       await parcial.writeAsBytes(contenido, flush: true);
       await parcial.rename(destino.path);
+
+      // El indice de hash va **despues** del modulo, no antes. Si se escribe antes y
+      // el modulo falla, queda un indice que dice que hay un modulo que no esta, y la
+      // pantalla lo pintaria como descargado sin haberlo nunca visto.
+      try {
+        await File('${destino.path}.sha256').writeAsString(sha, flush: true);
+      } catch (_) {
+        // Sin indice, el modulo sigue abriendose: se pierde el "hay version nueva",
+        // no el modulo.
+      }
 
       return Guardado(
         ModuloGuardado(id: id, ruta: destino.path, tamanoBytes: contenido.length),
@@ -140,12 +153,44 @@ class AlmacenamientoDeModulosNativo implements AlmacenamientoDeModulos {
   }
 
   @override
+  Future<Map<String, String>> idsConHash() async {
+    final dir = await directorio();
+    if (dir == null) return const <String, String>{};
+    final salida = <String, String>{};
+    try {
+      for (final e in dir.listSync()) {
+        if (e is! File) continue;
+        final nombre = e.uri.pathSegments.last;
+        if (!nombre.endsWith('.amod')) continue;
+        final id = nombre.substring(0, nombre.length - 5);
+
+        // El indice al lado. 64 bytes, y se puede volver a calcular leyendo el
+        // modulo, asi que es dato derivado y no trabajo de la persona.
+        final indice = File('${e.path}.sha256');
+        if (!indice.existsSync()) continue;
+        try {
+          final sha = indice.readAsStringSync().trim();
+          if (sha.length != 64) continue;
+          salida[id] = sha;
+        } catch (_) {
+          continue;
+        }
+      }
+      return salida;
+    } catch (_) {
+      return const <String, String>{};
+    }
+  }
+
+  @override
   Future<void> borrar(String id) async {
     final dir = await directorio();
     if (dir == null) return;
     try {
       final f = File('${dir.path}/${_nombreDe(id)}');
       if (f.existsSync()) f.deleteSync();
+      final indice = File('${f.path}.sha256');
+      if (indice.existsSync()) indice.deleteSync();
     } catch (_) {
       // Borrar que falla no se puede propagar sin dejar a la persona sin salida:
       // si el comentario de 57 MiB se queda y no se puede quitar, ya no puede

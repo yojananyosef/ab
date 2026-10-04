@@ -84,3 +84,20 @@ class Sqlite {
     return v == null ? null : int.tryParse(v.trim());
   }
 }
+
+/// Prepara lo que la plataforma necesite antes de abrir nada.
+///
+/// En web carga `sqlite3.wasm` y registra el sistema de ficheros virtual. En nativo
+/// no hay nada que hacer y esta funcion no hace nada.
+///
+/// Existe como una sola funcion con ese nombre en vez de llamar a
+/// [prepararSqliteWeb] a pelo desde `main.dart`, porque `main.dart` **no debe saber
+/// en que plataforma esta**. Si lo supiera, habria un `if` mas en el arranque, y el
+/// arranque es el sitio donde mas caro sale tener un `if` mal puesto.
+Future<void> prepararSiHaceFalta() => impl.prepararSiHaceFalta();
+
+/// Los bytes de un modulo ya guardado, o null si no esta.
+///
+/// La via para volver a abrir un modulo en esta sesion sin traerlo de la red. En web
+/// salen del sistema de ficheros virtual; en nativo, del fichero.
+Future<List<int>?> bytesDe(String ruta) => impl.bytesDe(ruta);

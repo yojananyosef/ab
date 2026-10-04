@@ -122,7 +122,7 @@ String sha256DeTrozos(Iterable<List<int>> trozos) {
 
 /// El sha256 de algo que ya esta entero en memoria.
 ///
-/// Existe para comparar en las pruebas y para ficheros pequeños. Para lo grande,
+/// Existe para comparar en las pruebas y para ficheros pequenos. Para lo grande,
 /// [sha256DeTrozos].
 String sha256DeBytes(List<int> bytes) => sha256.convert(bytes).toString();
 

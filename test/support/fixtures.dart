@@ -7,7 +7,7 @@
 // Actions esa ruta no existe, y lo que se veia era un fallo de pruebas que no
 // decia nada de su causa.
 //
-// Un `.amod` de verdad, y no uno de diez filas, porque un fichero pequeño pasaria
+// Un `.amod` de verdad, y no uno de diez filas, porque un fichero pequeno pasaria
 // aunque el formato real tuviera algo que no se ve con diez filas. Y con un hash
 // de verdad, porque lo que se comprueba es que el codigo detecta cuando el hash
 // no cuadra.

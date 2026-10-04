@@ -58,7 +58,7 @@ void main() {
         if (e is Terminada) resultado = e.resultado;
       }
 
-      expect(progresos, isNotEmpty, reason: 'sin progreso no hay barra que enseñar');
+      expect(progresos, isNotEmpty, reason: 'sin progreso no hay barra que ensenar');
       expect(progresos.last, _tamanoKjv, reason: 'tiene que acabar en el total exacto');
       // Nunca por encima: una barra al 104 por ciento es un bug que se ve.
       expect(progresos.every((r) => r <= _tamanoKjv), isTrue);
@@ -385,7 +385,7 @@ void main() {
     test('un servidor que devuelve MAS bytes de los pedidos se rechaza', () async {
       // La parte exacta de 4.2, la que no depende del ruido: el bufer se reserva
       // con el tamano que anuncia el manifiesto, y si el servidor manda mas de lo
-      // que se le pidio no cabe. Antes, con una lista que crecia, eso se traducía
+      // que se le pidio no cabe. Antes, con una lista que crecia, eso se traducia
       // en gigas de memoria; ahora tiene que ser un fallo limpio y dicho.
       final bytes = _bytesKjv;
       final con = await _ConServidorLocal.abrir(
@@ -405,7 +405,7 @@ void main() {
       }
 
       // Un 416 del servidor seria lo natural, porque el rango pedido acaba fuera
-      // del tamaño que el servidor cree tener. Lo que se exige es que NO se
+      // del tamano que el servidor cree tener. Lo que se exige es que NO se
       // devuelva un modulo, y que no se haya Reservesado mas de lo declarado.
       expect(resultado, isNot(isA<Obtenido>()),
           reason: 'no se devuelve un modulo cuyo tamano no es el que se pidio');

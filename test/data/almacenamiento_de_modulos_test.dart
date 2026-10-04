@@ -19,6 +19,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ab/data/services/almacenamiento_de_modulos.dart';
+import 'package:ab/data/services/hash_service.dart';
 import 'package:ab/data/services/sqlite_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -49,6 +50,7 @@ class AlmacenamientoEnMemoria implements AlmacenamientoDeModulos {
   final bool fallaAlEscribir;
 
   final Map<String, Uint8List> _guardados = <String, Uint8List>{};
+  final Map<String, String> _hashes = <String, String>{};
   final Map<String, Uint8List> _memoria = <String, Uint8List>{};
 
   /// Cuantas veces se ha escrito en el almacenamiento persistente.
@@ -91,6 +93,7 @@ class AlmacenamientoEnMemoria implements AlmacenamientoDeModulos {
 
     escrituras++;
     _guardados[id] = contenido;
+    _hashes[id] = sha256DeBytes(contenido);
     return Guardado(ModuloGuardado(id: id, ruta: 'memoria/$id.amod', tamanoBytes: contenido.length));
   }
 
@@ -111,8 +114,12 @@ class AlmacenamientoEnMemoria implements AlmacenamientoDeModulos {
   Future<List<String>> ids() async => _guardados.keys.toList();
 
   @override
+  Future<Map<String, String>> idsConHash() async => Map<String, String>.from(_hashes);
+
+  @override
   Future<void> borrar(String id) async {
     _guardados.remove(id);
+    _hashes.remove(id);
     _memoria.remove(id);
   }
 
@@ -394,6 +401,7 @@ void main() {
 
       await alm.borrar(idModulo);
       expect(await alm.ids(), isEmpty);
+      expect(await alm.idsConHash(), isEmpty, reason: 'el indice tambien se borra');
       expect(await alm.rutaDe(idModulo), isNull);
       expect(alm.enMemoria(idModulo), isNull);
     });

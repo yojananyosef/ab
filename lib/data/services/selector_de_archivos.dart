@@ -40,7 +40,7 @@ class ArchivoElegido {
 /// **normal**, no un fallo, y en un movil abrir el selector y echarse atras es lo
 /// que hace la mitad de la gente la primera vez. Si cancelar fuera un error, cada
 /// sitio que llama tendria que distinguirlo por otra via, y casi todos lo harian
-/// mal acabando enseñando "no se ha podido abrir el fichero" a quien solo queria
+/// mal acabando ensenando "no se ha podido abrir el fichero" a quien solo queria
 /// cambiar de idea.
 class ResultadoDeElegir {
   /// La persona ha elegido un fichero.

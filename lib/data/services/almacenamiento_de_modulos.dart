@@ -64,7 +64,7 @@ class Espacio {
 
   /// Lo que queda, o null si no se sabe.
   ///
-  /// Null y no cero cuando no hay dato: "no lo sé" y "no cabe" llevan a decisiones
+  /// Null y no cero cuando no hay dato: "no lo se" y "no cabe" llevan a decisiones
   /// distintas, y confundirlos es como se acaba negando una descarga que si cabia.
   int? get disponible {
     final c = cuota;
@@ -159,7 +159,7 @@ abstract class AlmacenamientoDeModulos {
   /// Vuelca a almacenamiento que sobreviva a cerrar la app.
   ///
   /// Devuelve lo que ha pasado para que la pantalla lo diga. Que devuelva un
-  /// resultado y no un error es lo que permite enseñar "no cabe, ocupa tanto" en
+  /// resultado y no un error es lo que permite ensenar "no cabe, ocupa tanto" en
   /// vez de tragarselo.
   Future<ResultadoDeGuardar> persistir(String id, List<int> bytes);
 
@@ -171,6 +171,24 @@ abstract class AlmacenamientoDeModulos {
 
   /// Los ids que hay guardados. Para pintar la biblioteca sin abrir nada.
   Future<List<String>> ids();
+
+  /// Los ids que hay guardados, **con su sha256**.
+  ///
+  /// POR QUE HACE FALTA EL HASH Y NO SOLO EL ID. Para distinguir un modulo
+  /// descargado de uno que esta atrasado hay que comparar **su** hash con el que
+  /// declara el manifiesto. Con solo los ids no se puede: cualquier modulo local
+  /// pareceria descargado, y el estado "hay version nueva" no se alcanzaria nunca.
+  /// Un estado que no se puede alcanzar es un estado que no existe.
+  ///
+  /// Y DE DONDE SALE EL HASH SIN LEER 79 MiB AL ARRANCAR. De un indice al lado: en
+  /// web va en el mismo registro de IndexedDB, y en nativo en un fichero
+  /// `<id>.sha256` de 64 bytes. Es **dato derivado**, se puede volver a calcular
+  /// leyendo el modulo, y por eso no es trabajo de la persona y no se puede perder.
+  ///
+  /// Y SI EL INDICE NO ESTA O NO CUADRA, se devuelve sin hash. La pantalla lo
+  /// tratara como "descargado, sin comprobar", que es una afirmacion de la app. Es
+  /// preferible a leer 79 MiB al arrancar para poder pintar una lista.
+  Future<Map<String, String>> idsConHash();
 
   /// Borra un modulo. Sin esto, el comentario de 57 MiB se queda para siempre
   /// ocupando sitio sin que nadie pueda quitarlo.

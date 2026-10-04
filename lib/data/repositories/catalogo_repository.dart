@@ -112,10 +112,15 @@ class CatalogoRepository {
   /// mejor teachle lo de hoy aunque se haya quedado a medias.
   Future<ResultadoCatalogo> leer() async {
     final ultimo = await _bajarUltimoJson();
+    // Se guarda **antes** de nada, incluso si el resultado va a ser un fallo: asi, si
+    // se acaba usando la copia guardada, `_ultimo` es la que se esta ensenarndo y no
+    // la de hace tres dias. Lo contrario seria que "Descargar" buscara un id que la
+    // pantalla no esta mostrando.
 
     if (ultimo != null) {
       final delServidor = await _leerDelServidor(ultimo);
       if (delServidor.estado == EstadoLectura.delServidor) {
+        _ultimo = delServidor.manifiesto;
         await _guardar(ultimo);
         return delServidor;
       }
@@ -125,6 +130,7 @@ class CatalogoRepository {
       // modulo esta corrupto" y se dice mucho mejor con los dos delante.
       final guardado = await _leerGuardado();
       if (guardado != null) {
+        _ultimo = guardado.manifiesto;
         return ResultadoCatalogo(
           manifiesto: guardado.manifiesto,
           estado: EstadoLectura.deCopiaGuardada,
@@ -143,6 +149,7 @@ class CatalogoRepository {
     // pudo leer.
     final guardado = await _leerGuardado();
     if (guardado != null) {
+      _ultimo = guardado.manifiesto;
       return ResultadoCatalogo(
         manifiesto: guardado.manifiesto,
         estado: EstadoLectura.deCopiaGuardada,
@@ -156,6 +163,20 @@ class CatalogoRepository {
       avisos: ['No se ha podido contactar con el catalogo.'],
     );
   }
+
+  /// El ultimo manifiesto que se ha leido, en memoria.
+  ///
+  /// NO esta persistido y no se guarda en ninguna parte: se vuelve a poner en cada
+  /// [leer]. Vive aqui para que quien pulse "Descargar" sepa **que** modulo es sin
+  /// tener que pasarselo otra vez, y no como una copia que se pueda quedar vieja.
+  Manifiesto _ultimo = const Manifiesto(
+    formato: 'aa-catalog/1',
+    version: 'sin leer',
+    etiqueta: 'sin leer',
+    modulos: <Modulo>[],
+  );
+
+  Manifiesto get manifiesto => _ultimo;
 
   /// Si hay una copia guardada, sin tocar la red. Para el arranque, que no
   /// puede esperar a una peticion.
@@ -231,7 +252,7 @@ class CatalogoRepository {
   /// Convierte los datos del manifiesto en dominio.
   ///
   /// Un `type` desconocido se salta sin tirar el manifiesto entero: el catalogo
-  /// puede llevar cosas que esta app todavia no sabe leer, y es mejor enseñar las
+  /// puede llevar cosas que esta app todavia no sabe leer, y es mejor ensenarr las
   /// que si entiende que ensenar una biblioteca vacia.
   Manifiesto _aManifiesto(ManifiestoApi api) {
     final modulos = <Modulo>[];

@@ -1,0 +1,606 @@
+// La pantalla de biblioteca: la lista de lo que se puede leer.
+//
+// QUE HAY Y QUE NO HAY EN UNA VISTA. Solo pinta. No lee ficheros, no hace
+// peticiones, no calcula el estado de nada: eso es del ViewModel. Si aqui hay un
+// `if (modulo.tamanoBytes > 0)` es un bug de arquitectura, aunque compile.
+//
+// LO QUE SE ENSENA Y EN QUE ORDEN, Y POR QUE. Primero el aviso de "estoy usando una
+// copia guardada", porque es lo que cambia lo que uno ve y no puede deducir. Despues
+// el titulo, el filtro, la lista, y al final el vacio con su explicacion.
+//
+// Un aviso de la pantalla va **encima** de la lista y no en un `SnackBar`. Un
+// `SnackBar` se va solo a los cuatro segundos, y un aviso que dice "estoy usando una
+// copia del catalogo del martes" no puede desaparecer solo: es la diferencia entre
+// ver la lista de hoy y la de hace una semana.
+//
+// Y VACIO NO ES LO MISMO QUE ERROR. "No hay nada en el catalogo" es un problema del
+// servidor. "No hay nada que case con lo que has escrito" es un problema de lo que
+// ha escrito la persona, y la solucion es quitar el filtro. Ensenar un error
+// vermelho para lo segundo es como se hace que alguien piense que la app se
+// ha roto cuando lo unico que ha puesto es una letra de mas.
+
+import 'package:flutter/material.dart';
+
+import 'package:ab/data/repositories/catalogo_repository.dart';
+import 'package:ab/ui/core/idiomas.dart';
+import 'package:ab/ui/core/tema.dart';
+
+import '../view_models/biblioteca_view_model.dart';
+import '../widgets/fila_modulo.dart';
+
+class BibliotecaView extends StatefulWidget {
+  const BibliotecaView({
+    super.key,
+    required this.viewModel,
+    required this.alPulsarLeer,
+    required this.alPulsarDescargar,
+    required this.alPulsarFicheroLocal,
+    required this.alReintentar,
+  });
+
+  final BibliotecaViewModel viewModel;
+
+  /// Los tres callbacks llegan de fuera porque **descargar** y **abrir un fichero**
+  /// son cosas que hacen varias pantallas y necesitan el motor de obtencion y el
+  /// selector de archivos. La vista no los tiene y no los pide.
+  final void Function(String id) alPulsarLeer;
+  final void Function(String id) alPulsarDescargar;
+  final void Function(String id) alPulsarFicheroLocal;
+  final VoidCallback alReintentar;
+
+  @override
+  State<BibliotecaView> createState() => _BibliotecaViewState();
+}
+
+class _BibliotecaViewState extends State<BibliotecaView> {
+  late final TextEditingController _controlFiltro = TextEditingController(
+    text: widget.viewModel.filtro.texto,
+  );
+
+  @override
+  void dispose() {
+    _controlFiltro.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vm = widget.viewModel;
+
+    return AnimatedBuilder(
+      animation: vm,
+      builder: (context, _) => Scaffold(
+        appBar: _BarraSuperior(vm: vm),
+        body: SafeArea(
+          child: Column(
+            children: <Widget>[
+              _Avisos(vm: vm),
+              Expanded(
+                child: RefreshIndicator(
+                  // Tirar para recargar es lo que hace todo el mundo en un movil, y
+                  // es el gesto que la gente prueba sin que nadie se lo ensene. Por
+                  // eso esta en la pantalla y no solo en un boton.
+                  onRefresh: () async => widget.alReintentar(),
+                  child: _Cuerpo(vm: vm, controlFiltro: _controlFiltro, acciones: _Acciones(widget)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BarraSuperior extends StatelessWidget implements PreferredSizeWidget {
+  const _BarraSuperior({required this.vm});
+
+  final BibliotecaViewModel vm;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(58);
+
+  @override
+  Widget build(BuildContext context) => AppBar(
+    title: const Text('Biblioteca'),
+    backgroundColor: Colores.fondo,
+    surfaceTintColor: Colors.transparent,
+    titleTextStyle: Theme.of(context).textTheme.titleLarge,
+  );
+}
+
+/// Los avisos: los del repositorio mas los de la pantalla.
+///
+/// Un `Column` y no un `Card` por aviso: en un movil el borde de un `Card` con
+/// texto largo se ve como una caja de la que hay que salir, y lo que se quiere es
+/// que se lea.
+class _Avisos extends StatelessWidget {
+  const _Avisos({required this.vm});
+
+  final BibliotecaViewModel vm;
+
+  @override
+  Widget build(BuildContext context) {
+    if (vm.avisos.isEmpty) return const SizedBox.shrink();
+
+    return ContenidoCentrado(
+      child: Column(
+        children: <Widget>[
+          for (final aviso in vm.avisos)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: _CajaAviso(texto: aviso, esAvisoDeCopia: _esCopiaGuardada(aviso)),
+            ),
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
+
+  /// Si el aviso es el de la copia guardada, que tiene su propio estilo.
+  ///
+  /// Se distingue por el **texto**, y no por un parametro que se pasa desde el
+  /// repositorio. Es lo unico que no puede quedar viejo: si el texto del aviso
+  /// cambia, este cambia con el, y si el aviso deja de mentionar la copia guardada,
+  /// deja de ensenarrse como tal.
+  static bool _esCopiaGuardada(String aviso) =>
+      aviso.toLowerCase().contains('copia guardada');
+}
+
+class _CajaAviso extends StatelessWidget {
+  const _CajaAviso({required this.texto, required this.esAvisoDeCopia});
+
+  final String texto;
+  final bool esAvisoDeCopia;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = esAvisoDeCopia ? Colores.primario : Colores.peligro;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(
+            esAvisoDeCopia ? Icons.cloud_off_outlined : Icons.warning_amber_outlined,
+            size: 19,
+            color: color,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              texto,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
+              softWrap: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// El cuerpo: filtro y lista, o el vacio con su explicacion.
+class _Cuerpo extends StatelessWidget {
+  const _Cuerpo({
+    required this.vm,
+    required this.controlFiltro,
+    required this.acciones,
+  });
+
+  final BibliotecaViewModel vm;
+  final TextEditingController controlFiltro;
+  final _Acciones acciones;
+
+  @override
+  Widget build(BuildContext context) {
+    // El filtro va **siempre**, incluso con la lista vacia. Es como se quita un
+    // filtro que ha dejado la lista vacia, y si desaparece con ella no hay forma
+    // de quitarlo: habria que recargar la pagina.
+    return ListView(
+      // `AlwaysScrollableScrollPhysics` para que el `RefreshIndicator` funcione
+      // tambien con la lista vacia. Sin esto, tirar para recargar en una lista
+      // vacia no hace nada y parece que la app esta colgada.
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: <Widget>[
+        _Filtros(vm: vm, control: controlFiltro),
+        ..._listaOCuerpoVacio(context),
+        const SizedBox(height: 28),
+      ],
+    );
+  }
+
+  List<Widget> _listaOCuerpoVacio(BuildContext context) {
+    if (vm.filasFiltradas.isEmpty) return <Widget>[_Vacio(vm: vm)];
+
+    return <Widget>[
+      for (final fila in vm.filasFiltradas)
+        _Fila(fila: fila, vm: vm, acciones: acciones),
+    ];
+  }
+}
+
+/// Los filtros: texto, idioma y "solo lo que tengo".
+class _Filtros extends StatelessWidget {
+  const _Filtros({required this.vm, required this.control});
+
+  final BibliotecaViewModel vm;
+  final TextEditingController control;
+
+  @override
+  Widget build(BuildContext context) {
+    final ancho = MediaQuery.sizeOf(context).width;
+    final texto = _CampoTexto(vm: vm, control: control);
+    final selectores = _Selectores(vm: vm);
+
+    return ContenidoCentrado(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 12, bottom: 6),
+        // En ancho hay sitio de sobra para el campo y los selectores en la misma
+        // linea. En estrecho, uno debajo de otro. **Empieza por el caso estrecho**:
+        // al reves, el movil se queda con un `if` de mas en cada fila, y por ahi es
+        // por donde las pantallas responsive se rompen.
+        //
+        // Y `texto` y `selectores` se usan en **una sola rama** cada uno. La primera
+        // version de este bloque tenia el campo como primer hijo del `Column` sin
+        // condicion, y ademas lo ponia en el `else`: en un movil se veian **dos**
+        // campos de busqueda, y `enterText` fallaba porque no sabia cual pulsar. Lo
+        // se vio al escribir la prueba, no al mirar la pantalla.
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            if (ancho >= Medidas.anchoParaDosColumnas)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Expanded(flex: 3, child: texto),
+                  const SizedBox(width: 12),
+                  // `Flexible`, y no el `Wrap` suelto. Un `Wrap` dentro de una `Row`
+                  // toma su **ancho intrinseco**, que es la suma de sus hijos en una
+                  // sola linea, y esa suma no depende del ancho de la pantalla: en un
+                  // portatil de 1440 px se salia por la derecha 176 pixeles. Con
+                  // `Flexible` el `Wrap` recibe un ancho acotado y baja los selectores
+                  // de linea, que es justo lo que sabe hacer.
+                  Flexible(flex: 2, child: selectores),
+                ],
+              )
+            else ...<Widget>[
+              texto,
+              const SizedBox(height: 10),
+              selectores,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CampoTexto extends StatelessWidget {
+  const _CampoTexto({required this.vm, required this.control});
+
+  final BibliotecaViewModel vm;
+  final TextEditingController control;
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: control,
+    onChanged: vm.filtrarPorTexto,
+    textInputAction: TextInputAction.search,
+    decoration: InputDecoration(
+      hintText: 'Buscar por nombre, idioma o licencia',
+      prefixIcon: const Icon(Icons.search, size: 21),
+      suffixIcon: vm.filtro.texto.isEmpty
+          ? null
+          : IconButton(
+              icon: const Icon(Icons.close, size: 19),
+              // Sin `tooltip` no hay nombre accesible, y el boton solo tiene un
+              // icono: quien va con lector de pantalla oiria "boton".
+              tooltip: 'Quitar la busqueda',
+              onPressed: () {
+                control.clear();
+                vm.filtrarPorTexto('');
+              },
+            ),
+    ),
+  );
+}
+
+class _Selectores extends StatelessWidget {
+  const _Selectores({required this.vm});
+
+  final BibliotecaViewModel vm;
+
+  @override
+  Widget build(BuildContext context) {
+    final idiomas = vm.idiomas;
+    return Wrap(
+      spacing: 10,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: <Widget>[
+        // El desplegable de idiomas solo aparece si hay alguno. Con el catalogo
+        // vacio, un desplegable con "Todos" es un control que no hace nada.
+        if (idiomas.isNotEmpty)
+          _Desplegable(
+            valor: vm.filtro.idioma,
+            etiqueta: vm.filtro.idioma == null
+                ? 'Todos los idiomas'
+                : textoDeIdioma(vm.filtro.idioma!),
+            opciones: <String?>[null, ...idiomas],
+            textoDe: (v) => v == null ? 'Todos los idiomas' : textoDeIdioma(v),
+            alCambiar: vm.filtrarPorIdioma,
+            etiquetaAccesible: 'Filtrar por idioma',
+          ),
+        _BotonSoloDescargados(vm: vm),
+      ],
+    );
+  }
+}
+
+/// El boton de "solo lo que tengo".
+///
+/// Un `FilterChip` y no un `Switch`: un interruptor ocupa sitio y no dice de que
+/// filtra. Un chip con su texto encendido dice "solo lo que tengo" y se apaga solo.
+class _BotonSoloDescargados extends StatelessWidget {
+  const _BotonSoloDescargados({required this.vm});
+
+  final BibliotecaViewModel vm;
+
+  @override
+  Widget build(BuildContext context) => FilterChip(
+    selected: vm.filtro.soloDescargados,
+    onSelected: (_) => vm.alternarSoloDescargados(),
+    label: const Text('Solo lo que tengo'),
+    showCheckmark: true,
+  );
+}
+
+/// El desplegable, a mano.
+///
+/// Un `DropdownButton` de Material sale con una flecha y un `padding` que a 360 px
+/// empuja el texto a la segunda linea, y el `menuMaxHeight` por defecto en un
+/// `PopupMenuButton` corta la lista de idiomas sin avisar. Este es un `PopupMenu`
+/// con las dos cosas puestas, y son cuatro lineas.
+class _Desplegable extends StatelessWidget {
+  const _Desplegable({
+    required this.valor,
+    required this.etiqueta,
+    required this.opciones,
+    required this.textoDe,
+    required this.alCambiar,
+    required this.etiquetaAccesible,
+  });
+
+  final String? valor;
+  final String etiqueta;
+  final List<String?> opciones;
+  final String Function(String?) textoDe;
+  final void Function(String?) alCambiar;
+  final String etiquetaAccesible;
+
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<String?>(
+    onSelected: alCambiar,
+    // Sin esto, en un movil con muchos idiomas la lista se sale por arriba de la
+    // pantalla y el primero no se ve.
+    constraints: const BoxConstraints(maxHeight: 320),
+    tooltip: etiquetaAccesible,
+    itemBuilder: (context) => <PopupMenuEntry<String?>>[
+      for (final o in opciones)
+        PopupMenuItem<String?>(
+          value: o,
+          height: 48,
+          child: Row(
+            children: <Widget>[
+              if (o == valor) const Icon(Icons.check, size: 19) else const SizedBox(width: 19),
+              const SizedBox(width: 8),
+              Flexible(child: Text(textoDe(o), softWrap: false, overflow: TextOverflow.ellipsis)),
+            ],
+          ),
+        ),
+    ],
+    child: Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colores.superficie,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colores.linea),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const Icon(Icons.translate, size: 19, color: Colores.textoSuave),
+          const SizedBox(width: 8),
+          // Sin `Flexible` esto revienta a 360 px con un idioma de nombre largo.
+          Flexible(
+            child: Text(
+              etiqueta,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+          const SizedBox(width: 4),
+          const Icon(Icons.arrow_drop_down, size: 22, color: Colores.textoSuave),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Una fila, con su separador.
+class _Fila extends StatelessWidget {
+  const _Fila({required this.fila, required this.vm, required this.acciones});
+
+  final FilaDeModulo fila;
+  final BibliotecaViewModel vm;
+  final _Acciones acciones;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: <Widget>[
+        FilaModulo(
+          // La clave es el id **con** el estado. Sin el estado en la clave, dos
+          // filas con el mismo id en la misma lista --una descargada y otra
+          // desactualizada, que puede pasar si el manifiesto cambia mientras se
+          // mira-- se reciclan una a otra y Flutter avisa de indices duplicados.
+          key: ValueKey<String>('${fila.id}/${fila.estado.name}'),
+          fila: fila,
+          porQue: _porQueNoSePuede(fila, vm),
+          alPulsarDescargar: () => acciones.descargar(fila.id),
+          alPulsarLeer: () => acciones.leer(fila.id),
+          alPulsarFicheroLocal: () => acciones.ficheroLocal(fila.id),
+        ),
+        const Divider(height: 1),
+      ],
+    );
+  }
+
+  /// Cuando no se puede descargar, por que. Y hay **tres** motivos distintos.
+  ///
+  /// El orden importa: se mira primero si el navegador deja leerlo, porque es el
+  /// unico caso en el que reintentar no sirve y la unica salida es el fichero local.
+  /// Si se mirara el ultimo, un modulo con el origen bloqueado y sin red sale como
+  /// "reintentar" y la persona reintenta para siempre.
+  static PorQueNoSePuedeDescargar? _porQueNoSePuede(FilaDeModulo f, BibliotecaViewModel vm) {
+    // Si ya esta en el dispositivo, no hay nada que impedir: se lee.
+    if (f.sePuedeLeer) return null;
+
+    // El navegador no lo deja leer. Un reintento no lo arregla.
+    if (vm.origenNoLegible(f.id)) return PorQueNoSePuedeDescargar.origenNoLegible;
+
+    if (f.sePuedeDescargar) return null;
+
+    // No se puede ni descargar ni leer. Se mira por que se fallo la lectura del
+    // catalogo, porque de eso depende si reintentar sirve.
+    return switch (vm.estadoLectura) {
+      // El catalogo no se pudo leer: reintentar **si** puede servir, y es lo unico
+      // que se puede hacer.
+      EstadoLectura.sinConexion => PorQueNoSePuedeDescargar.sinConexion,
+      EstadoLectura.hashIncorrecto => PorQueNoSePuedeDescargar.sinConexion,
+      EstadoLectura.ilegible => PorQueNoSePuedeDescargar.sinConexion,
+      // El catalogo si se leyo. Entonces no se puede descargar por una razon que
+      // no se sabe todavia, y se ofrece la accion normal.
+      EstadoLectura.delServidor => PorQueNoSePuedeDescargar.todaviaNo,
+      EstadoLectura.deCopiaGuardada => PorQueNoSePuedeDescargar.todaviaNo,
+    };
+  }
+}
+
+/// El cuerpo vacio. Y hay tres, no uno.
+class _Vacio extends StatelessWidget {
+  const _Vacio({required this.vm});
+
+  final BibliotecaViewModel vm;
+
+  @override
+  Widget build(BuildContext context) {
+    if (vm.filtroSinResultados) return _VacioConFiltro(vm: vm);
+    if (vm.catalogoVacio) return _VacioSinCatalogo(vm: vm);
+    // Con filas pero ninguna filtrada no puede pasar: `filasFiltradas` es o la
+    // lista entera o una sublista. Aun asi se ensenar algo en vez de una pantalla en
+    // blanco, porque una pantalla en blanco no dice nada de por que esta ahi.
+    return _VacioSinCatalogo(vm: vm);
+  }
+}
+
+/// "No hay nada que case con tu filtro", con el boton para quitarlo.
+class _VacioConFiltro extends StatelessWidget {
+  const _VacioConFiltro({required this.vm});
+
+  final BibliotecaViewModel vm;
+
+  @override
+  Widget build(BuildContext context) => _CajaVacio(
+    icono: Icons.search_off,
+    titulo: 'Nada coincide con la busqueda',
+    texto: 'Prueba con menos palabras, o quita el filtro de idioma.',
+    accion: TextButton.icon(
+      onPressed: vm.limpiarFiltros,
+      icon: const Icon(Icons.filter_alt_off_outlined, size: 19),
+      label: const Text('Quitar los filtros'),
+    ),
+  );
+}
+
+/// "No hay nada en el catalogo", con el boton de reintentar.
+class _VacioSinCatalogo extends StatelessWidget {
+  const _VacioSinCatalogo({required this.vm});
+
+  /// Null cuando no se sabe por que esta vacio.
+  final BibliotecaViewModel? vm;
+
+  @override
+  Widget build(BuildContext context) {
+    final hayAvisos = vm?.avisos.isNotEmpty ?? false;
+    return _CajaVacio(
+      icono: Icons.menu_book_outlined,
+      titulo: 'No hay ningun modulo',
+      texto: hayAvisos
+          ? 'No se ha podido leer el catalogo. Se explica arriba.'
+          : 'El catalogo no declara ningun modulo todavia. Puede que no haya '
+              'salido ninguna version todavia.',
+    );
+  }
+}
+
+class _CajaVacio extends StatelessWidget {
+  const _CajaVacio({required this.icono, required this.titulo, required this.texto, this.accion});
+
+  final IconData icono;
+  final String titulo;
+  final String texto;
+  final Widget? accion;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: Medidas.margenEstrecho, vertical: 42),
+    child: Column(
+      children: <Widget>[
+        Icon(icono, size: 44, color: Colores.textoSuave),
+        const SizedBox(height: 14),
+        Text(
+          titulo,
+          style: Theme.of(context).textTheme.titleMedium,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          texto,
+          style: Theme.of(context).textTheme.bodySmall,
+          textAlign: TextAlign.center,
+          softWrap: true,
+        ),
+        if (accion != null) ...<Widget>[const SizedBox(height: 12), accion!],
+      ],
+    ),
+  );
+}
+
+/// Los tres acciones de una fila, agrupadas.
+///
+/// Van juntas en una clase y no sueltas por la pantalla porque atraviesan tres
+/// niveles --la pantalla, el cuerpo, la fila-- y en tres `Widget` sueltos se acaba
+/// forgetting uno y dejando un boton que no hace nada. Que es exactamente lo que
+/// paso la primera vez.
+///
+/// Y son `void Function(String id)`: la fila sabe **que** modulo, y no **como** se
+/// descarga. Descargar necesita el motor de obtencion, que vive en el
+/// composition root; la vista no lo tiene y no lo pide.
+class _Acciones {
+  const _Acciones(this._vista);
+
+  final BibliotecaView _vista;
+
+  void leer(String id) => _vista.alPulsarLeer(id);
+  void descargar(String id) => _vista.alPulsarDescargar(id);
+  void ficheroLocal(String id) => _vista.alPulsarFicheroLocal(id);
+}

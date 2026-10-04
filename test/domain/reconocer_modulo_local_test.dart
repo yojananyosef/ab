@@ -31,14 +31,14 @@ const String _sha256Clarke = sha256Comentario;
 /// cifras de aqui y las de alla sean las mismas.
 ///
 /// El JSON se lee aqui con `jsonDecode`, y **no** con el mapeo del repositorio. Es
-/// a proposito: si se usara el mapeo, estas pruebas comprobarían el repositorio
+/// a proposito: si se usara el mapeo, estas pruebas comprobarian el repositorio
 /// contra si mismo, y un error en el mapeo haria que los dos modulos de verdad
 /// parecieran desconocidos.
 ///
 /// Y la primera version de esta funcion cortaba el JSON con `indexOf` y
 /// `substring`, y devolvia el sha256 con una comilla delante. Daba hash de 65
 /// caracteres, que no cuadraba con nada, y el fallo se veia como "el modulo real
-/// no se reconoce", que es un sintoma que no señala la causa. El `jsonDecode` es
+/// no se reconoce", que es un sintoma que no senala la causa. El `jsonDecode` es
 /// el mismo numero de lineas y no puede tener ese error.
 Manifiesto _manifiestoReal() {
   final j = jsonDecode(File('test/fixtures/catalog_real.json').readAsStringSync())

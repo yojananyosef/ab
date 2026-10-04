@@ -236,7 +236,7 @@ void main() {
 
     test('los tres tramos seguidos cubren el fichero entero sin solaparse', () async {
       // El recorrido completo, que es donde el fallo se manifestaba: el total
-      // engañoso hacia que el siguiente rango se salia del fichero.
+      // enganoso hacia que el siguiente rango se salia del fichero.
       var recibidos = 0;
       final listos = <int>[];
       while (recibidos < crudo.length) {

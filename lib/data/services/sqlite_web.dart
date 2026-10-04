@@ -106,3 +106,18 @@ CommonDatabase abrirEnSqlite(String ruta, {required bool soloLectura}) {
     mode: soloLectura ? OpenMode.readOnly : OpenMode.readWriteCreate,
   );
 }
+
+/// Carga el motor. En web **si** hace falta, y por eso se llama antes de pintar.
+Future<void> prepararSiHaceFalta() => prepararSqliteWeb();
+
+/// Los bytes de un modulo que ya esta en el sistema de ficheros virtual.
+///
+/// Si no esta, devuelve null en vez de tirar. Quien pregunta va a intentar abrirlo,
+/// y "no esta" y "ha fallado al leer" llevan a la mismadecision: no se puede abrir.
+Future<List<int>?> bytesDe(String ruta) async {
+  try {
+    return leerDeDispositivo(ruta);
+  } catch (_) {
+    return null;
+  }
+}

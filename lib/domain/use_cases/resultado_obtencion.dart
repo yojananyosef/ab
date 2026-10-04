@@ -1,8 +1,8 @@
-// Que pasó al intentar obtener un modulo.
+// Que paso al intentar obtener un modulo.
 //
 // Un tipo por cada final, porque cada uno pide una cosa distinta a la pantalla.
 // Un solo `bool ok` con un mensaje obliga a que quien recibe adivine el motivo, y
-// adivinar el motivo es como se acaba enseñando "error de red" cuando lo que
+// adivinar el motivo es como se acaba ensenando "error de red" cuando lo que
 // pasa es que el servidor no deja leerlo desde el navegador, que es un problema
 // distinto con una solucion distinta.
 

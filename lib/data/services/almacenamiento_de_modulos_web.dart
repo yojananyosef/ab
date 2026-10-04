@@ -30,6 +30,7 @@ import 'dart:typed_data';
 import 'package:web/web.dart' as web;
 
 import 'almacenamiento_de_modulos.dart';
+import 'hash_service.dart';
 import 'sqlite_web.dart';
 
 /// La base de datos. Un solo nombre y un solo numero de version.
@@ -67,6 +68,7 @@ class AlmacenamientoDeModulosWeb implements AlmacenamientoDeModulos {
   @override
   Future<ResultadoDeGuardar> persistir(String id, List<int> bytes) async {
     final contenido = comoBytes(bytes);
+    final sha256Esperado = sha256DeBytes(bytes);
 
     // 5.2. La cuota se mira ANTES de escribir. Despues ya no hay nada que hacer,
     // y el fallo de escritura no dice ni cuanto ocupa ni cuanto queda.
@@ -83,7 +85,7 @@ class AlmacenamientoDeModulosWeb implements AlmacenamientoDeModulos {
       final db = await _abrir();
       final tx = db.transaction(_almacen.toJS, 'readwrite');
       tx.objectStore(_almacen).put(
-        _registro(id, contenido).jsify()!,
+        _registro(id, contenido, sha256Esperado).jsify()!,
         id.toJS,
       );
       // Se espera a que termine la transaccion, y no solo a que acepte la
@@ -144,6 +146,31 @@ class AlmacenamientoDeModulosWeb implements AlmacenamientoDeModulos {
       return crudo.whereType<String>().toList();
     } catch (_) {
       return const <String>[];
+    }
+  }
+
+  @override
+  Future<Map<String, String>> idsConHash() async {
+    try {
+      final db = await _abrir();
+      final tx = db.transaction(_almacen.toJS, 'readonly');
+      final peticion = tx.objectStore(_almacen).getAll();
+      final crudo = (await _esperarRaw(peticion))?.dartify();
+      if (crudo is! List) return const <String, String>{};
+
+      final salida = <String, String>{};
+      for (final e in crudo) {
+        if (e is! Map) continue;
+        final id = e['id'];
+        final sha = e['sha256'];
+        // Sin hash, sin entrada: se prefiere que la pantalla lo trate como "sin
+        // comprobar" a que se le pase un hash inventado.
+        if (id is! String || sha is! String || sha.length != 64) continue;
+        salida[id] = sha;
+      }
+      return salida;
+    } catch (_) {
+      return const <String, String>{};
     }
   }
 
@@ -217,7 +244,7 @@ class AlmacenamientoDeModulosWeb implements AlmacenamientoDeModulos {
     final db = (await _esperarRaw(peticion)) as web.IDBDatabase;
     _db = db;
 
-    // Si otra pestaña cierra la base o sube la version, este `Future` se queda
+    // Si otra pestana cierra la base o sube la version, este `Future` se queda
     // obsoleto y `persistir` no volveria a abrir nunca. Se suelta para que la
     // siguiente llamada lo haga. Sin esto, cerrar y volver a abrir la pestana es
     // una app que deja de funcionar y no hay forma de recuperarla sin recargar.
@@ -287,8 +314,15 @@ class AlmacenamientoDeModulosWeb implements AlmacenamientoDeModulos {
     return _Registro(Uint8List.fromList(bytes), valor['tamano'] as int?);
   }
 
-  Map<String, Object?> _registro(String id, Uint8List bytes) =>
-      <String, Object?>{'id': id, 'bytes': bytes, 'tamano': bytes.length};
+  Map<String, Object?> _registro(String id, Uint8List bytes, String sha256) => <String, Object?>{
+    'id': id,
+    'bytes': bytes,
+    'tamano': bytes.length,
+    // El hash va en el registro porque es lo que permite saber, al arrancar, si el
+    // modulo guardado es el que anuncia el catalogo. Sin el habria que leer los 57
+    // MiB para comprobarlo, en cada arranque.
+    'sha256': sha256,
+  };
 }
 
 class _Registro {

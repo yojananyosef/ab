@@ -145,7 +145,7 @@ class ReconocerModuloLocal {
   /// de ningun tipo.
   Reconocimiento reconocer(ArchivoLocal archivo, Manifiesto manifiesto) {
     if (archivo.bytes.length < cabeceraSqlite.length) {
-      return NoEsUnaBaseDeDatos(archivo, motivo: 'El fichero esta vacio o es demasiado pequeño.');
+      return NoEsUnaBaseDeDatos(archivo, motivo: 'El fichero esta vacio o es demasiado pequeno.');
     }
     for (var i = 0; i < cabeceraSqlite.length; i++) {
       if (archivo.bytes[i] != cabeceraSqlite[i]) {

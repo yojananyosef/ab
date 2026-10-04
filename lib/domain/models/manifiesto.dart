@@ -65,17 +65,38 @@ class Manifiesto {
     }).toList();
   }
 
-  /// Busca por nombre, identificador, idioma y licencia a la vez.
+  /// Busca por nombre, identificador, idioma, licencia y tipo a la vez.
   ///
-  /// Que se pueda buscar por el idioma con solo escribir "esp" es lo que hace
-  /// util el filtro cuando hay doscientos modulos, y es lo que hace STEPBible en
-  /// su pantalla de instalacion.
+  /// Que se pueda buscar por el idioma con solo escribir "esp" es lo que hace util
+  /// el filtro cuando hay doscientos modulos.
+  ///
+  /// Y LA LICENCIA SE BUSCA POR **LO QUE SE ENSENA**, no por lo que trae el
+  /// manifiesto. La fila muestra "dominio publico" y el manifiesto dice
+  /// `PublicDomain`: si se filtra por el valor crudo, quien escribe "dominio" --que
+  /// es lo unico que ve en pantalla-- no encuentra nada, y parece que el filtro esta
+  /// roto. Se buscan **las dos** formas, para que tambien funcione `PublicDomain`
+  /// para quien lo sepa.
   static bool _coincide(Modulo m, String t) =>
       m.nombre.toLowerCase().contains(t) ||
       m.id.toLowerCase().contains(t) ||
       m.idioma.toLowerCase().contains(t) ||
       m.licencia.toLowerCase().contains(t) ||
-      m.tipo.enElCatalogo.contains(t);
+      _textoDeLicencia(m.licencia).contains(t) ||
+      m.tipo.enElCatalogo.contains(t) ||
+      _textoDeTipo(m.tipo).contains(t);
+
+  /// La licencia como se ensena, en minusculas para poder buscar.
+  ///
+  /// Va aqui y no en la vista porque es el mismo dato que se pinta y el que se
+  /// busca, y son dos sitios que tienen que coincidir. En la vista hay una copia
+  /// para pintar y aqui otra para buscar, y mientras esten separadas pueden
+  /// separarse de verdad.
+  static String _textoDeLicencia(String licencia) =>
+      switch (licencia) { 'PublicDomain' => 'dominio publico', _ => licencia };
+
+  /// El tipo como lo lee la gente: no "bible" ni "commentary".
+  static String _textoDeTipo(TipoModulo t) =>
+      switch (t) { TipoModulo.biblia => 'biblia', TipoModulo.comentario => 'comentario' };
 
   /// Idiomas que aparecen de verdad en el catalogo, ordenados.
   ///
