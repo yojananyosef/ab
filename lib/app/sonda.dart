@@ -304,10 +304,15 @@ class Sonda {
 /// navegador: la consulta la hace el motor de SQLite compilado a WebAssembly, sobre los
 /// 22 MiB que se han bajado. Si aqui salieran 51, significaria que el `.amod` del
 /// navegador no es el de la maquina, y eso es justo lo que hay que descartar.
+///
+/// Y CUENTA LO QUE HAYA, QUE EN UN COMENTARIO SON LAS NOTAS DEL CAPITULO Y EN UNA BIBLIA
+/// SUS VERSICULOS. La cuenta sale del mismo modulo que las trae, asi que no hay forma de
+/// que uno y otro se separen.
 int _cuentaDeCapitulo(LectorViewModel lector, Referencia esperado) {
   final modulo = lector.modulo;
   if (modulo == null) return -1;
-  return modulo.numerosDeVersiculos(Referencia(esperado.libro, esperado.capitulo)).length;
+  final p = modulo.leer(Referencia(esperado.libro, esperado.capitulo));
+  return p.traeNotas ? p.notas.length : p.versiculos.length;
 }
 
 /// Lo que la sonda mira en la aplicacion, en una sola pasada.
@@ -334,11 +339,23 @@ Map<String, Object?>? mirarLaAplicacion({
   if (pasaje == null || pasaje.vacio) return null;
   if (lector.estado != EstadoLecturaTexto.leyendo) return null;
 
-  // Y SE COMPRUEBA QUE SEA EL VERSICULO PEDIDO, no solo que haya alguno. Una sonda que
-  // leyera cualquier pasaje y diera el texto de ese wouldn't comprobar nada: la tarea
-  // 8.2 pide Juan 3:16, y lo que se escribe tiene que ser el 16.
-  final version = pasaje.versiculo(esperado.versiculo ?? 1);
-  if (version == null) return null;
+  // Y SE COMPRUEBA QUE SEA **EL PEDIDO**, Y NO SOLO QUE HAYA ALGO. Una sonda que leyera
+  // cualquier pasaje y diera el texto de ese no comprobaria nada: se pide Juan 3:16, y lo
+  // que se escribe tiene que ser el 16.
+  //
+  // Y PARA CADA TIPO DE CONTENIDO, LO QUE TOCA. Medido el 4 de octubre de 2026: la sonda
+  // exigia `pasaje.versiculo(n)`, que en un comentario es siempre null porque sus notas
+  // no son versiculos. El comentario se abria bien en el navegador --57.536.512 bytes,
+  // `estadoLector: leyendo`-- y la sonda se quedaba esperando un versiculo que no existe,
+  // hasta que expiraba y decia "no se ha podido leer Juan 3:16". Era un fallo de la
+  // comprobacion, no de la app, y desde fuera no se distinguen.
+  final esComentario = pasaje.traeNotas;
+  final sought = esperado.versiculo ?? 1;
+  if (esComentario) {
+    if (pasaje.notasDe(sought).isEmpty) return null;
+  } else if (pasaje.versiculo(sought) == null) {
+    return null;
+  }
 
   return <String, Object?>{
     'resultado': 'ok',
@@ -354,13 +371,22 @@ Map<String, Object?>? mirarLaAplicacion({
     // `capituloEntero`-- y se cuentan sus versiculos ahi, que es lo que la tarea 7.1
     // pide comprobar.
     'versiculosEnElPasaje': pasaje.total,
+    'tipoDeContenido': lector.modulo?.tipo.name,
+    'notas': pasaje.notas.length,
+    'esComentario': esComentario,
     'capituloEntero': <String, Object?>{
       'libro': esperado.libro,
       'capitulo': esperado.capitulo,
       'versiculos': _cuentaDeCapitulo(lector, esperado),
     },
     'versiculo': esperado.versiculo,
-    'texto': version.texto,
+    // Y EL TEXTO ES EL QUE TOQUE: el del versiculo en una Biblia, y el de la **primera**
+    // nota en un comentario. Devolver `null` para un comentario haria que el informe no
+    // dijera nada de las 2.709 caracteres que acaba de leer, que es justo lo que hay que
+    // comprobar.
+    'texto': esComentario
+        ? (pasaje.notasDe(sought).firstOrNull?.texto ?? '')
+        : (pasaje.versiculo(sought)?.texto ?? ''),
     'bytesDescargados': sonda.bytesDescargados,
     'terminos': <String, Object?>{
       'nombre': lector.terminos?.nombre,

@@ -54,6 +54,30 @@ enum TipoDeContenido {
   /// El valor tal cual lo escribe el `.amod` en `info.type`.
   final String nombreEnElModulo;
 
+  /// De que tabla se lee el contenido de un modulo de este tipo.
+  ///
+  /// Y ES EL NOMBRE **LITERAL** DE LA TABLA DEL `.amod`, y no un alias. Se escribe en
+  /// las consultas con interpolacion, asi que esto solo puede ser un dato de un `switch`
+  /// cerrado y nunca algo ledo del fichero. Medido sobre los dos `.amod` reales el 4 de
+  /// octubre de 2026:
+  ///
+  ///     KJV2006   ->  'verses'
+  ///     CLARKE    ->  'commentary'
+  ///
+  /// Y POR QUE AQUI Y NO EN CADA CONSULTA: es lo unico que hace que el mismo codigo lea
+  /// las dos tablas. Con el nombre escrito a mano en las consultas habria un `if` por
+  /// consulta --y hay ocho--, y ocho sitios donde olvidarse es un crash esperando. Con
+  /// esta propiedad, el nombre se escribe **una vez**.
+  ///
+  /// Null para [desconocido], y por eso `ModuloAbierto.abrir` no deja abrir un modulo de
+  /// ese tipo: sin tabla no hay nada que leer, y el refusal esta en un sitio y no en
+  /// ocho.
+  String? get tablaDeContenido => switch (this) {
+    TipoDeContenido.biblia => 'verses',
+    TipoDeContenido.comentario => 'commentary',
+    TipoDeContenido.desconocido => null,
+  };
+
   /// Como lo lee la app, o null si el modulo declara otra cosa.
   ///
   /// Null y no [desconocido]: aqui la pregunta es "de esto conozco el significado", y
@@ -75,57 +99,4 @@ enum TipoDeContenido {
     'commentary' => TipoDeContenido.comentario,
     _ => TipoDeContenido.desconocido,
   };
-}
-
-/// La peticion no tiene sentido para este tipo de modulo.
-///
-/// Y VA POR SEPARADO DE `FalloAlAbrir`, Y ESTA SEPARACION ES LO IMPORTANTE.
-///
-/// `FalloAlAbrir` es "**el modulo esta mal**: no se ha podido abrir, o esta danado, o
-/// no lo entiendo". Esta excepcion es "**el modulo esta bien y lo que pides no
-/// aplica**: has abierto un comentario y me pides sus versiculos". Son cosas
-/// distintas, y tratarlas igual tiene dos efectos malos:
-///
-///  1. Un comentario se anuncia como "modulo danado" cuando se pide leer, y eso es
-///     mentira: se ha descargado bien y esta entero.
-///  2. La app no puede distinguir "hay que bajarlo otra vez" --que es lo que se
-///     ofrece con un modulo danado-- de "este modulo no tiene esta pantalla", que no
-///     se arregla bajandolo otra vez.
-///
-/// Y POR QUE ES EXCEPCION Y NO UN RESULTADO. `ModuloAbierto` devuelve
-/// `ResultadoDeAbrir` para todo lo que pasa al **abrir**, que son fallos de archivos
-/// y de formato. Estas consultas ya son correctas: son validas en un modulo de otro
-/// tipo. Devolverlas dentro de un resultado obligaria a que **cada** consulta de las
-/// ocho comprobara el resultado, y una comprobacion que se puede olvidar en ocho sitios
-/// es una que se va a olvidar. La excepcion hace que el olvido sea un fallo de
-/// compilacion... en cuanto alguien escribe un test.
-class NoEsUnaBiblia implements Exception {
-  const NoEsUnaBiblia(this.tipo, this.queSePedian);
-
-  final TipoDeContenido tipo;
-
-  /// Que se estaba intentando hacer, en castellano y en minuscula.
-  ///
-  /// Va en el mensaje porque el mensaje lo va a leer alguien: "no se pueden pedir
-  /// [esto]" dice mas que un `UnsupportedError` con el nombre del metodo.
-  final String queSePedian;
-
-  /// El mensaje, para la pantalla.
-  ///
-  /// Y DICE QUE SE PUEDE ABRIR, y no solo que no. El comentario se ha descargado
-  /// entero y esta bien: lo que no hay todavia es una pantalla para leerlo. Decirlo
-  /// evita que quien lo ha descargado piense que ha hecho algo mal.
-  String get mensaje => switch (tipo) {
-    TipoDeContenido.biblia => 'Este modulo es una Biblia y no deberia llegar aqui.',
-    TipoDeContenido.comentario =>
-      'Este modulo es un comentario, no una Biblia: no tiene versiculos, asi que no se '
-          'puede leer todavia en la pantalla de lectura. El fichero esta entero y se '
-          'ha descargado bien.',
-    TipoDeContenido.desconocido =>
-      'Este modulo declara un tipo de contenido que la app no conoce, asi que no se '
-          'puede leer.',
-  };
-
-  @override
-  String toString() => 'NoEsUnaBiblia(${tipo.nombreEnElModulo}): $mensaje';
 }

@@ -19,6 +19,7 @@
 // de este proyecto en vez de con la del modulo.
 
 import 'package:ab/data/services/sqlite_service.dart';
+import 'package:ab/domain/models/nota.dart';
 import 'package:ab/domain/models/pasaje.dart';
 import 'package:ab/domain/models/tipo_de_contenido.dart';
 import 'package:ab/domain/models/referencia.dart';
@@ -113,9 +114,24 @@ class ModuloAbierto {
       );
     }
 
-    return Abierto(
-      ModuloAbierto._(sqlite, id, ruta, TipoDeContenido.fromModulo(tipo)),
-    );
+    final contenido = TipoDeContenido.fromModulo(tipo);
+
+    // Y UN TIPO QUE NO SE CONOCE NO SE ABRE, y es aqui y no en cada consulta.
+    //
+    // Antes el refusal estaba en ocho metodos, uno por consulta, y era el unico sitio
+    // donde no se podia olvidar porque todos decian lo mismo. Ahora que un comentario
+    // **si** se lee, el caso que queda es el tipo desconocido, y no hay ocho sino **uno**:
+    // la tabla de la que se lee sale del tipo, y un tipo sin tabla no tiene nada que
+    // leer. Un solo sitio es un sitio que se puede comprobar.
+    if (contenido.tablaDeContenido == null) {
+      sqlite.cerrar();
+      return FalloAlAbrir(
+        'El modulo declara que su contenido es de tipo "$tipo", que esta app no sabe '
+        'leer. Se ha descargado bien; lo que no se puede es enseñarlo.',
+      );
+    }
+
+    return Abierto(ModuloAbierto._(sqlite, id, ruta, contenido));
   }
 
   void cerrar() => _sqlite.cerrar();
@@ -148,30 +164,6 @@ class ModuloAbierto {
     }
   }
 
-  /// Se niega a hacer una consulta de versiculos en un modulo que no los tiene.
-  ///
-  /// Y EL MOTIVO DICE QUE ES, Y NO QUE FALLA UNA CONSULTA. `no such table: verses` es
-  /// la verdad tecnica y no le dice nada a quien lo lee: parece que el modulo este
-  /// danado, cuando lo que pasa es que es un comentario y no tiene versiculos. El
-  /// mensaje dice que es un comentario, y por que no se puede leer asi.
-  ///
-  /// Y SE LANZA UNA EXCEPCION Y NO SE DEVUELVE UNA LISTA VACIA, porque una lista vacia
-  /// se confunde con "este modulo no tiene ese capitulo", que es una **informacion** y
-  /// no un fallo. Pinta una pantalla vacia y dice que el texto no esta ahi, y el que lo
-  /// esta leyendo no sabe que lo que pasa es que ha abierto el tipo de modulo que no
-  /// tiene esa pantalla.
-  ///
-  /// Y DEVUELVE `void` Y NO `Never`. Con `Never` el analizador
-  /// marca como **codigo muerto** todo lo que hay despues de la llamada --las ocho
-  /// consultas-- y ensena nueve avisos en un fichero donde no hay ningun problema. El
-  /// `throw` esta dentro y solo se llega si el modulo no es una Biblia, asi que el
-  /// comportamiento es identico; lo unico que cambia es que el analizador deja de senalar
-  /// codigo que si se ejecuta.
-  void _exigirVersiculos(String que) {
-    if (tieneVersiculos) return;
-    throw NoEsUnaBiblia(_tipo, que);
-  }
-
   // --- los terminos ---
 
   /// Un campo de la tabla `info`.
@@ -180,12 +172,37 @@ class ModuloAbierto {
   /// Que clase de contenido es este modulo, segun el propio modulo.
   TipoDeContenido get tipo => _tipo;
 
-  /// Si este modulo tiene versiculos.
+  /// De que tabla se lee el contenido.
   ///
-  /// Y LA PREGUNTA SE HACE UNA VEZ, AL ABRIR, Y NO EN CADA CONSULTA. Es lo unico que
-  /// evita el crash sin repetir el `if` en cinco metodos: un `if` por consulta es un
-  /// sitio mas donde olvidarse, y hay cinco consultas que usan `verses`.
-  bool get tieneVersiculos => _tipo == TipoDeContenido.biblia;
+  /// Y LA RESOLUCION ESTA EN EL CONSTRUCTOR Y NO EN CADA CONSULTA. El nombre de la
+  /// tabla no se escribe ni una vez en las consultas: sale de aqui, del tipo que declara
+  /// el propio modulo. Es lo unico que hace que el mismo codigo sirva para una Biblia --
+  /// tabla `verses`, un texto por versiculo-- y para un comentario --tabla `commentary`,
+  /// varias notas por versiculo-- sin un `if` en cada consulta.
+  ///
+  /// Y NO PUEDE SER NULL. `abrir` no deja pasar un modulo cuyo tipo no tiene tabla, y
+  /// por eso el `!` de abajo no puede saltar: es una comprobacion del constructor de
+  /// hecha una vez y que no se vuelve a hacer.
+  String get _tabla => _tablaDeContenido!;
+
+  /// El nombre de la tabla de contenido, tal cual lo usa el `.amod`.
+  ///
+  /// Y ES EL **NOMBRE DE LA TABLA** Y NO UN ALIAS. Se escribe en la consulta con
+  /// interpolacion, y eso seria una inyeccion de SQL si el valor viniera de fuera. Aqui
+  /// no puede venir: sale de un `switch` cerrado sobre un enum, y no de un dato leido del
+  /// fichero. Si algun dia esto pasara a leer el nombre de la tabla de `info`, deja de
+  /// ser valido y hay que mettrelo en la lista blanca de `sqlite_service.dart`.
+  String? get _tablaDeContenido => _tipo.tablaDeContenido;
+
+  /// Si este modulo trae texto de Biblia.
+  ///
+  /// Y NO SE USA PARA PODER LEER. Un comentario tambien se lee; lo que no trae es
+  /// **texto de Biblia**. Confundir "no tiene versiculos" con "no se puede leer" fue
+  /// exactamente el fallo que dejo el comentario imposible de abrir.
+  bool get tieneTextosDeBiblia => _tipo == TipoDeContenido.biblia;
+
+  /// Si este modulo trae notas de comentario.
+  bool get tieneNotas => _tipo == TipoDeContenido.comentario;
 
   /// Un campo entero de la tabla `info`, o null si no esta o no es un numero.
   ///
@@ -202,18 +219,21 @@ class ModuloAbierto {
   /// En orden alfabetico y no en orden canonico, y es a proposito: el modulo guarda
   /// `book` como texto sin indice, asi que el orden canonico no lo declara nadie. Se
   /// reordena con la tabla de libros del dominio, que si lo sabe.
-  List<String> libros() {
-    _exigirVersiculos('los libros');
-    return _sqlite.consultar('SELECT DISTINCT book FROM verses ORDER BY book')
-        .map((f) => f['book'] as String)
-        .toList();
-  }
+  List<String> libros() => _sqlite
+      .consultar('SELECT DISTINCT book FROM $_tabla ORDER BY book')
+      .map((f) => f['book'] as String)
+      .toList();
 
   /// Cuantos versiculos tiene un libro.
-  int? versiculosDe(String libro) {
-    _exigirVersiculos('cuantos versiculos tiene un libro');
-    return _sqlite.valor('SELECT count(*) FROM verses WHERE book = ?', [libro]) as int?;
-  }
+  ///
+  /// Y ES `count(DISTINCT verse)` Y NO `count(*)`. En una Biblia son lo mismo, porque
+  /// hay un texto por versiculo. En un comentario **no**: Juan 3:16 tiene tres notas, y
+  /// `count(*)` diria que Juan tiene mas versiculos de los que tiene. El numero que
+  /// importa es de quantos versiculos hay nota.
+  int? versiculosDe(String libro) => _sqlite.valor(
+    'SELECT count(DISTINCT verse) FROM $_tabla WHERE book = ?',
+    [libro],
+  ) as int?;
 
   /// Los capitulos que tiene un libro, en orden.
   ///
@@ -222,16 +242,13 @@ class ModuloAbierto {
   /// en una traduccion es informacion real. La RVR, por ejemplo, tiene libros con un
   /// capitulo vacio, y ofrecer "capitulo 51" en uno de ellos lleva a una pantalla en
   /// blanco.
-  List<int> capitulosDe(String libro) {
-    _exigirVersiculos('los capitulos');
-    return _sqlite
-        .consultar(
-          'SELECT DISTINCT chapter FROM verses WHERE book = ? ORDER BY chapter',
-          [libro],
-        )
-        .map((f) => f['chapter'] as int)
-        .toList();
-  }
+  List<int> capitulosDe(String libro) => _sqlite
+      .consultar(
+        'SELECT DISTINCT chapter FROM $_tabla WHERE book = ? ORDER BY chapter',
+        [libro],
+      )
+      .map((f) => f['chapter'] as int)
+      .toList();
 
   /// El numero de capitulos, o null si el libro no esta.
   ///
@@ -244,42 +261,106 @@ class ModuloAbierto {
 
   // --- los versiculos ---
 
-  /// Los versiculos de un capitulo, o de un solo versiculo.
+  /// Lo que hay en un capitulo, o en un solo versiculo.
   ///
-  /// Con [Referencia.versiculo] nulo son todos los del capitulo. Con versiculo, uno
+  /// Y SON DOS COSAS DISTINTAS EN UN SOLO METODO, Y NO UN METODO CON UN `if`. Un
+  /// `if (esComentario)` aqui meteria en el mismo return el texto de la Sagrada
+  /// Escritura y el de un teologo de 1832, que es justo la confusion que este change
+  /// viene a quitar. Aqui se separa: el texto va en `versiculos` y la nota va en `notas`,
+  /// y el `switch` es sobre el **tipo**, que es un dato, no sobre una conjetura.
+  ///
+  /// Con [Referencia.versiculo] nulo son todas las del capitulo. Con versiculo, uno
   /// solo. Y si no existe ninguno, un pasaje vacio --no null--, porque la pantalla
   /// tiene que poder pintar "aqui no hay nada" y eso es un resultado, no un fallo.
   ///
-  /// El texto sale del campo `text`, que ya viene limpio. El campo `raw` con marcas
-  /// USFM --`\+w Dios|strong="G2316"`-- se consume **en otro sitio**, cuando se pinte
-  /// la palabra de Dios en rojo. Aqui el texto se pasa tal cual: un lector que altera
-  /// el texto que va a leer es un lector que no se puede citar.
+  /// El texto sale del campo `text`, que ya viene limpio, en las dos tablas. El campo
+  /// `raw` con marcas USFM --`\+w Dios|strong="G2316"`-- se consume **en otro sitio**,
+  /// cuando se pinte la palabra de Dios en rojo. Aqui el texto se pasa tal cual: un
+  /// lector que altera el texto que va a leer es un lector que no se puede citar, y eso
+  /// vale igual para un versiculo que para una nota.
   Pasaje leer(Referencia referencia) {
-    _exigirVersiculos('un pasaje');
+    // Y LA CONSULTA SE MONTA ENTERA Y NO A TROZOS CON INTERPOLACION CONDICIONAL. La
+    // primera version hacia `'... WHERE book = ? AND chapter = ?'
+    // '${tieneNotas ? ', seq' : ''}'`, que es un `, seq` pegado **despues** del `?` y no
+    // en la lista de columnas: `SELECT verse, text FROM commentary WHERE book = ? AND
+    // chapter = ?, seq ORDER BY verse`, y SQLite contesta `near ",": syntax error`.
+    //
+    // El fallo es instructivo porque **parecia** funcionar: en `_exigirVersiculos` el
+    // `tieneNotas` era siempre falso, asi que la rama del comentario no se ejecutaba
+    // nunca y no habia forma de verlo.
+    final seleccion = tieneNotas ? 'SELECT verse, seq, text FROM $_tabla' : 'SELECT verse, text FROM $_tabla';
+    final orden = tieneNotas ? ' ORDER BY verse, seq' : ' ORDER BY verse';
     final filas = referencia.versiculo == null
         ? _sqlite.consultar(
-            'SELECT verse, text FROM verses WHERE book = ? AND chapter = ? ORDER BY verse',
-            [referencia.libro, referencia.capitulo],
+            '$seleccion WHERE book = ? AND chapter = ?$orden',
+            <Object?>[referencia.libro, referencia.capitulo],
           )
         : _sqlite.consultar(
-            'SELECT verse, text FROM verses WHERE book = ? AND chapter = ? AND verse = ?',
-            [referencia.libro, referencia.capitulo, referencia.versiculo],
+            '$seleccion WHERE book = ? AND chapter = ? AND verse = ?$orden',
+            <Object?>[referencia.libro, referencia.capitulo, referencia.versiculo],
           );
 
     return Pasaje(
       referencia: referencia,
       titulo: referencia.texto,
-      versiculos: <Versiculo>[
-        for (final f in filas) Versiculo(f['verse'] as int, f['text'] as String),
-      ],
+      versiculos: tieneNotas
+          ? const <Versiculo>[]
+          : <Versiculo>[
+              for (final f in filas) Versiculo(f['verse'] as int, f['text'] as String),
+            ],
+      // Y LAS NOTAS IDENTICAS SE QUITAN, Y ESTO ES UNA EXCEPCION MEDIDA.
+      //
+      // El CLARKE publicado tiene 19.742 notas en 19.741 pasajes: **un** versiculo con dos
+      // notas, Mateo 23:13, y las dos son **el mismo texto**, byte a byte, 2.709
+      // caracteres cada una. Medido el 4 de octubre de 2026 con `length()` y con
+      // `=` sobre el fichero real.
+      //
+      // Es decir: el modulo tiene una fila repetida. Y `info.defects_count` dice `0`, con
+      // lo cual esta **mintiendo**; el defecto no esta declarado. Ver `AGENTS.md`.
+      //
+      // Que se quite en la app y no en el modulo es deliberado, y por dos razones. Una: la
+      // app es de solo lectura y no toca el `.amod`. Dos: un lector que ensena el mismo
+      // parrafo de 2.709 caracteres dos veces seguidas parece roto, y quien lo ve no
+      // puede saber que la culpa es del dato.
+      //
+      // Y SOLO SE QUITA CUANDO EL TEXTO ES **IDENTICO** Y EN EL **MISMO VERSICULO**. Un
+      // comentario que de verdad repita una frase en dos versiculos distintos, o dos
+      // notas parecidas que no sean iguales, se ensenan las dos: quitar contenido porque
+      // se parece a otro es peor que ensenarlo de mas.
+      notas: tieneNotas
+          ? <Nota>[
+              for (final f in filas)
+                if (!_repetidaDeInmediato(filas, f))
+                  Nota(
+                    versiculo: f['verse'] as int,
+                    orden: f['seq'] as int,
+                    texto: f['text'] as String,
+                  ),
+            ]
+          : const <Nota>[],
     );
+  }
+
+  /// Si esta fila es la repeticion inmediata de la anterior, con el mismo texto.
+  ///
+  /// Y "inmediata" Y NO "la anterior del mismo versiculo" porque las filas llegan
+  /// ordenadas por `verse, seq`: dos notas identicas del mismo versiculo son contiguas, y
+  /// dos notas identicas de versiculos **distintos** --que pueden existir-- no se tocan,
+  /// porque son dos cosas que el autor escribio en dos sitios.
+  static bool _repetidaDeInmediato(
+    List<Map<String, Object?>> filas,
+    Map<String, Object?> fila,
+  ) {
+    final i = filas.indexOf(fila);
+    if (i <= 0) return false;
+    final anterior = filas[i - 1];
+    return anterior['verse'] == fila['verse'] && anterior['text'] == fila['text'];
   }
 
   /// Si ese pasaje existe en este modulo.
   bool existe(Referencia referencia) {
-    _exigirVersiculos('si un pasaje existe');
     final n = _sqlite.valor(
-      'SELECT count(*) FROM verses WHERE book = ? AND chapter = ?'
+      'SELECT count(*) FROM $_tabla WHERE book = ? AND chapter = ?'
       '${referencia.versiculo == null ? '' : ' AND verse = ?'}',
       <Object?>[
         referencia.libro,
@@ -295,22 +376,46 @@ class ModuloAbierto {
   /// Va aparte de [leer] porque la biblioteca y el selector de capitulos la necesitan
   /// sin el texto: traer 3.119 versiculos de Juan para pintar una lista de numeros
   /// es tirar la memoria para pintar una fila.
-  List<int> numerosDeVersiculos(Referencia referencia) {
-    _exigirVersiculos('los numeros de versiculo');
-    return _sqlite
-        .consultar(
-          'SELECT verse FROM verses WHERE book = ? AND chapter = ? ORDER BY verse',
-          [referencia.libro, referencia.capitulo],
-        )
-        .map((f) => f['verse'] as int)
-        .toList();
-  }
+  ///
+  /// Y `DISTINCT` PORQUE EN UN COMENTARIO HAY VARIAS NOTAS POR VERSICULO. Sin el, el
+  /// selector de Juan 3 ofreceria el 16 tres veces, que es como se ve que no se ha
+  /// tenido en cuenta que la clave primaria son cuatro columnas.
+  List<int> numerosDeVersiculos(Referencia referencia) => _sqlite
+      .consultar(
+        'SELECT DISTINCT verse FROM $_tabla WHERE book = ? AND chapter = ? ORDER BY verse',
+        <Object?>[referencia.libro, referencia.capitulo],
+      )
+      .map((f) => f['verse'] as int)
+      .toList();
 
-  /// Cuantos versiculos tiene un modulo en total.
-  int totalDeVersiculos() {
-    _exigirVersiculos('cuantos versiculos tiene en total');
-    return _sqlite.valor('SELECT count(*) FROM verses') as int? ?? 0;
-  }
+  /// Cuantos versiculos tienen contenido en este modulo.
+  ///
+  /// Y NO ES `count(DISTINCT verse)`, QUE ES LO QUE PARECE Y ESTA MEDIDO QUE FALLA.
+  /// Sobre el KJV real, el 4 de octubre de 2026:
+  ///
+  ///     SELECT count(DISTINCT verse) FROM verses   ->  176
+  ///
+  /// No 31.102. Porque `verse` es el numero **dentro del capitulo**, y en todo el modulo
+  /// solo hay 176 numeros distintos. Es un numero cierto y no es el que se quiere.
+  ///
+  /// Lo que cuenta versiculos es contar **pasajes**, que son la terna de libro, capitulo
+  /// y versiculo. En el KJV da 31.102; en el CLARKE da 19.741, que son los versiculos que
+  /// tienen al menos una nota --una menos que las 19.742 notas, porque Mateo 23:13 tiene
+  /// dos--, y ese es exactamente el numero que el selector de versiculos tiene que
+  /// ofrecer.
+  int totalDeVersiculos() => _sqlite.valor(
+        'SELECT count(*) FROM (SELECT DISTINCT book, chapter, verse FROM $_tabla)',
+      ) as int? ?? 0;
+
+  /// Cuantas notas de comentario tiene este modulo en total.
+  ///
+  /// Y EN UN MODULO DE BIBLIA ES 0, Y NO UN ERROR. La tabla `verses` no tiene columna
+  /// `seq`, asi que la consulta no se puede hacer; y el numero de filas de una tabla
+  /// que no guarda notas **si** es cero. Se comprueba el tipo antes de preguntar, que es
+  /// un `switch` sobre un dato y no una excepcion de SQL.
+  int totalDeNotas() => tieneNotas
+      ? _sqlite.valor('SELECT count(*) FROM $_tabla') as int? ?? 0
+      : 0;
 
   /// Buscar una palabra en todo el modulo.
   ///
@@ -322,16 +427,19 @@ class ModuloAbierto {
   /// El `%` y el `_` del patron se escapan, porque si no, buscar "a_b" devuelve
   /// cualquier cosa y quien busca una palabra con guion recibe una lista de miles de
   /// resultados sin entender por que.
+  ///
+  /// Y TAMBIEN BUSCA EN UN COMENTARIO, y no solo en una Biblia. Las dos tablas tienen
+  /// `book`, `chapter`, `verse` y `text`, asi que la misma consulta vale para las dos, y
+  /// buscar "propitiacion" en el CLARKE es justo lo que hace quien tiene un comentario.
   List<Referencia> buscar(String palabra, {int limite = 200}) {
-    _exigirVersiculos('la busqueda');
     final limpia = palabra.trim();
     if (limpia.length < 2) return const <Referencia>[];
     final patron = '%${limpia.replaceAll('%', '').replaceAll('_', '')}%';
 
     return <Referencia>[
       for (final f in _sqlite.consultar(
-        'SELECT book, chapter, verse FROM verses WHERE text LIKE ? LIMIT ?',
-        [patron, limite],
+        'SELECT DISTINCT book, chapter, verse FROM $_tabla WHERE text LIKE ? LIMIT ?',
+        <Object?>[patron, limite],
       ))
         Referencia(f['book'] as String, f['chapter'] as int, f['verse'] as int),
     ];

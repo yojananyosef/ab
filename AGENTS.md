@@ -544,6 +544,52 @@ Dos reglas, y hacen falta las dos:
 - **`escribir` no lanza nunca.** Si aun asi falla, escribe un informe que diga que ha
   fallado y por que. Un `try` que devuelve un informe vacio sigue mintiendo.
 
+### `count(DISTINCT verse)` NO cuenta versiculos
+
+Medido el 4 de octubre de 2026 sobre el KJV real:
+
+    SELECT count(*) FROM verses                 ->  31.102
+    SELECT count(DISTINCT verse) FROM verses    ->  176
+
+176, no 31.102. Porque `verse` es el numero **dentro del capitulo**, y en todo el modulo
+solo hay 176 numeros distintos. Es un numero cierto y no es el que se quiere, y es el
+error que se escribe cuando se generaliza una consulta a dos tablas.
+
+Lo que cuenta versiculos es contar **pasajes**, que son la terna de libro, capitulo y
+versiculo. En el KJV da 31.102; en el CLARKE da 19.741, que son los versiculos con al
+menos una nota.
+
+Y el otro lado de lo mismo: `versiculosDe(libro)` si puede usar `count(DISTINCT verse)`,
+porque dentro de **un** libro el numero si identifica el versiculo. El `DISTINCT` hace
+falta por otra razon ahi: hay un versiculo con dos notas, y sin el el selector lo ofrece
+dos veces.
+
+### Una nota repetida en el dato, y `defects_count` que no lo declara
+
+Medido el 4 de octubre de 2026 sobre el CLARKE publicado:
+
+    notas                                      19.742
+    pasajes distintos (book, chapter, verse)   19.741
+    versiculos con MAS de una nota             1
+    info.defects_count                         0
+
+El unico es **Mateo 23:13**, y sus dos notas son **el mismo texto**, 2.709 caracteres cada
+una. Es una fila repetida en el fichero, y `defects_count` dice `0`, con lo cual esta
+mintiendo.
+
+Que se quite en la app y no en el modulo es deliberado: la app es de solo lectura y no
+toca el `.amod`, y un lector que ensena el mismo parrafo dos veces seguidas parece roto.
+
+El limite es estrecho a proposito:
+
+- **Solo** si el texto es identico.
+- **Solo** en el **mismo versiculo**, y solo la repeticion inmediata. Dos notas parecidas
+  que no sean iguales se ensenan las dos: quitar contenido porque se parece a otro es
+  peor que ensenarlo de mas.
+
+Y lo que hay que arreglar de verdad esta en `aa`, que es quien construyo el `.amod`, y es
+decision de la persona del proyecto.
+
 ### La barra y el cuerpo tienen que caer en la misma columna
 
 Medido el 4 de octubre de 2026 a 1900 px de ancho: el contenido se centraba en una

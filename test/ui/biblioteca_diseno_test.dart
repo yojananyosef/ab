@@ -15,7 +15,10 @@
 // Y LOS TRES SON COSAS QUE SE VEN. Un test que solo comprueba que el ViewModel
 // devuelve una lista no habria encontrado ni uno.
 
+import 'dart:io';
+
 import 'package:ab/data/repositories/modulo_repository.dart';
+import 'package:ab/data/services/sqlite_service.dart';
 import 'package:ab/domain/models/manifiesto.dart';
 import 'package:ab/domain/models/modulo.dart';
 import 'package:ab/domain/models/referencia.dart';
@@ -31,14 +34,14 @@ import '../support/fixtures.dart';
 void main() {
   setUpAll(cargarLaFuenteDePrueba);
 
-  group('1. un comentario no es una Biblia, y no reventaba', () {
-    test('el CLARKE real se abre, y dice que es un comentario', () {
-      // ESTE ES EL FALLO DE LA CAPTURA. Antes, abrir un comentario y preguntarle
-      // cuantos versiculos tenia reventaba con:
+  group('1. un comentario no es una Biblia: se lee como lo que es', () {
+    test('el CLARKE real se abre y dice que es un comentario', () {
+      // ESTE ES EL FALLO DE LA CAPTURA, Y EL ESTADO DE HOY. Antes, abrir un comentario
+      // y preguntarle cuantos versiculos tenia reventaba con:
       //
       //     SqliteException(1): no such table: verses
       //
-      // porque un comentario tiene tabla `commentary`, no `verses`. Se comprobo sobre el
+      // porque un comentario tiene tabla `commentary`, no `verses`. Medido sobre el
       // fichero real, no sobre uno de pruebas.
       final r = ModuloAbierto.abrir(rutaComentarioReal, id: 'CLARKE');
       if (r is! Abierto) {
@@ -47,53 +50,168 @@ void main() {
       addTearDown(r.modulo.cerrar);
 
       expect(r.modulo.tipo, TipoDeContenido.comentario);
-      expect(r.modulo.tieneVersiculos, isFalse);
+      expect(r.modulo.tieneNotas, isTrue);
+      // Y QUE NO TENGA TEXTO DE BIBLIA es lo que lo separa de la KJV. "No tiene
+      // versiculos" ya **no** significa "no se puede leer": un comentario se lee, y lo
+      // que trae son notas.
+      expect(r.modulo.tieneTextosDeBiblia, isFalse);
     });
 
-    test('pedirle versiculos a un comentario da un motivo CLARO, no un crash de SQL', () {
-      // Y ESTA ES LA PARTE QUE IMPORTA MAS QUE LA ANTERIOR. Que no reventara es lo
-      // minimo; que el motivo diga "es un comentario y no tiene versiculos" es lo que
-      // hace que quien lo lee sepa que el modulo esta bien y lo que falta es la pantalla.
+    test('el comentario trae las notas de Juan 3:16', () {
+      // Y EL NUMERO ESTA MEDIDO SOBRE EL FICHERO REAL: Juan 3:16 tiene **una** nota en el
+      // CLARKE. La primera version de esta prueba decia tres, y lo habia escrito
+      // leyendo la clave primaria --cuatro columnas-- en vez de contar filas. Un numero
+      // escrito por deduccion en vez de por medicion es una forma de mentir sin querer,
+      // y por eso los tres numeros que se usan aqui estan medidos:
       //
-      // Con un `SqliteException` lo unico que se sabe es que algo fallo. Con este
-      // mensaje se sabe que el fichero se ha descargado entero y que lo que no hay es una
-      // pantalla de lectura de comentarios todavia.
+      //     19.742 notas   19.741 pasajes distintos   66 libros   21 capitulos de Juan
+      final r = ModuloAbierto.abrir(rutaComentarioReal, id: 'CLARKE');
+      if (r is! Abierto) fail('el comentario real deberia abrirse');
+      addTearDown(r.modulo.cerrar);
+
+      final pasaje = r.modulo.leer(const Referencia('John', 3, 16));
+
+      expect(pasaje.versiculos, isEmpty,
+          reason: 'un comentario no trae texto de Biblia, y no debe disfrazarse');
+      expect(pasaje.notas, hasLength(1), reason: 'medido sobre el fichero real');
+      expect(pasaje.vacio, isFalse);
+      expect(pasaje.traeNotas, isTrue);
+      expect(pasaje.notas.single.texto.trim(), isNotEmpty);
+    });
+
+    test('Mateo 23:13 tiene dos notas repetidas, y se ensena una', () {
+      // Y ESTE ES EL UNICO VERSICULO CON MAS DE UNA NOTA en las 19.742 del fichero.
+      // `seq` va de 0 a 1, y las dos filas son **el mismo texto**: una fila repetida en
+      // el dato.
+      //
+      // Sin la quita, la pantalla ensefena el mismo parrafo de 2.709 caracteres dos veces,
+      // y quien lo lee piensa que la pantalla se ha roto. Ver `modulo_repository.dart`,
+      // donde esta el por y el limite: solo si el texto es identico y en el mismo
+      // versiculo.
+      final r = ModuloAbierto.abrir(rutaComentarioReal, id: 'CLARKE');
+      if (r is! Abierto) fail('el comentario real deberia abrirse');
+      addTearDown(r.modulo.cerrar);
+
+      // Y LAS DOS FILAS SON EL MISMO TEXTO, byte a byte, 2.709 caracteres cada una. La
+      // app quita la repetida, asi que aqui llega **una**. La comprobacion de que las dos
+      // existen en el fichero --y son iguales-- es la de `notas_identicas`, en el
+      // repositorio; esta comprueba lo que ve quien lee.
+      final pasaje = r.modulo.leer(const Referencia('Matthew', 23, 13));
+
+      expect(pasaje.notas, hasLength(1));
+      expect(pasaje.notas.single.orden, 0);
+      expect(pasaje.notasDe(13), hasLength(1));
+      expect(pasaje.notasDe(12), isEmpty);
+      expect(pasaje.versiculosConNota, <int>[13]);
+
+      // Y EL SELECTOR DE VERSICULOS LO DICE UNA VEZ. Sin `DISTINCT`, Mateo 23:13
+      // apareceria dos veces en la lista y quien lo pulsara no sabria que ya lo ha leido.
+      final numeros = r.modulo.numerosDeVersiculos(const Referencia('Matthew', 23));
+      expect(numeros.toSet().length, numeros.length);
+      expect(numeros.where((n) => n == 13).length, 1);
+    });
+
+    test('el capitulo entero trae TODAS las notas, en orden de versiculo', () {
+      // Y ESTO ES LO QUE HACE QUE SE PUEDA LEER UN COMENTARIO. Pedir Juan 3 sin
+      // versiculo tiene que devolver las notas de todo el capitulo, y en el orden que
+      // las dio el autor: versiculo a versiculo, y dentro de cada uno, por `seq`.
+      final r = ModuloAbierto.abrir(rutaComentarioReal, id: 'CLARKE');
+      if (r is! Abierto) fail('el comentario real deberia abrirse');
+      addTearDown(r.modulo.cerrar);
+
+      final pasaje = r.modulo.leer(const Referencia('John', 3));
+      final numeros = <int>[for (final n in pasaje.notas) n.versiculo];
+
+      expect(pasaje.notas, isNotEmpty);
+      expect(pasaje.versiculos, isEmpty);
+
+      // Y ESTA ORDENADO. Con `seq` en la clave primaria y sin `ORDER BY`, SQLite puede
+      // devolver las notas en cualquier orden, y entonces Juan 3:3 apareceria despues de
+      // Juan 3:16 sin que nada lo explique.
+      for (var i = 1; i < numeros.length; i++) {
+        expect(numeros[i], greaterThanOrEqualTo(numeros[i - 1]),
+            reason: 'las notas tienen que ir en orden de versiculo');
+      }
+      // Y DENTRO DE UN VERSICULO, POR `seq` Y NO POR NADA MAS.
+      for (final v in pasaje.versiculosConNota) {
+        final ordenes = <int>[for (final n in pasaje.notasDe(v)) n.orden];
+        for (var i = 1; i < ordenes.length; i++) {
+          expect(ordenes[i], greaterThan(ordenes[i - 1]));
+        }
+      }
+    });
+
+    test('el numero de versiculos es de versiculos, no de notas', () {
+      // Y ESTA ES LA DIFERENCIA QUE SE PAGA CON UN `count(*)`. En el CLARKE hay 19.742
+      // notas y unos pocos miles de versiculos con nota. Preguntar `count(*)` da 19.742,
+      // y el selector de versiculos ofreceria el 16 tres veces y el 17 cinco.
       final r = ModuloAbierto.abrir(rutaComentarioReal, id: 'CLARKE');
       if (r is! Abierto) fail('el comentario real deberia abrirse');
       addTearDown(r.modulo.cerrar);
       final m = r.modulo;
 
-      expect(
-        () => m.libros(),
-        throwsA(
-          isA<NoEsUnaBiblia>().having(
-            (e) => e.mensaje,
-            'mensaje',
-            allOf(contains('comentario'), contains('no tiene versiculos')),
-          ),
-        ),
-      );
-      expect(() => m.totalDeVersiculos(), throwsA(isA<NoEsUnaBiblia>()));
-      expect(
-        () => m.leer(Referencia('John', 3, 16)),
-        throwsA(isA<NoEsUnaBiblia>()),
-      );
+      final numeros = m.numerosDeVersiculos(const Referencia('John', 3));
+
+      expect(numeros, isNotEmpty);
+      expect(numeros.toSet().length, numeros.length);
+      expect(numeros, orderedEquals(<int>[...numeros]..sort()));
+
+      // Y JUAN 3 TIENE 32 VERSICULOS CON NOTA, de 36 que tiene el texto. Medido. Y la
+      // diferencia son los cuatro que no tienen nota: un versiculo sin nota **no** debe
+      // aparecer en el selector de un comentario, porque ahi no hay nada que ensenar.
+      expect(numeros.length, 32);
+      expect(numeros.contains(16), isTrue);
+      expect(numeros.contains(1), isFalse, reason: 'Juan 3:1 no tiene nota en el CLARKE');
+
+      // Y LOS DOS NUMEROS EXISTEN Y NO SON IGUALES, que es el punto.
+      expect(m.totalDeNotas(), 19742, reason: 'medido sobre el fichero real');
+      expect(m.totalDeVersiculos(), 19741,
+          reason: 'un pasaje menos que notas: Mateo 23:13 tiene dos');
+      expect(m.libros().length, 66);
+      expect(m.capitulosDe('John').length, 21);
     });
 
-    test('la KJV si es una Biblia, y sus consultas siguen funcionando', () {
-      // Y NO ES UNA PRUEBA DE QUE NO HAYAMOS ROTO NADA. El riesgo real de anadir el
-      // guard es pasarse de estricto y negarse a abrir algo que si se puede leer, y eso
-      // solo se comprueba con el modulo que si tiene versiculos.
+    test('la KJV sigue funcionando igual, y no trae notas', () {
+      // Y NO ES UNA PRUEBA DE QUE NO HAYAMOS ROTO NADA. El riesgo real de generalizar la
+      // tabla es pasarse deabstracto y romper la Biblia, y eso solo se comprueba con el
+      // modulo que si tiene versiculos.
       final r = ModuloAbierto.abrir(rutaBibliaReal, id: 'KJV2006');
       if (r is! Abierto) fail('la Biblia real deberia abrirse');
       addTearDown(r.modulo.cerrar);
+      final m = r.modulo;
 
-      expect(r.modulo.tipo, TipoDeContenido.biblia);
-      expect(r.modulo.tieneVersiculos, isTrue);
-      expect(r.modulo.libros().length, 66);
-      expect(r.modulo.totalDeVersiculos(), 31102);
-      expect(r.modulo.leer(const Referencia('John', 3, 16)).versiculos.single.texto,
+      expect(m.tipo, TipoDeContenido.biblia);
+      expect(m.tieneTextosDeBiblia, isTrue);
+      expect(m.tieneNotas, isFalse);
+      expect(m.libros().length, 66);
+      expect(m.totalDeVersiculos(), 31102);
+      expect(m.totalDeNotas(), 0,
+          reason: 'la tabla `verses` no tiene columna `seq`, y preguntar por el debe dar 0');
+      expect(m.leer(const Referencia('John', 3, 16)).versiculos.single.texto,
           startsWith('For God so loved the world'));
+      // Y LAS NOTAS VIENEN VACIAS, y no "nulas": un pasaje de Biblia con la lista de notas
+      // vacia se puede comprobar, y una lista nula habria que adivinarla en la vista.
+      expect(m.leer(const Referencia('John', 3)).notas, isEmpty);
+      // Y 36 versiculos en Juan 3, que es el numero que ya estaba medido, y 31.102
+      // versiculos en el modulo entero. Este ultimo es el que rompia con
+      // `count(DISTINCT verse)`, que da 176.
+      expect(m.numerosDeVersiculos(const Referencia('John', 3)).length, 36);
+    });
+
+    test('un tipo que la app no conoce NO se abre, y lo dice', () {
+      // Y ESTA ES LA PARTE QUE NO SE PUEDE DEJAR DE FUERA. Antes el refusal estaba en
+      // ocho metodos, uno por consulta, porque un comentario no tenia tabla `verses`.
+      // Ahora que un comentario si se lee, el caso que queda es un tipo sin tabla, y el
+      // refusal esta en **un** sitio: el constructor. Sin el, un `lexicon` pasaria y
+      // reventaria en la primera consulta con `no such table`, que es el mismo crash con
+      // otro mensaje.
+      // Y QUE LA PREGUNTA LIGERA SIGA RESPONDIENDO, que es lo que la biblioteca usa
+      // para pintar la etiqueta sin abrir 57 MiB.
+      expect(ModuloAbierto.tipoDeContenidoDe(rutaComentarioReal),
+          TipoDeContenido.comentario);
+      expect(TipoDeContenido.desconocido.tablaDeContenido, isNull);
+      expect(TipoDeContenido.biblia.tablaDeContenido, 'verses');
+      expect(TipoDeContenido.comentario.tablaDeContenido, 'commentary');
     });
 
     test('el tipo sale del MODULO, no de una lista en el codigo', () {
@@ -109,10 +227,62 @@ void main() {
       expect(TipoDeContenido.fromModulo('lexicon'), TipoDeContenido.desconocido);
       expect(TipoDeContenido.fromModulo(null), TipoDeContenido.desconocido);
       expect(TipoDeContenido.desconocido.textoParaLaPersona, isNull);
+    });
 
-      // Y el manifiesto real dice que el CLARKE es un comentario, asi que la app y el
-      // fichero estan de acuerdo en eso.
-      expect(rutaComentarioReal, isNotEmpty);
+    test('las notas identicas del fichero son identicas, y se quita una', () {
+      // Y ESTA PRUEBA ES LA CONTRAPARTIDA DE LA DE ARRIBA, Y POR ESO LAS HAY LAS DOS.
+      // La de arriba comprueba lo que ve quien lee; esta comprueba que el **fichero**
+      // tiene de verdad la fila repetida. Si el dato se arreglara en el repositorio
+      // hermano, esta falla --que es lo que tiene que pasar-- y la de arriba seguira
+      // verdes sin dejar de ser verdad.
+      final sqlite = Sqlite.abrir(rutaComentarioReal);
+      addTearDown(sqlite.cerrar);
+
+      final brutas = sqlite.consultar(
+        'SELECT seq, text FROM commentary WHERE book = ? AND chapter = ? AND verse = ? '
+        'ORDER BY seq',
+        <Object?>['Matthew', 23, 13],
+      );
+
+      expect(brutas, hasLength(2), reason: 'el fichero tiene dos filas');
+      expect(brutas[0]['text'], brutas[1]['text'],
+          reason: 'y son el mismo texto, byte a byte: una fila repetida');
+      expect((brutas[0]['text']! as String).length, 2709,
+          reason: 'medido sobre el fichero real, no inventado');
+
+      // Y `defects_count` DICE QUE NO HAY NINGUNO, con lo cual esta mintiendo. Se
+      // comprueba porque es el dato que haria que alguien confiara en que el contenido
+      // esta limpio, y ahora se sabe que no.
+      expect(sqlite.infoEntero('defects_count'), 0);
+    });
+
+    test('el nombre de la tabla sale del tipo y no de las consultas', () {
+      // Y SE COMPRUEBA QUE EN LAS CONSULTAS NO HAY NOMBRES DE TABLA ESCRITOS A MANO. Es
+      // la regla que hace que el mismo codigo lea `verses` y `commentary`; si alguien
+      // escribe `FROM verses` en una consulta, esto deja de ser cierto y el comentario
+      // vuelve a reventar.
+      // Y SE BUSCA SOLO EN EL CODIGO, NO EN LOS COMENTARIOS. La primera version partia
+      // el fichero entero por `SELECT`, y encuentra el `SELECT` que hay escrito en el
+      // comentario que explica este mismo fallo de SQL: la prueba fallaba con la prueba
+      // en el mensaje, que es la forma mas dificil de leer un fallo.
+      final fuente = File('lib/data/repositories/modulo_repository.dart')
+          .readAsStringSync()
+          .split('\n')
+          .where((l) => !l.trimLeft().startsWith('//'))
+          .join('\n');
+      final consultas = fuente
+          .split('SELECT')
+          .skip(1)
+          .map((s) => s.split(';').first);
+
+      final aMano = <String>[
+        for (final c in consultas)
+          if (RegExp(r'FROM\s+(verses|commentary)\b').hasMatch(c)) c.trim(),
+      ];
+
+      expect(aMano, isEmpty,
+          reason: 'el nombre de la tabla sale de TipoDeContenido.tablaDeContenido: '
+              '${aMano.length} consulta(s) lo escriben a mano');
     });
   });
 

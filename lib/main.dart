@@ -611,9 +611,22 @@ class _AbAppState extends State<AbApp> {
       // las dos cosas son mentira. Se le dice lo que es y que se podra leer cuando haya
       // pantalla para el.
       if (tipo == TipoDeContenido.comentario) {
+        // Y UN COMENTARIO YA SE PUEDE LEER, y el aviso lo dice con su numero de notas y
+        // no con un "todavia no". Antes decia "falta la pantalla de comentarios", que
+        // era verdad el 4 de octubre de 2026 y hoy es mentira.
+        // Y EL NOMBRE DE LA TABLA SALE DEL TIPO, IGUAL QUE EN EL REPOSITORIO. La
+        // primera version de esto escribia `FROM commentary` a mano, que es
+        // exactamente lo que la prueba `el nombre de la tabla sale del tipo y no de las
+        // consultas` prohibe en el repositorio: el dia que haya un segundo tipo de
+        // comentario, esta linea daria `no such table: commentary` en el sitio mas
+        // visible, que es el aviso de descarga.
+        final tabla = tipo.tablaDeContenido!;
+        final notas = sqlite.valor('SELECT count(*) FROM $tabla') as int?;
+        final passages = sqlite.valor(
+          'SELECT count(*) FROM (SELECT DISTINCT book, chapter, verse FROM $tabla)',
+        ) as int?;
         _biblioteca.anadirAviso(
-          '$nombre: comentario descargado. Todavia no se puede leer en la app: '
-          'falta la pantalla de comentarios.',
+          '$nombre: $notas notas sobre $passages versiculos, listo para leer.',
         );
         return;
       }
@@ -626,7 +639,10 @@ class _AbAppState extends State<AbApp> {
         return;
       }
 
-      final n = sqlite.valor('SELECT count(*) FROM verses');
+      final n = sqlite.valor(
+        'SELECT count(*) FROM '
+        '(SELECT DISTINCT book, chapter, verse FROM ${tipo.tablaDeContenido!})',
+      );
       _biblioteca.anadirAviso('$nombre: $n versiculos, listo para leer.');
     } catch (e) {
       _biblioteca.anadirAviso('No se ha podido abrir $id: $e', clase: ClaseDeAviso.error);

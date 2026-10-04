@@ -37,6 +37,8 @@
 
 import 'package:flutter/material.dart';
 
+import 'package:ab/domain/models/nota.dart';
+import 'package:ab/domain/models/pasaje.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/ui/core/tema.dart';
 
@@ -262,8 +264,23 @@ class _LectorViewState extends State<LectorView> {
       case EstadoLecturaTexto.leyendo:
         final p = vm.pasaje;
         if (p == null || p.vacio) {
-          return _nadaPintado('Este pasaje esta vacio en esta traduccion.', '');
+          return _nadaPintado(
+            p?.traeNotas == true
+                ? 'Aqui no hay nada escrito sobre este pasaje.'
+                : 'Este pasaje esta vacio en esta traduccion.',
+            '',
+          );
         }
+
+        // Y UN `if` SOBRE EL PASAJE, Y NO UN `if` POR FRAGMENTO. La pantalla decide una
+        // vez como se pinta lo que hay: versiculos o notas. Con un `if` por fragmento, una
+        // nota y un versiculo en la misma lista se pintarian con el mismo formato, y eso
+        // es exactamente la confusion que hay que evitar: que el comentario pareciese
+        // parte de la Escritura.
+        if (p.traeNotas) {
+          return _ColumnaDeNotas(pasaje: p, estilo: estilo);
+        }
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
@@ -293,6 +310,148 @@ class _LectorViewState extends State<LectorView> {
           ],
         ),
       );
+}
+
+/// Las notas de un capitulo de comentario.
+///
+/// Y SE PINTAN **DISTINTAS** DE UN VERSICULO, Y NO ES UNA CUESTION DE ESTILO. Un
+/// versiculo es la Sagrada Escritura: columna propia, numero grande, el texto del mismo
+/// cuerpo que el resto de la lectura. Una nota es el comentario de un hombre de 1832, y
+/// por eso va en un cuerpo mas pequeño, con una linea de encima que la separa de la
+/// anterior, con el versiculo al que se refiere a la izquierda en lugar de un numero
+/// suelto, y con la certeza visual de que **no es la Palabra**.
+///
+/// Y ESTA SEPARACION ES LO QUE LA HACE UTIL Y LO QUE LA HACE HONESTA. Un comentario
+/// pegado al texto con el mismo formato no se distingue de la Escritura, y quien lo lee
+/// rapido se lleva la impresion de que Adam Clarke estaba citando la Biblia cuando en
+/// realidad estaba escribiendo sobre ella.
+///
+/// Y AGRUPA POR VERSICULO, no una nota detras de otra. Treinta y dos notas seguidas sin
+/// decir a que versiculo corresponde cada una son un muro de texto: se lee entero y no
+/// se entiende nada. La nota se lee **al lado** de su versiculo, y por eso cada versiculo
+/// con nota sale con su numero y sus notas debajo.
+class _ColumnaDeNotas extends StatelessWidget {
+  const _ColumnaDeNotas({required this.pasaje, required this.estilo});
+
+  final Pasaje pasaje;
+  final TextStyle estilo;
+
+  @override
+  Widget build(BuildContext context) {
+    final numeros = pasaje.versiculosConNota;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        for (var i = 0; i < numeros.length; i++) ...<Widget>[
+          if (i > 0)
+            const Divider(height: 26, thickness: 1, color: Colores.linea),
+          _EncabezadoDeNota(
+            versiculo: numeros[i],
+            total: pasaje.notasDe(numeros[i]).length,
+          ),
+          for (final nota in pasaje.notasDe(numeros[i]))
+            _Nota(nota: nota, estilo: estilo),
+        ],
+      ],
+    );
+  }
+}
+
+/// "Juan 3:16", y "2 notas" cuando hay mas de una.
+///
+/// Y EL NUMERO DE NOTAS PORQUE EN 19.742 notas hay **un** versiculo con dos --Mateo
+/// 23:13--, y sin decirlo no se entiende por que hay dos parrafos seguidos debajo del
+/// mismo versiculo.
+class _EncabezadoDeNota extends StatelessWidget {
+  const _EncabezadoDeNota({required this.versiculo, required this.total});
+
+  final int versiculo;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      children: <Widget>[
+        // Y UN RECTANGULO Y NO UN CIRCULO, para que no parezca un boton. Y en el color
+        // del comentario, que es el mismo que usa el resto de la pantalla para los
+        // terminos: quien lee un comentario tiene que poder distinguirlo de la
+        // Escritura sin leer nada, y el color es lo primero que ve.
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colores.acento.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(color: Colores.acento.withValues(alpha: 0.35)),
+          ),
+          child: Text(
+            '$versiculo',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colores.acento,
+              fontWeight: FontWeight.w600,
+              fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        if (total > 1)
+          Text(
+            total == 2 ? '2 notas' : '$total notas',
+            style: Theme.of(context).textTheme.labelSmall,
+          ),
+      ],
+    ),
+  );
+}
+
+/// Una nota de comentario.
+///
+/// Y EL `indentation` Y LA BARRA VERTICAL, porque la nota pertenece a un versiculo y
+/// tiene que quedar **dentro** de el. Es lo que hace que se lea como glosa y no como un
+/// versiculo mas.
+class _Nota extends StatelessWidget {
+  const _Nota({required this.nota, required this.estilo});
+
+  final Nota nota;
+  final TextStyle estilo;
+
+  @override
+  Widget build(BuildContext context) {
+    // Y UN CUERPO MAS PEQUENO QUE EL DE LOS VERSICULOS, y no por crammed: porque es
+    // texto secundario. La lectura principal es la Escritura; el comentario va en voz
+    // baja, y subirlo a voz alta es como se ensena un comentario como si fuera el texto.
+    final cuerpo = estilo.copyWith(fontSize: 15, height: 1.55);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Container(
+            width: 3,
+            height: 20,
+            margin: const EdgeInsets.only(top: 4, right: 12),
+            decoration: BoxDecoration(
+              color: Colores.acento.withValues(alpha: 0.45),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              nota.texto,
+              style: cuerpo,
+              softWrap: true,
+              // Y CON NOMBRE ACCESIBLE QUE DIGA A QUE VERSICULO. Un lector de pantalla
+              // lee el cuerpo de la nota y no sabe de que versiculo es, que es la
+              // informacion que hace falta para entenderla.
+              semanticsLabel: 'Nota sobre el versiculo ${nota.versiculo}',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Un versiculo: el numero en su columna y el texto al lado.
