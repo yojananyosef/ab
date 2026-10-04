@@ -32,8 +32,27 @@ primer modulo, que es el peor sitio para descubrirlo.
 ## Catalogo
 
 <https://yojananyosef.github.io/aa/latest.json> es el puntero flotante del
-catalogo. De ahi sale el manifiesto, y de ahi se baja cada modulo por su
-`browserUrl`.
+catalogo. De ahi sale el manifiesto, y de ahi se baja cada modulo.
+
+**Cada modulo declara DOS direcciones y hay que saber cual va donde.**
+
+| | |
+| --- | --- |
+| `browserUrl` | la de **navegador**. Es la que usa la app en web |
+| `downloadUrl` | la de **nativo**. Es la de la release de GitHub |
+
+Y no es "cualquiera de las dos": en la release de GitHub **no** hay cabecera
+`Access-Control-Allow-Origin` en la respuesta final, y un navegador que pide
+`.../releases/download/...` falla con `Failed to fetch`. GitHub Pages si la
+manda, tambien en los binarios, y por eso `browserUrl` apunta ahi.
+
+Medido el 3 de octubre de 2026; el razonamiento y las peticiones estan en
+`docs/investigacion/transporte-cors.md`.
+
+Y EN WEB LA app no baja **nada** del origen, porque los modulos ya estan en el
+almacenamiento del navegador: se baja la primera vez y se recuperan de ahi. En
+la comprobacion en navegador del grupo 8, dos ejecuciones seguidas con el mismo
+perfil bajaron 22.544.384 bytes y 0.
 
 El repositorio hermano es <https://github.com/yojananyosef/aa>.
 
@@ -42,10 +61,14 @@ El repositorio hermano es <https://github.com/yojananyosef/aa>.
 - `AGENTS.md` - reglas del repositorio, para quien trabaje aqui.
 - `docs/investigacion-ux.md` - que se aprendio de las apps que ya existen.
 - `docs/investigacion/crudo-*.md` - informes de referencia, con citas.
-- `docs/investigacion/transporte-cors.md` - por que la web todavia no puede
-  descargar un modulo, medido en navegador real, y por donde se arregla.
+- `docs/investigacion/transporte-cors.md` - por que la release de GitHub no se
+  puede leer desde un navegador y Pages si, medido con peticiones de verdad.
 - `docs/investigacion/sqlite-en-navegador.md` - prueba de que un `.amod`
-  real se abre en el navegador.
+  real se abre en el navegador, con las cifras del spike y las de la
+  comprobacion automatica distinguidas.
+- `scripts/comprobar-en-navegador.sh` - la comprobacion en navegador de la
+  aplicacion entera. **No** la sustituye `flutter test`: esta lee lo que la
+  propia aplicacion escribe en el DOM, porque Flutter pinta en un canvas.
 - `openspec/` - los cambios del proyecto y sus especificaciones.
 
 ## Desarrollo

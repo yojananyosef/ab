@@ -140,3 +140,45 @@ Y una decision de diseno que sale de aqui: el modulo se puede abrir desde un
 directory", pensado para quien no tiene internet) y MyBible (soltar el fichero
 en el directorio de datos). Es el unico camino que funciona hoy, y para buena
 parte del mercado es el que mas importa.
+
+## 7. La comprobacion automatica, y por que sus cifras NO son estas
+
+Lo de arriba es un **spike**: una pagina que baja dos `.amod` de un servidor local y
+consulta Juan 3. Salio bien, y sus cifras son **reales pero de un caso concreto**: red
+local, ficheros recien bajados a memoria, sin almacenamiento, sin interfaz.
+
+Lo de abajo es `scripts/comprobar-en-navegador.sh`: la aplicacion entera, compilada
+con `flutter build web`, con el motor SQLite en WebAssembly bajandose de su sitio, con
+el almacenamiento del navegador entre recargas y con una pantalla de lectura de verdad.
+Comprobado el 4 de octubre de 2026 con Brave 154.1.96.61.
+
+**Y LAS CIFRAS NO SON LAS MISMAS, Y NO DEBEN CONFUNDIRSE.**
+
+| | Spike (seccion 3) | Comprobacion (seccion 7) |
+| --- | --- | --- |
+| Que baja | Los `.amod` de `127.0.0.1` | El `.amod` de GitHub Pages |
+| Como | `fetch` a mano, en una pagina | La aplicacion, con el motor de obtencion |
+| Cuanto tarda | 54 ms y 39 ms | Sin medir: son segundos, y el reloj de pared no es comparable |
+| Donde se consulta | `Juan 3 en 1,0 ms` | `Juan 3 sale con 36 versiculos`, sin tiempo |
+| Almacenamiento | No | IndexedDB, y la segunda ejecucion baja **0 bytes** |
+
+Lo que se mide ahora y el spike no media:
+
+- **`Juan 3:16`, con el texto entero**, desde los 22.544.384 bytes bajados de
+  `yojananyosef.github.io`, con el `sha256` comprobado por el motor de obtencion.
+- **Juan 3 tiene 36 versiculos**, contados por el motor compilado a WebAssembly.
+- **Los terminos salen de la tabla `info`**: `PublicDomain`, la atribucion de eBible.org,
+  la versificacion `KJV` y cero defectos.
+- **El historial del navegador**: `3 -> 4` al cambiar de capitulo y `4 -> 4` al cambiar de
+  version, que es la comprobacion que en Dart no se puede hacer porque no hay `history`.
+- **Cero bytes la segunda vez**, con el mismo perfil de navegador.
+
+Lo que el spike dio y **sigue valiendo**: que abrir un `.amod` y consultarlo es gratis
+una vez que los bytes estan en memoria, y que no hace falta indice invertido para leer.
+
+Y lo que el spike **no** habria encontrado nunca, y que aparecio al montar la
+comprobacion, esta en `AGENTS.md`: las rutas del VFS en memoria tienen que ser
+absolutas, `fetch` resuelve las URL relativas contra la direccion del documento y no
+contra el `<base href>`, y `Access-Control-Allow-Origin` **no viene** cuando los
+origenes son el mismo. Los tres estan en el camino de la aplicacion y ninguno esta en
+el camino del spike.

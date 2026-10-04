@@ -42,6 +42,29 @@ La lista de textos vive en el `catalog.json`, que la app lee.
 4. **iOS**, despues. No se planifica y ningun change puede depender de que
    exista.
 
+**El SDK es Flutter 3.47.6, y se comprueba antes de fiarse de nada.** Comprobado
+con `flutter --version` el 4 de octubre de 2026. Si cambia la version, hay que
+volver a mirar lo que este documentado aqui: `--headless=new`, el
+`RouteInformationReportingType`, el `RouteInformationProvider` y el
+`loadFromUrlString` de `package:sqlite3` son cosas que se han mirado **en esa
+version**, y en otra pueden estar distintas.
+
+**Lo que NO esta verificado, y no se finge lo contrario:**
+
+| | Por que |
+| --- | --- |
+| **Android** | no hay SDK de Android en esta maquina |
+| **Linux y Windows** | no hay GTK, ni una maquina con Windows |
+
+De las tres no se ha ejecutado **nada**. Todo el codigo de esas plataformas --
+el almacenamiento de modulos, el selector de archivos, la apertura del `.amod` por
+`ffi`-- esta escrito y compartido, pero **comprobado solo en Dart**. Y hay al
+menos un fallo en el que un test de Dart no puede encontrar: las rutas del VFS
+en memoria tienen que ser absolutas, y eso solo se rompe en el VFS de WebAssembly.
+
+Y EN WEB SI ESTA VERIFICADO, con navegador de verdad:
+`scripts/comprobar-en-navegador.sh`.
+
 **Mobile-first y responsive en todas partes.** En web, "responsive" incluye
 que funcione dentro del navegador del telefono: sin barra de direcciones, sin
 barra de sistema, con el teclado tapando media pantalla. **Web no es la version
