@@ -184,7 +184,7 @@ String _normalizar(String s) {
   // "corintios". Asi que los ordinales se traducen a cifra ANTES de quitarse,
   // y solo se borran las palabras que no llevan numero.
   t = t.replaceAllMapped(
-    RegExp(r'\b(primero|primer|segundo|segunda|tercero|tercera)\b'),
+    RegExp(r'\b(primero|primer|primera|segundo|segunda|tercero|tercer|tercera)\b'),
     (m) => ' ${_ordinal(m.group(1)!)} ',
   );
   t = t.replaceAll(

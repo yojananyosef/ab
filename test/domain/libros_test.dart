@@ -115,6 +115,90 @@ void main() {
       }
     });
 
+    test('las nueve formas de cada ordinal, no solo las que se me ocurrieron', () {
+      // Este fallo es el que hizo falta esta prueba: el mapa de ordinales tenia
+      // "tercer" pero el **regex** que decide que sustituyera no lo tenia. O sea que
+      // "Tercer Juan" --la forma que se usa en realidad-- no resolvia, y "3 Juan" si.
+      //
+      // Un mapa y un regex que tienen que coincidir es una occasion perfecta para que
+      // no coincidan. Por eso se comprueban las **seis** formas de cada ordinal, con el
+      // genero que corresponda al nombre del libro.
+      const formas = <String, String>{
+        '1 Juan': '1John',
+        'Primer Juan': '1John',
+        'Primera Juan': '1John', // el nombre es masculino, pero la forma existe
+        '2 Juan': '2John',
+        'Segundo Juan': '2John',
+        'Segunda Juan': '2John',
+        '3 Juan': '3John',
+        'Tercer Juan': '3John',
+        'Tercero Juan': '3John',
+        'Tercera Juan': '3John',
+        '1 Samuel': '1Samuel',
+        'Primer Samuel': '1Samuel',
+        '2 Samuel': '2Samuel',
+        'Segundo Samuel': '2Samuel',
+        '2 Reyes': '2Kings',
+        'Segundo Reyes': '2Kings',
+        'Segundo de Reyes': '2Kings',
+        '1 Crónicas': '1Chronicles',
+        'Primera Crónicas': '1Chronicles',
+        '2 Crónicas': '2Chronicles',
+        'Segunda Crónicas': '2Chronicles',
+      };
+
+      final fallos = <String>[];
+      for (final entrada in formas.entries) {
+        final l = libroPorNombre(entrada.key);
+        if (l == null) {
+          fallos.add('"${entrada.key}" no resuelve');
+        } else if (l.id != entrada.value) {
+          fallos.add('"${entrada.key}" -> ${l.id}, esperaba ${entrada.value}');
+        }
+      }
+      expect(fallos, isEmpty, reason: fallos.join('\n'));
+    });
+
+    test('el mapa de ordinales y el regex que los sustituye tienen las MISMAS formas', () {
+      // La comprobacion que habria pillado el fallo de "tercer" en cuanto se escribiera
+      // el mapa, y sin necesitar ninguna referencia a un libro concreto.
+      //
+      // Se lee el fuente y se comparan las dos listas. Es una comprobacion sobre el
+      // codigo y no sobre el comportamiento, y se admite: lo que se busca es que dos
+      // estructuras del mismo fichero no se separen, y eso no se puede observar desde
+      // fuera sin enumerar todas las palabras possibles.
+      final fuente = File('lib/domain/models/libros.dart').readAsStringSync();
+
+      // Las formas del mapa `_ordinal`.
+      final mapa = RegExp(r"'(\w+)':\s*'[123]',").allMatches(fuente).map((m) => m.group(1)!).toSet();
+
+      // Las formas del regex de sustitucion. Se busca **el** regex de los ordinales --
+      // el que contiene "primer" y "segundo"-- y no el primero que haya, porque en el
+      // fichero hay varios y el primero es de otra cosa.
+      final dentroDelRegex = RegExp(
+        r"RegExp\(r'[^']*\((primero\|[^)]*)\)",
+      ).firstMatch(fuente);
+      expect(dentroDelRegex, isNotNull,
+          reason: 'no se encuentra el regex de los ordinales en libros.dart');
+      final dentro = dentroDelRegex!.group(1)!;
+
+      // `(de|del|...)` se cuela en el grupo alterno; se quitan las partes que no son
+      // una palabra suelta.
+      final enRegex = dentro
+          .split('|')
+          .map((s) => s.replaceAll(r'\b', '').trim())
+          .where((s) => s.isNotEmpty && !s.contains('|') && !s.contains('('))
+          .toSet();
+
+      for (final f in enRegex) {
+        expect(mapa, contains(f), reason: '"$f" esta en el regex de ordinales pero no en el mapa');
+      }
+      for (final f in mapa) {
+        expect(enRegex, contains(f), reason: '"$f" esta en el mapa de ordinales pero no en el regex');
+      }
+      expect(mapa, isNotEmpty);
+    });
+
     test('sin acentos, sin mayusculas y con espacios de sobra', () {
       expect(libroPorNombre('  genesis ')!.id, 'Genesis');
       expect(libroPorNombre('GENESIS')!.id, 'Genesis');
@@ -175,7 +259,7 @@ String _norm(String s) {
       );
   t = t.replaceAll(RegExp('[^a-z0-9 ]'), ' ');
   t = t.replaceAllMapped(
-    RegExp(r'\b(primero|primer|segundo|segunda|tercero|tercera)\b'),
+    RegExp(r'\b(primero|primer|primera|segundo|segunda|tercero|tercer|tercera)\b'),
     (m) => ' ${const {'primer': '1', 'primero': '1', 'primera': '1', 'segundo': '2', 'segunda': '2', 'tercero': '3', 'tercera': '3'}[m.group(1)!] ?? m.group(1)!} ',
   );
   t = t.replaceAll(RegExp(r'\b(de|del|libro|libros|epistola)\b'), ' ');

@@ -41,43 +41,56 @@ class Referencia {
   /// Devuelve null si no se entiende. Que devuelva null en vez de tirar una
   /// excepcion es a proposito: esto se llama desde un campo de texto mientras
   /// la persona escribe, y una excepcion por cada tecla es una caida.
+  ///
+  /// LOS ESPACIOS SE MANTIENEN HASTA EL FINAL, y no es un detalle: la primera
+  /// version hacia `replaceAll(' ', '')` antes de partir, y con eso
+  /// "Segundo de Corintios 13" llegaba al normalizador como `SegundodeCorintios13`,
+  /// donde ni el ordinal "segundo" ni la palabra "de" tienen limites de palabra y no
+  /// se reconocen. O sea que **quitar los espacios rompia las formas de decir las
+  /// cosas**. Ahora se parte con una expresion regular sobre el texto tal cual, y el
+  /// nombre del libro sale con sus espacios.
+  ///
+  /// Y EL ORDEN DE LOS INTENTOS. Primero se prueba el texto tal cual, que es como
+  /// escribe la gente. Solo si eso no cuela se prueba partiendo "Juan3:16" sin
+  /// espacios, porque esa particion es agresiva --parte tras cualquier letra seguida de
+  /// un numero-- y parte cosas que no son una referencia, como "1Corinthians13".
   static Referencia? tryParse(String texto, {String? libroPorDefecto}) {
-    var t = texto.trim();
-    if (t.isEmpty) return null;
-    t = t.replaceAll(':', '.').replaceAll(' ', '');
-    // "Juan3:16" sin separador: se separa tras el nombre del libro, que es lo
-    // unico que puede acabar en letra.
-    t = t.replaceAllMapped(RegExp(r'^([^\d.]+)(\d)'), (m) => '${m.group(1)}.${m.group(2)}');
-    final partes = t.split('.').where((p) => p.isNotEmpty).toList();
-    if (partes.length < 2 || partes.length > 3) return null;
+    final normal = texto.trim().replaceAll(RegExp(r'\s+'), ' ').replaceAll(':', '.');
+    if (normal.isEmpty) return null;
 
-    String clave;
-    int cap;
-    int? vers;
+    final r = _intentar(normal, libroPorDefecto);
+    if (r != null) return r;
 
-    if (partes.length == 3) {
-      final libro = _resolverLibro(partes[0]);
-      if (libro == null) return null;
-      clave = libro;
-      cap = int.tryParse(partes[1]) ?? -1;
-      vers = int.tryParse(partes[2]) ?? -1;
-    } else {
-      // Dos partes: puede ser "Juan.3" o "3.16" con el libro ya puesto.
-      final comoLibro = _resolverLibro(partes[0]);
-      if (comoLibro != null) {
-        clave = comoLibro;
-        cap = int.tryParse(partes[1]) ?? -1;
-      } else if (libroPorDefecto != null) {
-        clave = libroPorDefecto;
-        cap = int.tryParse(partes[0]) ?? -1;
-        vers = int.tryParse(partes[1]) ?? -1;
-      } else {
-        return null;
-      }
+    // "Juan3:16": tras el nombre del libro, que es lo unico que puede acabar en letra.
+    final pegado = normal.replaceAllMapped(
+      RegExp(r'([^\s\d.])(\d)'),
+      (m) => '${m.group(1)}.${m.group(2)}',
+    );
+    return _intentar(pegado, libroPorDefecto);
+  }
+
+  /// Un intento de partido. Devuelve null si no encaja con ninguna forma.
+  static Referencia? _intentar(String texto, String? libroPorDefecto) {
+    // El nombre del libro es lo mas corto que deje un numero detras. No se recorre
+    // "letra seguida de numero" porque eso parte "1Corinthians13" por la mitad.
+    final m = RegExp(r'^(.*?)[\s.]*(\d+)(?:[\s.]+(\d+))?$').firstMatch(texto);
+    if (m == null) return null;
+
+    final nombre = (m.group(1) ?? '').trim();
+    final capitulo = int.tryParse(m.group(2) ?? '');
+    final versiculo = m.group(3) == null ? null : int.tryParse(m.group(3)!);
+    if (capitulo == null || capitulo < 1) return null;
+    if (versiculo != null && versiculo < 1) return null;
+
+    // Solo numeros: "3.16" con el libro ya puesto.
+    if (nombre.isEmpty) {
+      if (libroPorDefecto == null) return null;
+      return Referencia(libroPorDefecto, capitulo, versiculo);
     }
 
-    if (cap < 1 || (vers != null && vers < 1)) return null;
-    return Referencia(clave, cap, vers);
+    final clave = _resolverLibro(nombre);
+    if (clave == null) return null;
+    return Referencia(clave, capitulo, versiculo);
   }
 
   /// Busca el libro por clave o por nombre en castellano. Devuelve la clave.
