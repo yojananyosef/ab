@@ -27,6 +27,7 @@ import 'package:ab/domain/models/modulo.dart';
 import 'package:ab/domain/use_cases/obtener_modulo.dart';
 import 'package:ab/domain/use_cases/resultado_obtencion.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 
 import '../support/fixtures.dart';
 
@@ -168,9 +169,78 @@ void main() {
     }, timeout: const Timeout(Duration(minutes: 2)));
   });
 
+  group('4.4 una peticion sin CORS NO es "no deja leer"', () {
+    // ============================================================================
+    // LA PRUEBA QUE PINA UN BUG QUE ROMPIA LA DESCARGA EN EL DESPLIEGUE REAL
+    // ============================================================================
+    //
+    // El codigo decia que un origen "no deja leer desde el navegador" cuando la
+    // respuesta **no traia** `access-control-allow-origin`. En el sitio real la
+    // aplicacion y los modulos estan en el mismo origen, y una peticion de mismo origen
+    // no lleva esa cabecera ni falta que lleve. O sea que la comprobacion rechazaba la
+    // descarga en el despliegue donde si funciona, y la aplicacion decia "abre un
+    // fichero local" con un texto de 22 MiB sentado en el mismo servidor.
+    //
+    // MEDIDO EL 4 DE OCTUBRE DE 2026 con el navegador real, no en teoria.
+    //
+    // Y AQUI NO HAY NAVEGADOR, ASI QUE SE COMPRUEBA LO QUE SE PUEDE: que la pregunta se
+    // responde por el **codigo** que dio la red, y no por una cabecera que solo aparece
+    // cuando los origenes son distintos.
+    test('206 sin cabecera de origen cruzado SI se puede leer', () async {
+      // ESTA ES LA QUE HABRIA FALLADO ANTES. Sin `access-control-allow-origin`, con el
+      // codigo viejo esto devolvia true y decia que el origen no dejaba leer.
+      final cliente = _ClienteDeCodigo(206, conCabeceraCors: false);
+      final obtener = ObtenerModulo(http: HttpService(cliente: cliente));
+
+      expect(await obtener.noDejaLeerDesdeNavegador(Uri.parse('https://x/amod')), isFalse);
+    });
+
+    test('200 sin cabecera de origen cruzado SI se puede leer', () async {
+      final cliente = _ClienteDeCodigo(200, conCabeceraCors: false);
+      final obtener = ObtenerModulo(http: HttpService(cliente: cliente));
+      expect(await obtener.noDejaLeerDesdeNavegador(Uri.parse('https://x/amod')), isFalse);
+    });
+
+    test('416 sin cabecera SI se puede leer: el servidor ha entendido', () async {
+      final cliente = _ClienteDeCodigo(416, conCabeceraCors: false);
+      final obtener = ObtenerModulo(http: HttpService(cliente: cliente));
+      expect(await obtener.noDejaLeerDesdeNavegador(Uri.parse('https://x/amod')), isFalse);
+    });
+
+    test('403 NO se puede leer, y con o sin cabecera da igual', () async {
+      // Y esta es la direccion contraria: un 403 es un "no" de verdad, y no depende de
+      // que la cabecera este o no.
+      for (final conCabecera in <bool>[true, false]) {
+        final cliente = _ClienteDeCodigo(403, conCabeceraCors: conCabecera);
+        final obtener = ObtenerModulo(http: HttpService(cliente: cliente));
+        expect(await obtener.noDejaLeerDesdeNavegador(Uri.parse('https://x/amod')), isTrue,
+            reason: 'con cabecera=$conCabecera');
+      }
+    });
+
+    test('una peticion que no llega NO es "no deja leer", es "no se sabe"', () async {
+      // Si el navegador la bloqueo, `rango` devuelve null. De ahi no se puede decir *por
+      // que* se bloqueo, asi que se responde que no se sabe, y deja que sea la descarga de
+      // verdad la que falle con su propio error --que si sabe de que se trata.
+      final obtener = ObtenerModulo(http: HttpService(cliente: _ClienteSinRespuesta()));
+      expect(await obtener.noDejaLeerDesdeNavegador(Uri.parse('https://x/amod')), isFalse);
+    });
+  });
+
   group('4.4 origen no legible y origen caido son COSAS DISTINTAS', () {
-    test('un origen sin cabecera de origen cruzado da OrigenNoLegible', () async {
-      final con = await _ConServidorLocal.abrir(_bytesKjv, conCors: false);
+    test('un origen que contesta 403 da OrigenNoLegible', () async {
+      // Y EL ESTIMULO HA CAMBIADO. Antes era "sin `access-control-allow-origin`", y con
+      // el arreglo del codigo --que ya no mira esa cabecera, porque en el despliegue real
+      // no viene-- esta prueba decia que el origen no dejaba leer cuando si dejaba. Y
+      // fallaba, que es lo que tiene que pasar cuando una prueba pina algo que era un
+      // bug: no basta con quitar el bug, hay que cambiar lo que se comprobaba.
+      //
+      // Ahora el "no" es un 403, que es un "no" de verdad y no depende de las cabeceras.
+      final con = await _ConServidorLocal.abrir(
+        _bytesKjv,
+        conCors: false,
+        codigoDeNoLectura: 403,
+      );
       addTearDown(con.cerrar);
 
       ResultadoObtencion? resultado;
@@ -495,10 +565,15 @@ class _ConServidorLocal {
   static Future<_ConServidorLocal> abrir(
     Uint8List bytes, {
     bool conCors = true,
+    int codigoDeNoLectura = 0,
     int? announcedSize,
     int tamanoTrozo = 4 << 20,
   }) async {
-    final servidor = await _servidor(bytes, conCors: conCors);
+    final servidor = await _servidor(
+      bytes,
+      conCors: conCors,
+      codigoDeNoLectura: codigoDeNoLectura,
+    );
     final http = HttpService();
     final base = 'http://127.0.0.1:${servidor.port}';
     final modulo = Modulo(
@@ -545,10 +620,26 @@ Modulo _moduloFalso(int puerto, {required int tamano}) => Modulo(
 /// Lo que reproduce, y son los dos casos que se ven en la practica:
 /// - Un CDN que **ignora** el `Range` y contesta 200 con el fichero entero.
 /// - Un 416 cuando el rango ya no existe, que es lo que responde GitHub Pages.
-Future<HttpServer> _servidor(Uint8List datos, {required bool conCors}) async {
+Future<HttpServer> _servidor(
+  Uint8List datos, {
+  required bool conCors,
+  int codigoDeNoLectura = 0,
+}) async {
   final s = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   s.listen((p) async {
     if (conCors) p.response.headers.set('Access-Control-Allow-Origin', '*');
+    // Y UN 403 ANTES DE NADA. Es el "no deja leer" que se puede reproducir en una
+    // maquina de Dart: un 403 no depende de que haya o no cabecera de CORS, asi que no
+    // se puede confundir con el caso de mismo origen. La primera version de esta prueba
+    // usaba "sin cabecera de CORS" para ese fin, y con el arreglo del codigo --que ya no
+    // mira la cabecera-- la prueba decia que el origen no dejaba leer cuando si dejaba,
+    // y por eso se cambio el estimulo y no el codigo.
+    if (codigoDeNoLectura != 0) {
+      p.response.statusCode = codigoDeNoLectura;
+      p.response.headers.contentLength = 0;
+      await p.response.close();
+      return;
+    }
     final rango = p.headers.value(HttpHeaders.rangeHeader);
     if (rango == null) {
       p.response.headers.contentLength = datos.length;
@@ -598,3 +689,38 @@ int _indiceDe(Uint8List p, String agujas) {
 
 /// Bytes en MiB, para los mensajes de las pruebas de memoria.
 String _mib(int bytes) => '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MiB';
+
+/// Un cliente que contesta un codigo y, si se le pide, la cabecera de CORS.
+///
+/// Y SOLO UN CODIGO, porque es lo unico que la comprobacion mira. Si devolviera bytes
+/// tambien habria que inventar un cuerpo que cuadrase con el sha256, y no hace falta
+/// para preguntar por un codigo.
+class _ClienteDeCodigo extends http.BaseClient {
+  _ClienteDeCodigo(this.codigo, {required this.conCabeceraCors});
+
+  final int codigo;
+  final bool conCabeceraCors;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest peticion) async {
+    final cuerpo = Uint8List.fromList(<int>[1, 2, 3]);
+    return http.StreamedResponse(
+      Stream<List<int>>.value(cuerpo),
+      codigo,
+      headers: <String, String>{
+        'content-type': 'application/octet-stream',
+        if (conCabeceraCors) 'access-control-allow-origin': '*',
+      },
+    );
+  }
+}
+
+/// Un cliente cuya peticion no llega a salir.
+///
+/// Es lo que ve el motor cuando el navegador la bloquea: `rango` devuelve null y no hay
+/// cuerpo ni codigo. Y la comprobacion tiene que distinguirlo de un "no".
+class _ClienteSinRespuesta extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest peticion) =>
+      throw http.ClientException('la peticion no ha llegado a salir');
+}

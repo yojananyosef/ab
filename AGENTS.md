@@ -444,6 +444,129 @@ modulo descargado quiere decir que el indice se perdio, no que no haya nada que 
 Y eso ocurre de verdad: el indice se escribe al guardar, y un modulo escrito por una
 version anterior no lo tiene.
 
+### En web, cuatro cosas que funcionan en Dart y no en un navegador
+
+Medido el 4 de octubre de 2026, con Brave 154 en headless, montando la comprobacion en
+navegador del grupo 8. Los cuatro fallos estaban en el camino **normal** --la biblioteca,
+un enlace profundo, descargar y leer-- y ninguno se podría ver en una prueba. Por eso
+esta seccion existe.
+
+Ninguno se hubiera visto con `flutter test`. Los cuatro son de `package:sqlite3`, de
+`package:web` y de como resuelve un navegador las rutas, y las tres cosas funcionan
+igual en la maquina de Dart.
+
+| | Que pasaba | Por que |
+| --- | --- | --- |
+| 1 | Con un enlace profundo, el navegador pedia `GET /leer/KJV2006/sqlite3.wasm` y contestaba 404 | `WasmSqlite3.loadFromUrlString` pasa la cadena a `fetch`, y `fetch` resuelve una URL relativa contra la **direccion del documento**, no contra el `<base href>` |
+| 2 | La app se negaba a descargar y decia "abre un fichero local" | `noDejaLeerDesdeNavegador` miraba si la respuesta traia `access-control-allow-origin`; en el despliegue real aplicacion y modulos estan en el **mismo origen**, y esa cabecera no viene porque no hay nada que autorizar |
+| 3 | `SqliteException(14): unable to open database file`, con el modulo descargado y guardado | El VFS en memoria de `package:sqlite3` **no resuelve rutas relativas**: `xOpen` busca el nombre tal cual y SQLite le pasa la ruta ya resuelta contra `/`. Con `modulos/x.amod` en el mapa y `/modulos/x.amod` buscado, no aparece |
+| 4 | La pantalla se quedaba en la biblioteca despues de descargar el texto | El enrutador pide la ruta al arrancar, no puede abrir el texto porque aun no esta, avisa y vuelve. Nadie vuelve a pedirla |
+
+El primero y el segundo juntos significan que **en el sitio desplegado no se podia abrir
+ningun texto desde un enlace**, y que la descarga no funcionaba siquiera desde la
+biblioteca. El tercero que el `.amod` descargado no se abria en ningun caso en web. Y el
+cuatro que el flujo de enlace profundo se quedaba a medias.
+
+Las cuatro correcciones estan en el sitio de cada uno: `sqlite_web.dart`,
+`obtener_modulo.dart`, `almacenamiento_de_modulos_web.dart` y `main.dart`. Las tres
+primeras tienen pruebas en Dart que las fijan. La cuarta es de flujo y la unica forma de
+fijarla es el navegador.
+
+Y **LAS REGLAS**:
+
+- **Ninguna URL del paquete se da por relativa.** Se resuelve contra
+  `document.baseURI` uno mismo, con el motivo escrito al lado.
+- **No se decide si el navegador puede leer algo mirando una cabecera.** Se hace la
+  peticion y se mira lo que contesto. En un navegador, si CORS bloquea, **no llega
+  nada**: `rango` devuelve `null`. No hay que adivinarlo con `Access-Control-Allow-Origin`.
+- **Toda ruta de un fichero en el VFS en memoria es absoluta, con barra delante.**
+  En nativo el mismo nombre significa otra cosa, y por eso el error solo aparece en web.
+- **Un enlace profundo que no se puede seguir tiene que reintentarse cuando pasa a poder
+  seguirse**, o avisar de que se vuelva a pulsar. Ahora avisa; reintentar solo, y solo
+  con la sonda.
+
+Y la leccion de fondo, que es la que importa: **`flutter test` no puede ver nada de
+esto**. Las 330 pruebas del repositorio estaban en verde con las cuatro cosas rotas en
+web. Unicamente abrir un navegador de verdad y mirar lo que pedia ha encontrado las
+cuatro. Por eso el grupo 8 existe y por eso `scripts/comprobar-en-navegador.sh` se
+ejecuta aparte y no se puede sustituir por una prueba.
+
+### En web, `--dump-dom` no sirve y `page.evaluate` tampoco se puede aqui
+
+Medido el 4 de octubre de 2026 con Brave 154:
+
+    brave-browser --headless=new --dump-dom http://127.0.0.1:8099/ > salida.html
+    exit=124   salida.html con 0 bytes
+
+Se queda esperando hasta que le matan el proceso. Con `--virtual-time-budget`, sin el,
+y con `--timeout`: igual. Y con una pagina normal **si** funciona --se comprobo con un
+`file://` de tres lineas--, asi que el problema es el motor de Flutter, que mantiene
+vivo el bucle de `requestAnimationFrame` y `--dump-dom` espera a que la pagina termine
+de cargar.
+
+Dos motivos, y los dos estan en la misma frase: **Flutter pinta en un `canvas`**, asi
+que el DOM no tiene el texto que se ve, tiene una foto; y el navegador no termina solo.
+
+Lo que se hace, y por que:
+
+| | |
+| --- | --- |
+| **La app escribe en el DOM** | un `<pre id="ab-sonda">` con lo que ha leido. Es lo que pedia la tarea 8.1 y sirve para mirarlo con las herramientas del navegador |
+| **Y ademas lo manda por HTTP** | a un colector local (`scripts/colector.py`). Es lo que el script comprueba, porque es lo unico que se puede leer de fuera |
+| **Y el navegador se lanza con `--screenshot`**, que si termina | es la unica forma de que headless salga solo |
+
+Que la sonda escriba **dentro** de la aplicacion y no desde un piloto externo es lo que
+hace que esto compruebe algo: lo que llega al colector es el texto que ha devuelto una
+consulta SQL a un `.amod` de 22.544.384 bytes. Un piloto que condujera el navegador
+tendria que reimplementar el arranque, y comprobaria lo que el piloto quiere.
+
+### El servidor local tiene que hacer lo que hace GitHub Pages
+
+Dos cosas, y sin las dos la comprobacion en navegador mide otra cosa:
+
+**1. `404.html` para las rutas profundas.** `/leer/KJV2006/John.3.16` no es un fichero,
+es una ruta. GitHub Pages sirve `404.html` cuando no encuentra lo que se le pide, y el
+CI copia `index.html` a `404.html` a proposito. `python3 -m http.server` **no** lo
+hace: devuelve su propia pagina de error, sin aplicacion dentro, y entonces recargar en
+un enlace no se puede ni intentar.
+
+**2. `/aa` en el mismo origen.** En el sitio real la aplicacion esta en `.../ab/` y los
+modulos en `.../aa/`: mismo origen, y ninguna peticion puede fallar por CORS. Servida en
+local, son origenes distintos, la peticion lleva `Range` --que no es una cabecera
+"simple" y por eso dispara un `preflight`-- y GitHub Pages **no responde a los
+preflight**:
+
+    $ curl -X OPTIONS -H 'Access-Control-Request-Headers: range' .../KJV2006_bible.amod
+    HTTP/2 405
+
+Con un 405 el navegador no hace ni la peticion. Y la comprobacion fallaba con "El
+servidor no permite leerlo desde el navegador", que **no era un fallo de la
+aplicacion**: era una situacion --origenes distintos-- que en produccion no puede
+ocurrir. `scripts/servir.py` reenvia `/aa` a GitHub Pages cambiando **solo el host** en
+el JSON del manifiesto, y recalcula `catalogSha256` porque el manifiesto de un espejo es
+otro manifiesto. Los bytes del `.amod` no se tocan, y el motor lo comprueba con su
+sha256: no hay forma de hacer trampas por el proxy sin que se note.
+
+Y `Accept-Encoding: identity` **siempre** en el proxy, nunca lo que pida el navegador.
+GitHub Pages comprime si le dejan, y un `.amod` comprimido tiene un sha256 que no cuadra
+con el del manifiesto --el mismo fallo que ya esta escrito mas arriba en "Un rango
+comprimido no es un rango", y aqui por el otro lado del cable.
+
+### Comprobar que un proceso sigue vivo ANTES de mirar si responde
+
+Un servidor que se muere al arrancar porque el puerto esta ocupado y otro servidor que
+deja el puerto ocupado dan el mismo sintoma: `curl` responde. Con el `curl` primero, la
+comprobacion de vida del proceso no llega a hacerse nunca en el caso para el que existe.
+
+Medido el 4 de octubre de 2026: `scripts/comprobar-en-navegador.sh` daba "el servidor
+responde" con un servidor de una ejecucion anterior de la misma tarde, y todo lo que se
+veia era "No se ha podido contactar con el catalogo", que senala a la red cuando el
+problema es un proceso que se murio treinta segundos antes. Ahora:
+
+- se comprueba que los puertos estan **libres** antes de arrancar nada, y se dice con
+  `ss -ltnp | grep` como mirar quien los tiene;
+- se mira `kill -0 $PID` **antes** del `curl`, en el servidor y en el colector.
+
 ### `TMPDIR` va fuera de `/tmp`
 
 `/tmp` en esta maquina es un tmpfs de **3,7 GB**, no un disco. El compilador de

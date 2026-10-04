@@ -46,3 +46,8 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# El directorio de trabajo de la comprobacion en navegador: perfiles de Chrome, capturas
+# y registros. Van en `$TMPDIR` y no en el repositorio porque un perfil de navegador son
+# cientos de megas y no se versiona.
+.tmp/

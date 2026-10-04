@@ -20,12 +20,39 @@
 //
 // La persistencia entre recargas la pone `almacenamiento.dart`, que vuelca este
 // contenido a IndexedDB. Aqui solo se lee en memoria.
+//
+// ============================================================================
+// Y LA URL DEL `.wasm` SE RESUELVE CONTRA EL `<base href>`, NO CONTRA LA DIRECCION
+// ============================================================================
+//
+// MEDIDO EL 4 DE OCTUBRE DE 2026, Y ERA UN BUG DE VERDAD, NO UN DETALLE.
+//
+// Con un enlace profundo --`/leer/KJV2006/John.3.16`-- el navegador pedia:
+//
+//     GET /leer/KJV2006/sqlite3.wasm  -> 404
+//
+// y la aplicacion se quedaba sin motor: sin SQLite no se abre ningun modulo, sin modulos
+// no hay texto, y sin texto no hay lectura. O sea que **ningun enlace profundo
+// funcionaba**, y en la raiz si. El motivo es que `WasmSqlite3.loadFromUrlString` pasa
+// la cadena tal cual a `fetch`, y `fetch` resuelve una URL relativa contra la
+// **direccion del documento** --`/leer/KJV2006/John.3.16`-- y no contra el `<base href>`
+// que pone `--base-href`.
+//
+// Por eso se resuelve aqui y explicitamente contra `document.baseURI`, que si es el
+// `<base href>` ya resuelto. En el sitio publicado eso da
+// `https://.../ab/sqlite3.wasm` venga la direccion que venga; y en local da
+// `http://127.0.0.1:8099/sqlite3.wasm`.
+//
+// Y NO SE USA `Uri.base` DE DART, que es la URL del documento y por tanto tiene el mismo
+// fallo. Es la tentacion, porque `Uri.base` esta a mano y parece la direccion de la
+// aplicacion; no lo es.
 
 // `wasm.dart` reexporta `common.dart`, asi que con este import basta y no hace
 // falta el otro. En `sqlite_nativo.dart` si hace falta `common.dart`, porque ahi
 // se importa `sqlite3.dart`.
 import 'package:sqlite3/wasm.dart';
 import 'package:typed_data/typed_buffers.dart';
+import 'package:web/web.dart' as web;
 
 /// El motor, cargado una vez. La carga del `.wasm` es lo unico que hace falta
 /// antes de abrir nada.
@@ -40,6 +67,22 @@ InMemoryFileSystem? _vfs;
 /// sitios que lo nombran, uno de los dos se queda viejo.
 const String nombreDelMotorWasm = 'sqlite3.wasm';
 
+/// La URL completa del `.wasm`, resuelta contra el `<base href>`.
+///
+/// Y SE CALCULA EN EL MOMENTO DE USARLA y no en una constante, porque `document` no
+/// existe hasta que hay documento, y leerlo en una constante de nivel superior lanzaria
+/// al cargar la biblioteca en un contexto sin DOM --que es justo lo que hace una
+/// prueba--.
+///
+/// Y SI NO HAY `document` --en la maquina de Dart-- se devuelve el nombre a pelo. Esta
+/// funcion no se llama nunca ahi, porque el import es condicional y `sqlite_nativo.dart`
+// es el que se carga; el valor es solo para que la funcion tenga un `return`.
+String urlDelMotorWasm() {
+  final base = web.document.baseURI;
+  if (base.isEmpty) return nombreDelMotorWasm;
+  return web.URL(nombreDelMotorWasm, base).href;
+}
+
 /// Carga el motor y registra el sistema de ficheros virtual.
 ///
 /// Se puede llamar mas de una vez; la segunda no hace nada. Que sea idempotente
@@ -47,7 +90,7 @@ const String nombreDelMotorWasm = 'sqlite3.wasm';
 /// llamado.
 Future<void> prepararSqliteWeb() async {
   if (_motor != null) return;
-  final motor = await WasmSqlite3.loadFromUrlString(nombreDelMotorWasm);
+  final motor = await WasmSqlite3.loadFromUrlString(urlDelMotorWasm());
   final vfs = InMemoryFileSystem(name: 'ab');
   motor.registerVirtualFileSystem(vfs, makeDefault: true);
   _motor = motor;

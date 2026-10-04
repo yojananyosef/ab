@@ -246,3 +246,20 @@ Future<T> conPlazo<T>(
       futuro.then<void>((_) {}, onError: (_, _) {});
   });
 }
+
+/// Un arranque que no ha comprobado nada.
+///
+/// Y SOLO SE USA CUANDO LA PANTALLA NO ESTA MONTADA, que es un caso real: el `State` se
+/// puede desmontar mientras el `await` del arranque sigue vivo, y entonces `_cargar` no
+/// tiene a quien aplicar el resultado. Antes devolvia un `void` y no hacia falta
+/// ningun valor; ahora devuelve el resultado, y ese caso necesita uno.
+///
+/// Y QUE DIGA `sinConexion` Y NO `hashIncorrecto` O CUALQUIER OTRA COSA: `sinConexion`
+/// es el estado que hace que la biblioteca **no afirme** nada sobre el catalogo, que es
+/// exactamente lo que corresponde a un arranque que no llego a mirar.
+ResultadoDelArranque arranqueVacio() => const ResultadoDelArranque(
+      estadoDelCatalogo: EstadoLectura.sinConexion,
+      hayIdsLocales: false,
+      hayHashesLocales: false,
+      avisos: <String>[],
+    );

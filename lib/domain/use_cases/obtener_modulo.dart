@@ -115,7 +115,7 @@ class ObtenerModulo {
 
     // Si el servidor dice que no deja leerlo desde el navegador, no tiene sentido
     // reintentar: volvera a pasar lo mismo. Se dice una vez y se para.
-    if (usarUrlDeNavegador && await _noDejaLeerDesdeNavegador(url)) {
+    if (usarUrlDeNavegador && await noDejaLeerDesdeNavegador(url)) {
       yield const Progreso(recibidos: 0, fase: 'Comprobando si el servidor deja leerlo');
       yield const Terminada(OrigenNoLegible());
       return;
@@ -296,15 +296,62 @@ class ObtenerModulo {
   ///
   /// Se hace una peticion de UN byte en vez de una de rango: si esa ya falla por
   /// permisos, la de rango tambien va a fallar, y no se baja nada por el camino.
-  Future<bool> _noDejaLeerDesdeNavegador(Uri url) async {
+  ///
+  /// Y SE LLAMA [noDejaLeerDesdeNavegador] Y NO CON GUION BAJO PORQUE NO ES PRIVADO.
+  /// La comprobacion de que una peticion **sin** `access-control-allow-origin` no es un
+  /// "no deja leer" se hace desde una prueba, y si el metodo fuera privado no habria
+  /// manera de probarla sin subirla entera por el `obtener`. Con el metodo publico se
+  /// pregunta directamente y se responde con el codigo que ha dado la red.
+  Future<bool> noDejaLeerDesdeNavegador(Uri url) async {
+    // ============================================================================
+    // ESTA COMPROBACION ESTABA MAL, Y ROMPIA LA DESCARGA EN EL CASO NORMAL
+    // ============================================================================
+    //
+    // La primera version miraba si la respuesta traia `access-control-allow-origin` y,
+    // si no, decia que el servidor no dejaba leerlo desde el navegador. Descubrio asi la
+    // diferencia entre la release de GitHub --que no manda esa cabecera-- y GitHub Pages
+    // --que si--, y en el caso de la release acertaba.
+    //
+    // Pero en **este** despliegue la aplicacion esta en
+    // `https://yojananyosef.github.io/ab/` y los modulos en
+    // `https://yojananyosef.github.io/aa/modulos/...`: **mismo origen**. Y una peticion
+    // de mismo origen no lleva `access-control-allow-origin` ni falta que lleve, porque
+    // no hay nada que autorizar. O sea que la comprobacion decia "no deja leerlo" justo
+    // en el despliegue donde la descarga funciona, y la aplicacion se negaba a bajar el
+    // texto y decia "abre un fichero local".
+    //
+    // MEDIDO EL 4 DE OCTUBRE DE 2026, al montar la comprobacion en navegador del grupo 8.
+    // Y no en una maquina rara ni en un caso limite: en el caso normal, con el navegador
+    // real y el despliegue real.
+    //
+    // ============================================================================
+    // Y AHORA QUE SE PREGUNTA
+    // ============================================================================
+    //
+    // Se hace **la peticion y se mira lo que contesto**, que es la unica pregunta que
+    // sabe responder la red:
+    //
+    //   - Si el navegador puede leerla, contesta con su cuerpo y con un 2xx.
+    //   - Si no puede --porque el servidor no manda la cabecera y el origen es distinto--,
+    //     el navegador **no entrega nada**: la peticion falla y `rango` devuelve null.
+    //
+    // O sea que la cabecera no hace falta mirarla. Y antes era peor en las dos
+    // direcciones: si la cabecera faltaba y la peticion **si** habia llegado, decia que no
+    // se podia leer; y si la peticion no habia llegado --`r == null`-- decia que si se
+    // podia, y se ponia a descargar 22 MiB que no iba a funcionar.
     try {
       final r = await _cliente.rango(url, 0, 0);
-      // Un null significa que la peticion no llego a salir. Si es un problema de
-      // permisos, el navegador da error y aqui llega null; si es que el sitio esta
-      // caido, tambien. No se pueden distinguir sin mirar el error, asi que se
-      // pregunta de otra manera: se mira si el servidor contesta con algo.
+
+      // Un null significa que la peticion ni siquiera llego a salir, o que el navegador la
+      // bloqueo. De las dos maneras no se puede decir *por que* desde aqui, asi que se
+      // responde que no: la descarga de verdad va a intentarlo y su error
+      // --`OrigenCaido`-- es el que sabe de que se trata.
       if (r == null) return false;
-      return !r.cabeceras.containsKey('access-control-allow-origin');
+
+      // Y UN 200 O UN 206 ES LO NORMAL. El 206 es el de un rango, que es lo que se ha
+      // pedido; y el 416 --"rango no valido"-- tambien vale, porque significa que el
+      // servidor ha entendido la peticion y ha contestado.
+      return r.codigo != 200 && r.codigo != 206 && r.codigo != 416;
     } catch (_) {
       return false;
     }

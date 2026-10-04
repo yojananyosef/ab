@@ -24,6 +24,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'app/navegador.dart';
+import 'app/sonda.dart';
 import 'data/repositories/catalogo_repository.dart';
 import 'data/services/almacenamiento.dart';
 import 'app/arranque.dart';
@@ -108,6 +109,10 @@ class _AbAppState extends State<AbApp> {
   late final PlatformRouteInformationProvider _proveedorDeRutas;
   late final NavegadorAb _navegador;
 
+  /// La sonda de la comprobacion en navegador. Existe siempre; solo hace algo si se
+  /// compilo con `--dart-define=AB_SONDA=...`.
+  final Sonda _sonda = Sonda();
+
   @override
   void initState() {
     super.initState();
@@ -128,7 +133,14 @@ class _AbAppState extends State<AbApp> {
     // sola porque `Rutas.leer` busca la ultima aparicion de `/leer/`. Recortarla aqui
     // seria hacerlo dos veces.
     _proveedorDeRutas = PlatformRouteInformationProvider(
-      initialRouteInformation: RouteInformation(uri: Uri.parse(Uri.base.toString())),
+      initialRouteInformation: RouteInformation(
+        // Con la sonda activa manda la ruta que se le pidio, y no la de la barra. Es lo
+        // que permite probar un enlace profundo sin tener que escribirlo en el
+        // navegador a mano, que es lo unico que se podria hacer de otra manera.
+        uri: Uri.parse(
+          kSondaActiva ? kPedidoDeSonda : Uri.base.toString(),
+        ),
+      ),
     );
 
     _navegador = NavegadorAb(
@@ -138,13 +150,13 @@ class _AbAppState extends State<AbApp> {
       abrir: _abrirModulo,
       descargar: (id) => _descargar(id),
       abrirFicheroLocal: (id) => _ficheroLocal(id),
-      reintentarCatalogo: _cargar,
+      reintentarCatalogo: () => _cargar(),
     );
 
     // La primera lectura arranca aqui y no en el `build`, para que no se repita en
     // cada cambio de estado. `addPostFrameCallback` porque `notifyListeners` dentro
     // de `initState` avisa a una pantalla que todavia no esta montada.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _cargar());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _cargarYComprobar());
   }
 
   @override
@@ -155,14 +167,204 @@ class _AbAppState extends State<AbApp> {
     super.dispose();
   }
 
+  /// Cargar el catalogo y, si la sonda esta activa, mirar lo que pasa.
+  ///
+  /// Y LA MEDICION DEL HISTORIAL VA DESPUES, Y NO EN EL MISMO `await`.Va en su propio
+  /// paso porque necesita que la pantalla de lectura ya este leyendo: `medirElHistorial`
+  /// sale adelante si no hay ningun texto abierto, y entonces no mide nada. Encadenado
+  /// detras de [mirarLaAplicacion], que no devuelve nada hasta que hay un pasaje.
+  Future<void> _cargarYComprobar() async {
+    final res = await _cargar();
+
+    if (!kSondaActiva) return;
+
+    final ruta = rutaDeLaSonda;
+    _moduloDeLaSonda = switch (ruta) {
+      RutaLectura(:final modulo) => modulo,
+      _ => 'KJV2006',
+    };
+    final esperado = switch (ruta) {
+      RutaLectura(:final referencia) => referencia,
+      _ => const Referencia('John', 3, 16),
+    };
+
+    // Y BAJA EL TEXTO SI NO ESTA, antes de mirarlo.
+    //
+    // La sonda pide un enlace profundo --`/leer/KJV2006/John.3.16`-- y en una ejecucion
+    // con el perfil limpio el texto no esta. La aplicacion, como esta, vuelve a la
+    // biblioteca con un aviso, que es lo correcto para alguien que abre un enlace y no
+    // tiene el texto: no se le descarga 22 MiB sin que lo pida.
+    //
+    // Aqui si se lo pide, porque lo pide **la comprobacion**. Y de ahi tambien sale el
+    // dato de la 8.3: la primera ejecucion baja el modulo entero y la segunda, con el
+    // mismo perfil, baja cero bytes. Ese numero lo cuenta el motor de obtencion --
+    // [Sonda.anotarDescarga]--, no la sonda.
+    await _bajarSiFalta(esperado);
+
+    // Y SE VUELVE A PEDIR EL PASAJE, y no se espera a que aparezca solo.
+    //
+    // Al arrancar, el enrutador pide la ruta --`/leer/KJV2006/John.3.16`-- y no puede
+    // abrir el texto porque todavia no esta, asi que avisa y vuelve a la biblioteca.
+    // Eso es lo correcto para alguien que abre un enlace y no tiene el modulo. Y aqui
+    // significa que, despues de bajar el texto, **nadie vuelve a intentar leer**:
+    // la pantalla se queda en la biblioteca con un aviso, y la comprobacion se queda
+    // esperando un pasaje que no va a llegar.
+    //
+    // Que lo vuelva a pedir la propia sonda y no la aplicacion es una decision
+    // consciente. En la aplicacion, pedir de nuevo seria Automatico, y Automatico es
+    // exactamente lo que no hay que hacer: alguien que abre un enlace, no tiene el texto
+    // y lo descarga tendria que verse al final en Juan 3:16 sin haberlo pedido. Lo que
+    // falta para que sea Automatico de verdad es **preguntar**, y esa es una pantalla
+    // que todavia no existe. Ver `openspec/changes`.
+    // Y DENTRO DE UN `try`, Y CON UNA ESCRITURA DESPUES, por lo mismo que los pasos
+    // siguientes: si `irA` se queda colgado --porque leer los bytes guardados del
+    // almacenamiento del navegador no conteste-- hay que poder distinguirlo de que la
+    // lectura del pasaje no llegue. Sin esta escritura, "tiempo agotado" no dice donde
+    // se ha quedado, y en un fallo de este tipo la unica pista es el registro del
+    // navegador, que no dice nada.
+    try {
+      await _navegador.irA(RutaLectura(_moduloDeLaSonda, esperado));
+    } catch (e, traza) {
+      _sonda.escribir(<String, Object?>{
+        'resultado': 'excepcion',
+        'motivo': 'no se ha podido pedir el pasaje $esperado: $e\n$traza',
+      });
+      return;
+    }
+    _sonda.escribir(<String, Object?>{
+      'paso': 2,
+      'resultado': 'pasaje pedido, el modulo esta abierto',
+      'estadoLector': _lector.estado.name,
+      'idDelModulo': _lector.idDelModulo,
+    });
+
+    // Y SE ESCRIBE UN "PASO 1" ANTES DE MIRAR EL PASAJE. Por que: si el texto no sale,
+    // hay que saber si no se ha bajado, si no se ha abierto o si no se ha leido, y son
+    // tres fallos distintos con tres arreglos distintos. Con una sola escritura al final
+    // --"tiempo agotado"-- no se sabe cual de los tres es, y se averigua mirando el
+    // registro del navegador, que no dice nada de esto.
+    _sonda.escribir(<String, Object?>{
+      'paso': 1,
+      'resultado': 'catalogo leido, texto bajando',
+      'estadoDelCatalogo': res.estadoDelCatalogo.name,
+      'etiqueta': _catalogo.manifiesto.etiqueta,
+      'modulos': _catalogo.manifiesto.modulos.length,
+      'idsLocales': _biblioteca.idsLocales.toList()..sort(),
+      'bytesDescargados': _sonda.bytesDescargados,
+      'avisos': _biblioteca.avisos,
+    });
+
+    // 1. El pasaje. Es lo que comprueban 8.2 y 8.4.
+    await _sonda.esperarYEscribir(
+      motivoDeEspera: 'no se ha podido leer $esperado en el navegador',
+      cuando: () => mirarLaAplicacion(
+        sonda: _sonda,
+        navegador: _navegador,
+        catalogo: _catalogo,
+        biblioteca: _biblioteca,
+        lector: _lector,
+        esperado: esperado,
+        estado: res.estadoDelCatalogo,
+      ),
+    );
+
+    // 2. El historial, con la pantalla ya leyendo.
+    //
+    // Y ESTE PASO VA DENTRO DE UN `try`, por lo mismo que el paso 1: una excepcion aqui
+    // se traga igual de bien que antes, y la comprobacion 7.5 --que se toca el historial
+    // del navegador-- se queda sin comprobar **sin decir nada**. Con el paso 1 sola se
+    // sabia que Juan 3:16 se habia leido; con el paso 2 fallido no se sabe ni eso, porque
+    // el paso 1 se habia escrito antes.
+    if (esperado.versiculo == null) return;
+    try {
+      await _sonda.medirElHistorial(_navegador);
+    } catch (e, traza) {
+      _sonda.escribir(<String, Object?>{
+        'resultado': 'excepcion',
+        'motivo': 'no se ha podido medir el historial: $e\n$traza',
+      });
+      return;
+    }
+
+    // Y SE VUELVE A MIRAR UNA SOLA VEZ, y el resultado se guarda en una variable. La
+    // primera version llamaba a `mirarLaAplicacion` **tres** veces --dos en el `spread` y
+    // otra en el `if`-- y cada llamada hace una consulta al modulo. Tres consultas para
+    // mirar lo mismo, y una de ellas decidia si lo demas se enseena. Con la variable, una
+    // consulta y una decision.
+    final despues = mirarLaAplicacion(
+      sonda: _sonda,
+      navegador: _navegador,
+      catalogo: _catalogo,
+      biblioteca: _biblioteca,
+      lector: _lector,
+      esperado: esperado,
+      estado: res.estadoDelCatalogo,
+    );
+    _sonda.escribir(<String, Object?>{
+      ...?despues,
+      if (despues == null)
+        'resultado': 'el texto dejo de estar en pantalla tras medir el historial',
+      // Y ESTA ES LA MARCA DE "YA NO VA A HABER OTRA". El colector la ve y se para, en
+      // vez de quedarse esperando un limite de tiempo entero a una escritura que no va a
+      // llegar.
+      //
+      // MEDIDO EL 4 DE OCTUBRE DE 2026: el colector se paraba en la **primera** escritura
+      // y las dos siguientes --la del historial-- llegaban a un servidor que ya no
+      // escuchaba. Y como el `POST` se manda con `keepAlive`, algunas veces llegaban y
+      // otras no, segun el estado de la conexion: o sea que la comprobacion del historial
+      // pasaba o no segun el dia. Con la marca, se para cuando tiene todo.
+      'final': true,
+    });
+  }
+
+  /// El identificador del modulo que pide la ruta de la sonda.
+  ///
+  /// Y UN CAMPO Y NO UN `late final` CON VALOR, porque `initState` no puede llamar a
+  /// `rutaDeLaSonda` --que es un `const` de compilacion-- sin que el analizador se queje
+  /// de que se usa antes de declarar. Se deja vacio y se rellena en el constructor.
+  String _moduloDeLaSonda = '';
+
+  /// Baja el texto de la ruta de la sonda si no esta ya en el dispositivo.
+  ///
+  /// Y SOLO EN LA SONDA, y se dice explicitamente: bajar 22 MiB porque ha aparecido una
+  /// ruta es una decision de producto, y tomarla aqui para que la comprobacion pase
+  /// seria decidir la politica de la aplicacion desde el sitio que la mide.
+  ///
+  /// Lo que **si** falta, y se anota para el cambio siguiente, es ofrecer la descarga
+  /// cuando alguien abre un enlace a un texto que no tiene. Ahora avisa y vuelve a la
+  /// biblioteca; deberia preguntar "¿lo descargas?". Ver `openspec/changes`.
+  Future<void> _bajarSiFalta(Referencia esperado) async {
+    if (!kSondaActiva) return;
+
+    // El `switch` va con un `default` explicito, porque `return` dentro de un patron no
+    // es una expresion en Dart: `_ => return` no compila. Es la forma que si funciona, y
+    // por eso el "no hay modulo en la ruta" se dice asi y no con un patron.
+    final ruta = rutaDeLaSonda;
+    if (ruta is! RutaLectura) return;
+    final id = ruta.modulo;
+    if (id.isEmpty) return;
+
+    if (_biblioteca.idsLocales.contains(id)) return;
+    if (_catalogo.manifiesto.porId(id) == null) return;
+
+    await _descargar(id);
+  }
+
   /// Lee el catalogo y lo que hay en el dispositivo.
   ///
   /// Delega en [arrancarBiblioteca], y no por gusto: la garantia de que el
   /// catalogo se ve aunque el almacenamiento no conteste vive ahi, y en un metodo
   /// privado de un `State` no se puede comprobar con una prueba.
-  Future<void> _cargar() async {
-    if (!mounted) return;
-    await arrancarBiblioteca(
+  /// El arranque, y lo que ha pasado.
+  ///
+  /// Y DEVUELVE EL RESULTADO Y NO UN `void`, y no porque lo necesite quien llama --que lo
+  /// ignora-- sino porque la sonda necesita saber **de donde salio el manifiesto**: si del
+  /// servidor o de una copia guardada. Y esa es justo la diferencia entre "el manifiesto
+  /// es el de hoy" y "se esta enseñando el de ayer", que es lo que comprueba la tarea 8.4
+  /// y que no se puede mirar contando los avisos, porque los de la descarga estan siempre.
+  Future<ResultadoDelArranque> _cargar() async {
+    if (!mounted) return arranqueVacio();
+    return arrancarBiblioteca(
       leerCatalogo: _catalogo.leer,
       almacenamiento: _modulos,
       vista: _biblioteca,
@@ -283,6 +485,11 @@ class _AbAppState extends State<AbApp> {
   ) async {
     switch (resultado) {
       case Obtenido(:final bytes):
+        // Los bytes bajados se cuentan aqui, en el sitio donde el motor los ha traido.
+        // Y no se cuentan en la sonda: lo que hay que medir es lo que cuenta el motor de
+        // obtencion, no lo que diga un contador puesto al lado.
+        _sonda.anotarDescarga(bytes.length);
+
         // El paso sincrono: los bytes donde SQLite los ve. Sin esto, el paso
         // siguiente no tiene nada que abrir.
         final ruta = _modulos.ponerEnMemoria(id, bytes);

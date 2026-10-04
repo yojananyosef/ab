@@ -80,10 +80,13 @@
 // [Navigator.maybePop] no hay nada que decidir.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import 'package:ab/data/repositories/modulo_repository.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/ui/core/rutas.dart';
+import 'sonda_nativa.dart'
+    if (dart.library.js_interop) 'sonda_web.dart' as plataforma;
 import 'package:ab/ui/features/biblioteca/view_models/biblioteca_view_model.dart';
 import 'package:ab/ui/features/biblioteca/views/biblioteca_view.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
@@ -156,6 +159,63 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
 
   @override
   Ruta get currentConfiguration => _ruta;
+
+  /// La ruta, como [currentConfiguration]. Un alias y nada mas.
+  ///
+  /// Existe por la sonda, que habla de "la ruta" y no del "estado del enrutador", y
+  /// porque el nombre del getter del framework no dice de quien es.
+  Ruta get ruta => _ruta;
+
+  // --- 7.5 en el navegador: el historial de verdad ---
+  //
+  // LO UNICO QUE NO SE PUEDE COMPROBAR EN DART, Y POR QUE ESTA EN EL ENRUTADOR Y NO EN
+  // LA SONDA. [SystemNavigator.routeInformationUpdated] decide entre `pushState` y
+  // `replaceState` segun el tipo que reporta el delegado, y lo unico que se puede hacer
+  // con eso en Dart es mirar el tipo --que es lo que comprueba `navegador_test.dart`--.
+  // Que `pushState` **anada** una entrada y que `replaceState` no lo haga solo se ve
+  // preguntando a `window.history.length`, y eso es un navegador.
+  //
+  // Y MIDUR DOS VECES, ANTES Y DESPUES, Y NO "EL NUMERO QUE HAY". El numero absoluto
+  // depende de cuanto ha cargado antes el perfil y no dice nada. Lo que dice es si ha
+  // **crecido**.
+  //
+  // Y SE VUELVE AL PASAJE DEL QUE SE SALIO, con `replaceState`, para no dejar el
+  // historial con una entrada de mas y para que lo que sigue mirando la sonda siga en
+  // pantalla. Con `pushState` al volver, el perfil acabaria con una entrada que hizo la
+  // propia comprobacion, y la segunda ejecucion --la de la tarea 8.3-- mediria distinto.
+  Future<Map<String, Object?>> medirElHistorial() async {
+    final ahora = _ruta;
+    if (ahora is! RutaLectura) {
+      return <String, Object?>{'medido': false, 'motivo': 'no se esta leyendo nada'};
+    }
+
+    final antes = await _longitudDelHistorialEstable();
+    final otroCapitulo =
+        ahora.referencia.capitulo == 1 ? 2 : ahora.referencia.capitulo - 1;
+
+    // Un cambio de capitulo: `navigate`, o sea `pushState`.
+    await irA(RutaLectura(ahora.modulo, Referencia(ahora.referencia.libro, otroCapitulo)));
+    final trasCapitulo = await _longitudDelHistorialEstable();
+
+    // Un ajuste: `neglect`, o sea `replaceState`. Es el mismo `ajustarA` que usaria un
+    // cambio de letra o de version, con una ruta que no lleva a otra pagina.
+    await ajustarA(ahora);
+    final trasAjuste = await _longitudDelHistorialEstable();
+
+    // Y otro `pushState`, para comprobar tambien que entrar dos veces cuenta dos. No es
+    // un dato de sobra: si el ajuste hubiera sido `pushState`, los numeros habrian
+    // subido de uno en uno y este caso lo delata.
+    await irA(ahora);
+    final trasOtro = await _longitudDelHistorialEstable();
+
+    return <String, Object?>{
+      'medido': true,
+      'antes': antes,
+      'trasCambioDeCapitulo': trasCapitulo,
+      'trasCambioDeAjuste': trasAjuste,
+      'trasOtroCambioDeCapitulo': trasOtro,
+    };
+  }
 
   // --- lo que el framework pregunta ---
 
@@ -257,6 +317,28 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
         lector.sinModulo();
 
       case RutaLectura(:final modulo, :final referencia):
+        // Y SI YA ESTA ABIERTO ESE MISMO TEXTO, NO SE VUELVE A ABRIR. Y no es una
+        // optimizacion: es que pasar de Juan 3 a Juan 4 no necesita volver a leer 22 MiB
+        // del almacenamiento ni volver a pasarles `PRAGMA quick_check`.
+        //
+        // MEDIDO EL 4 DE OCTUBRE DE 2026 al montar la comprobacion en navegador: medir el
+        // historial del navegador son tres cambios de ruta, y con la apertura siempre los
+        // tres tardaban mas que el reloj virtual entero, de modo que la comprobacion se
+        // quedaba a medias sin decir nada. Y lo que se estaba midiendo no era el
+        // historial: era el coste de volver a abrir un texto que ya estaba abierto.
+        //
+        // Y AQUI ESTA EL RIESGO, Y POR QUE SE ACEPTA. Un modulo abierto podria haber
+        // cambiado en el almacenamiento desde que se abrio. Se asume que no: solo cambia
+        // si la aplicacion lo ha vuelto a guardar, y eso lo hace ella misma, y entonces
+        // reabre por el camino de `_descargar`. Un fichero editado por fuera mientras la
+        // aplicacion esta abierta es un caso que no se contempla, y se dice aqui en vez de
+        // dejarlo para que alguien lo descubra.
+        if (lector.idDelModulo == modulo && lector.modulo != null) {
+          _ruta = RutaLectura(modulo, referencia);
+          lector.leer(referencia);
+          break;
+        }
+
         final abierto = await abrir(modulo, referencia);
         if (abierto == null) {
           // El enlace pide un texto que no esta. Se avisa y se vuelve a la biblioteca:
@@ -311,6 +393,38 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   /// Volver a la biblioteca. Es `pushState`: es otro sitio, y "atras" desde la
   /// biblioteca tiene que devolver al pasaje.
   Future<void> irAHome() => irA(const RutaBiblioteca());
+
+  /// La longitud del historial, DESPUES DE QUE EL FRAMEWORK HAYA ESCRITO LA URL.
+  ///
+  /// Y HAY QUE ESPERAR, Y POR QUE MEDIR DIRECTO DA UN NUMERO DESPLAZADO.
+  ///
+  /// `notifyListeners` no escribe nada en la barra: avisa al `Router`, y el `Router`
+  /// reconstruye, y **en esa reconstruccion** llama a `routerReportsNewRouteInformation`,
+  /// que es lo que acaba en `SystemNavigator.routeInformationUpdated`. O sea que cuando
+  /// el delegado devuelve de `irA`, la URL todavia no esta cambiada.
+  ///
+  /// MEDIDO EL 4 DE OCTUBRE DE 2026 en el navegador, con la comprobacion del grupo 8: los
+  /// numeros salian **una medicion tarde**. El cambio de capitulo no anadia entrada y el
+  /// cambio de ajuste si --justo al reves de lo que tiene que pasar--, y el segundo
+  /// cambio de capitulo si la anadia. Leyendo los cuatro en fila, el crecimiento aparece
+  /// un paso mas adelante, y por eso lo de "el ajuste anade una entrada" no era un
+  /// bug del `ajustarA` sino de medir antes de tiempo.
+  ///
+  /// Por eso se esperan frames. Dos, y no uno: el primero reconstruye el `Router` y el
+  /// segundo deja que lo que este escribio llegue al navegador. Y hay un tope de diez,
+  /// porque si no llegara nunca el numero devuelto seria el inicial y la comprobacion
+  /// creeria que no cambia nada, que es justo el fallo que se quiere cazar.
+  Future<int?> _longitudDelHistorialEstable() async {
+    var largo = plataforma.longitudDelHistorial();
+    for (var i = 0; i < 10; i++) {
+      await SchedulerBinding.instance.endOfFrame;
+      await Future<void>.delayed(Duration.zero);
+      final otro = plataforma.longitudDelHistorial();
+      if (otro == largo) return largo;
+      largo = otro;
+    }
+    return largo;
+  }
 
   // --- abrir un texto desde la biblioteca ---
 

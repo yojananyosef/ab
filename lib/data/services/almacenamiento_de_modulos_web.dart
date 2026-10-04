@@ -55,7 +55,32 @@ class AlmacenamientoDeModulosWeb implements AlmacenamientoDeModulos {
   ///
   /// Se pone en un subdirectorio `modulos/` para que no se mezle con nada que otro
   /// pueda escribir en el sistema de ficheros virtual, que es compartido.
-  String _ruta(String id) => 'modulos/$id.amod';
+  // ============================================================================
+  // Y LA RUTA ES **ABSOLUTA**, CON BARRA DELANTE. Y NO ES UN GUSTO.
+  // ============================================================================
+  //
+  // MEDIDO EL 4 DE OCTUBRE DE 2026, con el navegador real, y rompia **todo**:
+  //
+  //     SqliteException(14): while opening the database, unable to open database file
+  //
+  // El motivo esta en el VFS en memoria de `package:sqlite3`, que no resuelve rutas
+  // relativas: `InMemoryFileSystem.xOpen` busca el fichero con el nombre **tal cual**,
+  // y SQLite le pasa la ruta ya resuelta contra el directorio actual --`/`--, o sea
+  // `/modulos/KJV2006.amod`. Con la ruta sin barra, el mapa de ficheros tiene
+  // `modulos/KJV2006.amod` y SQLite busca `/modulos/KJV2006.amod`, y no los encuentra:
+  //
+  //     if (!fileData.containsKey(pathStr)) {
+  //       final create = flags & SQLITE_OPEN_CREATE;
+  //       if (create != 0) { ... } else { throw VfsException(SQLITE_CANTOPEN); }
+  //     }
+  //
+  // En nativo no pasa, porque ahi el sistema de ficheros si resuelve rutas relativas y
+  // el fichero ya esta en disco. O sea que el mismo nombre significaba dos cosas
+  // distintas segun la plataforma, y solo en web estaba mal.
+  //
+  // Y NO HAY FORMA DE QUE SE LLEVE POR SORPRESA: `ponerEnMemoria` devuelve esta misma
+  // ruta y `Sqlite.abrir` se llama con ella, asi que las dos son la misma cadena.
+  String _ruta(String id) => '/modulos/$id.amod';
 
   @override
   String ponerEnMemoria(String id, List<int> bytes) {

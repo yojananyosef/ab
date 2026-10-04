@@ -111,11 +111,24 @@ Este grupo es el que `flutter test` **NOT** puede sustituir: Flutter pinta en un
 canvas y `flutter test` no ejecuta el motor de render. Una app puede pasar todas
 las pruebas de los grupos anteriores y no funcionar en ningun navegador.
 
-- [ ] 8.1 Anadir un script que haga `flutter build web`, sirva `build/web` en local y lo lance en Chrome headless volcando el resultado al DOM; verificar que el script imprime el resultado en vez de fallar en silencio
-- [ ] 8.2 Comprobar con ese script que la app abre un `.amod` real desde el navegador y muestra Juan 3:16; verificar que el texto pintado es el mismo que el de `docs/investigacion/sqlite-en-navegador.md`
-- [ ] 8.3 Ejecutar el script dos veces con el mismo perfil de navegador; verificar que en la segunda el contador de bytes descargados es 0, porque el modulo se recupera del almacenamiento
-- [ ] 8.4 Comprobar con el script que el manifiesto se lee del origen real y que un modulo aparece con su tamano; verificar que el texto de pantalla coincide con el `catalog.json` publicado
-- [ ] 8.5 Ejecutar `flutter analyze`, `flutter test` y `flutter build web` en este orden; verificar que los tres salen con codigo 0
+- [x] 8.1 Anadir un script que haga `flutter build web`, sirva `build/web` en local y lo lance en Chrome headless volcando el resultado al DOM; verificar que el script imprime el resultado en vez de fallar en silencio. **Hecho con `scripts/comprobar-en-navegador.sh`, mas `scripts/servir.py` y `scripts/colector.py`.** El resultado va a un `<pre id="ab-sonda">` **y** a un colector HTTP: `--dump-dom` se queda esperando para siempre con Flutter (medido, `exit=124` con 0 bytes), asi que lo que el script comprueba es lo que la propia aplicacion manda. Cada paso imprime lo que va haciendo y el resultado
+- [x] 8.2 Comprobar con ese script que la app abre un `.amod` real desde el navegador y muestra Juan 3:16; verificar que el texto pintado es el mismo que el de `docs/investigacion/sqlite-en-navegador.md`. **Comprobado: el texto es el entero y Juan 3 sale con 36 versiculos**, contados por el motor compilado a WebAssembly sobre los 22.544.384 bytes bajados de github.io
+- [x] 8.3 Ejecutar el script dos veces con el mismo perfil de navegador; verificar que en la segunda el contador de bytes descargados es 0, porque el modulo se recupera del almacenamiento. **Comprobado: 22.544.384 en la primera y 0 en la segunda**, con el mismo `--user-data-dir`. El numero lo cuenta el motor de obtencion, no la sonda
+- [x] 8.4 Comprobar con el script que el manifiesto se lee del origen real y que un modulo aparece con su tamano; verificar que el texto de pantalla coincide con el `catalog.json` publicado. **Comprobado: `estado` es `delServidor`, la etiqueta es `v0.1.1`, y los dos modulos salen con 22.544.384 y 57.536.512 bytes**, que son los del `catalog.json` publicado. Se comprueba el **estado** y no los avisos, porque los de la descarga estan siempre
+  **LO QUE HA ENCONTRADO ESTE GRUPO, Y POR QUE ESTA EN `AGENTS.md`:** cuatro fallos que
+  estan en el camino normal --la biblioteca, un enlace profundo, descargar y leer-- y que
+  `flutter test` no puede ver, porque las 330 pruebas del repositorio estaban en verde con
+  las cuatro cosas rotas en web: (1) con un enlace profundo se pedia
+  `/leer/KJV2006/sqlite3.wasm`, porque `fetch` resuelve las URL relativas contra la
+  direccion del documento y no contra el `<base href>`; (2) la app se negaba a descargar
+  porque `noDejaLeerDesdeNavegador` miraba `access-control-allow-origin`, que en el
+  despliegue real **no viene**, por ser el mismo origen; (3) el `.amod` descargado no se
+  abria, `unable to open database file`, porque el VFS en memoria de `package:sqlite3` no
+  resuelve rutas relativas; (4) y un quinto, de rendimiento: pasar de Juan 3 a Juan 4
+  volvia a leer 22 MiB y a pasarles `PRAGMA quick_check`. Los tres primeros tienen pruebas
+  en Dart que los fijan
+
+- [x] 8.5 Ejecutar `flutter analyze`, `flutter test` y `flutter build web` en este orden; verificar que los tres salen con codigo 0. **Hecho.** Y las 338 pruebas de `flutter test` mas las 6 de los dos scripts de Python, que tambien tienen porque **deciden** si la comprobacion en navegador pasa
 
 ## 9. Documentacion
 
