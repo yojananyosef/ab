@@ -156,6 +156,14 @@ class Medidas {
   /// El tope de ancho del contenido. Ver arriba el motivo.
   static const double anchoMaximoDeFila = 560;
 
+  /// El ancho mas estrecho que puede tener la columna de texto.
+  ///
+  /// Existe por el caso de una ventana muy estrecha, donde el ancho disponible puede
+  /// quedar por debajo de cero al restar los margenes y un `ConstrainedBox` con ancho
+  /// negativo lanza. Un minimo pequeno es menos malo que una excepcion, y en una
+  /// ventana de 120 px ya no hay nada que leer de todas formas.
+  static const double anchoMinimoDeColumna = 120;
+
   /// Margen de los lados en pantallas estrechas.
   static const double margenEstrecho = 14;
 

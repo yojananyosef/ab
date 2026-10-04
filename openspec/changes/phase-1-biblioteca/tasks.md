@@ -75,17 +75,35 @@
 
   **El enunciado decia "1 Corintios" con "Segundo de Corintios", y eso esta mal**: "Segundo de Corintios" es el **segundo**, no el primero, asi que no pueden abrir el mismo libro ni deben. Las parejas que si van juntas son las de cada numero con su ordinal: "1 Corintios" y "Primero de Corintios", y "2 Corintios" y "Segundo de Corintios". La prueba que documentaba el par equivocado **daba verde**, porque comparaba dos `null` con `null`
 - [x] 7.3 Avisar en castellano cuando un pasaje no existe en esa traduccion, y ofrecer el ultimo pasaje valido anterior; verificar con una prueba de widget con un capitulo y un versiculo inventados. **Hecho en la logica y con el modulo real**: Juan 3:37 no existe y ofrece Juan 3:36; Genesis 51 no existe y ofrece Genesis 50:26. La prueba de widget llega con la vista
-- [ ] 7.4 Escribir la referencia en la direccion, con `PathUrlStrategy` y `HashUrlStrategy` como reserva; verificar que recargar conserva el pasaje y que "atras" vuelve a la biblioteca
-- [ ] 7.5 Usar `replaceState` para cambiar de version o de ajuste, y `pushState` para cambiar de capitulo; verificar que tras cambiar de version, "atras" **NO** deshace ese cambio
-- [ ] 7.6 Anadir el campo de referencia con validacion en vivo y el boton de buscar deshabilitado mientras no sea valido; verificar a 360 px con el teclado abierto que el campo y el boton quedan por encima del teclado y que el texto de entrada es de al menos 16 px
-- [ ] 7.7 Limitar la columna de texto a 90 caracteres por linea como maximo y centrarla en pantallas anchas; verificar a 1440 px que el ancho de la columna no supera ese limite
+- [x] 7.4 Escribir la referencia en la direccion, con `PathUrlStrategy` y `HashUrlStrategy` como reserva; verificar que recargar conserva el pasaje y que "atras" vuelve a la biblioteca.
+
+  **Hecho con `MaterialApp.router`, y no escribiendo la barra a mano.** La ruta es estado de verdad: al arrancar la lee el navegador y al pulsar "atras" el historial la vuelve a poner, asi que recargar conserva el pasaje y "atras" vuelve a la biblioteca sin una linea de codigo para ninguna de las dos cosas. Se ha comprobado en `test/app/navegador_test.dart` (18 pruebas) y en `test/ui/rutas_test.dart` (16). **Lo que queda para el grupo 8**: que el navegador obeyezca de verdad, mirando `history.length` y recargando, que en Dart no existe
+- [x] 7.5 Usar `replaceState` para cambiar de version o de ajuste, y `pushState` para cambiar de capitulo; verificar que tras cambiar de version, "atras" **NO** deshace ese cambio.
+
+  **El interruptor es el `RouteInformationReportingType` que reporta el delegado**: `navigate` es `pushState` y `neglect` es `replaceState`, segun esta escrito en el propio SDK (`PlatformRouteInformationProvider.routerReportsNewRouteInformation`). Hay un metodo `ajustarA` para lo que es ajuste y otro `irA` para lo que es entrar a un sitio, y **no se usa nunca `none`**. Comprobado que cada uno reporta lo que toca. **Lo que queda para el grupo 8**: medir en Chrome que tras cambiar de version `history.length` no cambia
+- [x] 7.6 Anadir el campo de referencia con validacion en vivo y el boton de buscar deshabilitado mientras no sea valido; verificar a 360 px con el teclado abierto que el campo y el boton quedan por encima del teclado y que el texto de entrada es de al menos 16 px
+
+  **El campo y el boton van en columna, no en fila.** A 360 px con el teclado abierto quedan unos 360 px de alto; en fila el boton se queda con la mitad del ancho y el texto se corta a los 12 caracteres justo cuando se esta escribiendo "Juan 3:16". Comprobado a 360x360, que es la altura util con el teclado, y que el boton esta debajo del campo. El texto de entrada es de 16 px exactos
+- [x] 7.7 Limitar la columna de texto a 90 caracteres por linea como maximo y centrarla en pantallas anchas; verificar a 1440 px que el ancho de la columna no supera ese limite
+
+  **El limite se mide, no se escribe.** Un numero fijo de pixeles seria una suposicion: el ancho de 90 caracteres depende de la fuente y del tamano de letra, y cambiar cualquiera de las dos cosas haria que el limite de 90 caracteres fuera de 55 o de 130 sin que nadie se entere. Se mide con un `TextPainter` sobre una frase de Cervantes y su ancho se divide entre sus caracteres. **Y sin una fuente de verdad estas pruebas darian verde sin medir nada**, porque en `flutter test` todas las letras miden lo mismo y el limite sale de 1440 px a 16, mas ancho que la pantalla: por eso `test/support/fuente.dart` carga Roboto del SDK
 - [x] 7.8 Obtener el numero de capitulos de cada libro con una consulta al modulo, sin ninguna tabla de capitulos en el codigo; verificar que Genesis ofrece del 1 al 50 y **NOT** un 51, y que Juan suma 879 versiculos. El 51 es el numero que da la RVR, y el fallo de escribirlo de memoria esta documentado en el repositorio hermano
 - [x] 7.9 Comprobar que en el codigo no hay ninguna tabla de numeros de libro, con el grep anclado a codigo: `grep -rnE '^[^/]*\b(chapterCount|versiculosPorLibro|numCapitulos|capitulosPorLibro)\b' lib/`. Sin anclar casaria con los comentarios que explican que no hay tabla, y una comprobacion que siempre falla no verifica nada
-- [ ] 7.10 Mostrar en la pantalla de lectura los terminos del modulo: `copyright` y `attribution` visibles sin abrir ningun menu; verificar con una prueba de widget que aparecen sin pulsar nada
-- [ ] 7.11 Mostrar `license` y `license_evidence` junto a la atribucion; verificar con una prueba de widget que tambien son accesibles en un solo toque
-- [ ] 7.12 Si el manifiesto y el `info` del modulo discrepan de licencia, mostrar la del modulo y avisar de la discrepancia con las dos; verificar con una prueba que usa un manifiesto alterado a proposito
-- [ ] 7.13 Si `defects_count` es mayor que 0, avisar en castellano de cuantos versiculos vienen incompletos y mostrar el texto de `defects`; verificar con una prueba con un modulo de defecto, y la inversa: con `defects_count` 0 **NOT** aparece ningun aviso de texto incompleto
-- [ ] 7.14 Mostrar el valor de `versification` del modulo; verificar con una prueba de widget que aparece el `KJV` del KJV real
+- [x] 7.10 Mostrar en la pantalla de lectura los terminos del modulo: `copyright` y `attribution` visibles sin abrir ningun menu; verificar con una prueba de widget que aparecen sin pulsar nada
+
+  **Estan al final del desplazamiento de la propia pantalla de lectura, y la prueba comprueba que no hay ningun `PopupMenuButton`, `MenuAnchor` ni `ExpansionTile` en la pantalla.** Es lo mas estricto que se puede ser con "sin abrir ningun menu". Un pie **fijo** taparia versiculos, que es lo peor que puede hacer un pie, asi que van en el scroll
+- [x] 7.11 Mostrar `license` y `license_evidence` junto a la atribucion; verificar con una prueba de widget que tambien son accesibles en un solo toque
+
+  **Se toma en el sentido estricto: cero toques, no uno.** Las cuatro lineas estan una debajo de otra en la misma columna, y la prueba lo comprueba con la posicion --misma x, y sin ningun boton entre ellas. "Junto" se comprueba con la distancia, no con que existan: un termino al fondo de una ficha larga esta tan escondido como uno detras de un menu
+- [x] 7.12 Si el manifiesto y el `info` del modulo discrepan de licencia, mostrar la del modulo y avisar de la discrepancia con las dos; verificar con una prueba que usa un manifiesto alterado a proposito
+
+  **Se alteran los terminos de una COPIA del modulo real**, no de uno de juguete: los mismos 31.102 versiculos y Juan 3 con los mismos 36, con `license` de `CC-BY-NC` y el manifiesto diciendo `PublicDomain`. Ver `test/support/modulos_de_prueba.dart`. Se comprueba que se ve la del modulo **y** que el aviso dice las dos
+- [x] 7.13 Si `defects_count` es mayor que 0, avisar en castellano de cuantos versiculos vienen incompletos y mostrar el texto de `defects`; verificar con una prueba con un modulo de defecto, y la inversa: con `defects_count` 0 **NO** aparece ningun aviso de texto incompleto
+
+  **El numero va en el texto y no en un icono**, y se comprueban las dos ramas: con 3 sale "este texto tiene 3 versiculos incompletos" y con el texto de `defects` entero; con **1** sale en singular, porque el singular y el plural son dos reglas distintas del castellano; con **0** no sale nada. Y que con cero no haya aviso no significa que no haya ficha: los terminos se siguen viendo
+- [x] 7.14 Mostrar el valor de `versification` del modulo; verificar con una prueba de widget que aparece el `KJV` del KJV real
+
+  Se ve `KJV, la de 1569`. El ano va **tal cual** porque es el dato que hay: si el modulo no lo dice, no se inventa. Y se comprueba tambien que el valor crudo del modelo es `KJV`, para que la traduccion del texto no pueda tapar un valor leido mal
 
 ## 8. Comprobacion en navegador de verdad
 

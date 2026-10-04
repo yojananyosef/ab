@@ -38,6 +38,16 @@ enum EstadoLecturaTexto {
   /// No hay ningun modulo abierto todavia.
   sinModulo,
 
+  /// Hay un modulo abierto y todavia no se ha pedido ningun pasaje.
+  ///
+  /// Es un estado que dura un frame --el enrutador abre el modulo y enseguida pide el
+  /// pasaje-- pero tiene que existir. Sin el, el estado entre abrir y leer seria
+  /// "cargando", y "cargando" con un `CircularProgressIndicator` que no tiene nada que
+  /// cargar es un spinner que **nunca para**: se queda girando para siempre y
+  /// `pumpAndSettle` se queda esperando para siempre. Pasarle a una prueba asi no es un
+  /// fallo de la prueba, es un fallo de la pantalla.
+  nadaLeido,
+
   /// Leyendo.
   cargando,
 
@@ -131,7 +141,7 @@ class LectorViewModel extends ChangeNotifier {
             delManifiesto: licenciaDelManifiesto,
             delModulo: _terminos?.licencia ?? '',
           );
-    _estado = EstadoLecturaTexto.cargando;
+    _estado = EstadoLecturaTexto.nadaLeido;
     _pasaje = null;
     _ultimoValido = null;
     _motivoDelFallo = null;

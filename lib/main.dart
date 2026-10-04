@@ -23,17 +23,21 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
+import 'app/navegador.dart';
 import 'data/repositories/catalogo_repository.dart';
 import 'data/services/almacenamiento.dart';
 import 'app/arranque.dart';
 import 'data/services/almacenamiento_de_modulos.dart';
 import 'data/services/http_service.dart';
+import 'data/repositories/modulo_repository.dart';
 import 'data/services/sqlite_service.dart';
+import 'domain/models/referencia.dart';
 import 'domain/use_cases/obtener_modulo.dart';
 import 'domain/use_cases/resultado_obtencion.dart';
+import 'ui/core/rutas.dart';
 import 'ui/core/tema.dart';
 import 'ui/features/biblioteca/view_models/biblioteca_view_model.dart';
-import 'ui/features/biblioteca/views/biblioteca_view.dart';
+import 'ui/features/lector/view_models/lector_view_model.dart';
 
 Future<void> main() async {
   // Los enlaces del motor y de las plataformas se preparan **antes** de la primera
@@ -55,6 +59,18 @@ Future<void> main() async {
     // aparece en la propia biblioteca.
     _avisoDeArranque = 'No se ha podido preparar el motor de lectura: $e';
   }
+
+  // La estrategia de direccion va **antes** de `runApp`, y no cuando hace falta.
+  //
+  // Cambiarla con la aplicacion ya montada deja la barra a medio camino: el framework
+  // ya leyo la ruta con la estrategia antigua y el historial ya tiene una entrada que no
+  // se parece a lo que se ve. Lo que se hace despues es recargar, y una aplicacion que
+  // hay que recargar para que cuadre la barra esta rota.
+  //
+  // Y el resultado se guarda solo para que quede escrito que se ha intentado: no se
+  // avisa de nada al usuario, porque una barra con `#!/leer/...` en vez de con barras
+  // es una diferencia de forma y no de funcionamiento. Ver `rutas.dart`.
+  await prepararEstrategiaDeDireccion();
 
   runApp(const AbApp());
 }
@@ -88,6 +104,9 @@ class _AbAppState extends State<AbApp> {
   late final HttpService _http;
   late final AlmacenamientoDeModulos _modulos;
   late final BibliotecaViewModel _biblioteca;
+  late final LectorViewModel _lector;
+  late final PlatformRouteInformationProvider _proveedorDeRutas;
+  late final NavegadorAb _navegador;
 
   @override
   void initState() {
@@ -97,6 +116,30 @@ class _AbAppState extends State<AbApp> {
     _catalogo = CatalogoRepository(http: _http, almacenamiento: const Preferencias());
     _modulos = crearAlmacenamientoDeModulos();
     _biblioteca = BibliotecaViewModel();
+    _lector = LectorViewModel();
+
+    // El proveedor de rutas va aqui y no dentro de `MaterialApp.router`, porque es el
+    // **mismo** que necesita el enrutador para poder reportarle las rutas. Si cada uno
+    // tuviese el suyo, los dos escribirian en la barra y la pantalla iria por detras.
+    //
+    // Y LA RUTA INICIAL ES LA DE LA BARRA DEL NAVEGADOR, tal cual. Sin recortar el
+    // prefijo del despliegue: `PlatformRouteInformationProvider` entrega la ruta a
+    // `setNewRoutePath`, y la ruta entera --`/ab/leer/KJV2006/John.3.16`-- se resuelve
+    // sola porque `Rutas.leer` busca la ultima aparicion de `/leer/`. Recortarla aqui
+    // seria hacerlo dos veces.
+    _proveedorDeRutas = PlatformRouteInformationProvider(
+      initialRouteInformation: RouteInformation(uri: Uri.parse(Uri.base.toString())),
+    );
+
+    _navegador = NavegadorAb(
+      biblioteca: _biblioteca,
+      lector: _lector,
+      proveedor: _proveedorDeRutas,
+      abrir: _abrirModulo,
+      descargar: (id) => _descargar(id),
+      abrirFicheroLocal: (id) => _ficheroLocal(id),
+      reintentarCatalogo: _cargar,
+    );
 
     // La primera lectura arranca aqui y no en el `build`, para que no se repita en
     // cada cambio de estado. `addPostFrameCallback` porque `notifyListeners` dentro
@@ -106,6 +149,7 @@ class _AbAppState extends State<AbApp> {
 
   @override
   void dispose() {
+    _navegador.dispose();
     _modulos.dispose();
     _catalogo.dispose();
     super.dispose();
@@ -127,17 +171,13 @@ class _AbAppState extends State<AbApp> {
   }
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
+  Widget build(BuildContext context) => MaterialApp.router(
     title: 'AB',
     debugShowCheckedModeBanner: false,
     theme: temaDeAb(),
-    home: BibliotecaView(
-      viewModel: _biblioteca,
-      alPulsarLeer: _leer,
-      alPulsarDescargar: _descargar,
-      alPulsarFicheroLocal: _ficheroLocal,
-      alReintentar: _cargar,
-    ),
+    routerDelegate: _navegador,
+    routeInformationParser: const AnalizadorDeRuta(),
+    routeInformationProvider: _proveedorDeRutas,
   );
 
   // --- acciones ---
@@ -145,32 +185,36 @@ class _AbAppState extends State<AbApp> {
   // Las tres van aqui y no en la vista porque necesitan cosas que la vista no tiene:
   // el motor de obtencion, el almacenamiento y el selector de archivos.
 
-  /// Abrir un modulo.
+  /// Abrir un modulo ya descargado, y devolverlo abierto.
   ///
-  /// Todavia no hay lector: eso es el grupo 7. Lo que se hace ahora es **comprobar
-  /// que se puede abrir**, que es la mitad del trabajo del grupo 2 y la que
-  /// detecta el fallo antes de que exista una pantalla que lo muestre.
-  Future<void> _leer(String id) async {
-    // El lector de verdad es el grupo 7. Lo que hay aqui es comprobar que el
-    // modulo se abre y ensena cuanto tiene, que es lo que hay que comprobar antes de
-    // escribir una pantalla que lo muestre.
+  /// ES LO QUE LLAMA EL ENRUTADOR, y por eso devuelve `null` en vez de avisar. Quien
+  /// llama --el enrutador-- tiene que poder distinguir "no esta" de "esta y hay un
+  /// problema", y el aviso lo pone quien lo va a ensenar. Un `abrir` que avisa por su
+  /// cuenta obliga al que llama a mirar si hay aviso, y se acaba mirando dos veces o
+  /// ninguna.
+  ///
+  /// Y DEVUELVE UN MODULO **ABIERTO**, no una ruta. El `LectorViewModel` lo cierra en su
+  /// `dispose`, que es quien sabe cuando se deja de leer. Devolver la ruta obligaria a
+  /// que alguien mas cerrara, y dos sitios cerrando es uno de sobra o ninguno.
+  ///
+  /// Y COMPRUEBA LA INTEGRIDAD ANTES DE DEVOLVER, y no despues: `ModuloAbierto.abrir`
+  /// hace `PRAGMA quick_check` y devuelve el motivo si no cuadra. Abrir un `.amod`
+  /// descargado a medias da versiculos vacios y silenciosos, que es la forma mas
+  /// incomoda de que alguien crea que la Biblia esta danada cuando lo que esta danado es
+  /// la descarga.
+  Future<ModuloAbierto?> _abrirModulo(String id, Referencia referencia) async {
     final bytes = await _bytesDe(id);
-    if (bytes == null) {
-      _biblioteca.anadirAviso('Este modulo todavia no se ha descargado.');
-      return;
-    }
+    // Sin bytes no hay modulo, y sin avisar: el enrutador pone el aviso cuando ve el
+    // `null`, que es el unico sitio donde se decide que pantalla se ensena.
+    if (bytes == null) return null;
+
     final ruta = _modulos.ponerEnMemoria(id, bytes);
-    try {
-      final sqlite = Sqlite.abrir(ruta);
-      try {
-        final cuenta = sqlite.valor('SELECT count(*) FROM verses');
-        final nombre = sqlite.info('name');
-        _biblioteca.anadirAviso('$nombre esta listo: $cuenta versiculos.');
-      } finally {
-        sqlite.cerrar();
-      }
-    } catch (e) {
-      _biblioteca.anadirAviso('No se ha podido abrir el modulo: $e');
+    switch (ModuloAbierto.abrir(ruta, id: id)) {
+      case Abierto(:final modulo):
+        return modulo;
+      case FalloAlAbrir(:final motivo):
+        _biblioteca.anadirAviso(motivo);
+        return null;
     }
   }
 

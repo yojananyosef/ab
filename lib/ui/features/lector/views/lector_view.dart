@@ -1,0 +1,382 @@
+// La pantalla de lectura: el capitulo, sus versiculos, y los terminos.
+//
+// QUE HAY Y QUE NO HAY EN UNA VISTA. Solo pinta. No lee ficheros, no hace
+// consultas, no decide nada de lo que se puede o no se puede abrir: eso es del
+// ViewModel, que ya esta probado contra el `.amod` real. Si aqui hay un
+// `if (pasaje.vacio)` es un bug de arquitectura, aunque compile.
+//
+// ============================================================================
+// EL ORDEN DE LA PANTALLA, Y POR QUE
+// ============================================================================
+//
+//   1. El titulo del pasaje con las flechas de capitulo.
+//   2. El campo de referencia.
+//   3. Los avisos: pasaje inexistente, discrepancia de licencia, texto incompleto.
+//   4. El capitulo, versiculo a versiculo.
+//   5. Los terminos del modulo.
+//
+// Y EL ORDEN DE LOS AVISOS ES EL QUE IMPORTA. El aviso de "este pasaje no existe en
+// esta traduccion" va **antes** del texto y no despues, y no por beautitud: si
+// estuviera debajo, quien pide Juan 5:44 ve un espacio en blanco y
+// pensaria que la aplicacion se ha roto, en vez de leer que ese versiculo no esta.
+// Un aviso debajo de un texto que no sale es un aviso que no se ve.
+//
+// Y LOS TERMINOS VAN AL FINAL Y EN EL SCROLL, NO FIJOS. Un pie fijo taparia
+// versiculos, que es lo peor que puede hacer un pie. Se llega a el bajando, y quien
+// lee el texto va a leerlos al final, que es cuando ya sabe si le sirve.
+//
+// ============================================================================
+// Y LO QUE NO HAY: AJUSTES EN ESTA PANTALLA
+// ============================================================================
+//
+// No hay un boton de tamano de letra aqui. Existe --`ajustarA`-- y es `replaceState`,
+// y llega con la pantalla de ajustes. Pero no se pinta todavia, y la razon es que un
+// ajuste que aparece en un sitio y no en el otro se acaba usando menos: quien lee no
+// busca el boton, espera que este. Cuando se anada, que este en el lector y no solo
+// en una pantalla a la que hay que ir.
+
+import 'package:flutter/material.dart';
+
+import 'package:ab/domain/models/referencia.dart';
+import 'package:ab/ui/core/tema.dart';
+
+import '../view_models/lector_view_model.dart';
+import '../widgets/campo_de_referencia.dart';
+import '../widgets/columna_de_texto.dart';
+import '../widgets/terminos_del_modulo.dart';
+
+class LectorView extends StatefulWidget {
+  const LectorView({
+    super.key,
+    required this.viewModel,
+    required this.alPulsarPasaje,
+    required this.alCambiarDeVersion,
+    required this.alVolver,
+  });
+
+  final LectorViewModel viewModel;
+
+  /// Ir a otro pasaje del texto abierto. Es `pushState`.
+  final void Function(Referencia referencia) alPulsarPasaje;
+
+  /// Cambiar de version sin salir del pasaje. Es `replaceState`.
+  final void Function(String id) alCambiarDeVersion;
+
+  /// Volver a la biblioteca. Es `pushState`.
+  final VoidCallback alVolver;
+
+  @override
+  State<LectorView> createState() => _LectorViewState();
+}
+
+class _LectorViewState extends State<LectorView> {
+  late final TextEditingController _control;
+
+  /// Que estaba escrito en el campo cuando se abrio, para no sobreescribir lo que
+  /// alguien esta escribiendo con un `build`.
+  ///
+  /// Sin esto, cada vez que el capitulo cambia --que es lo que pasa al pulsar la
+  /// flecha-- el `TextEditingController` se actualiza y **borra** lo que se estaba
+  /// escribiendo. Quien esta escribiendo "Juan 5:1" para saltar al 17 ve como su
+  /// "1" desaparece al cambiar de capitulo. Es de los fallos mas molestos que hay, y
+  /// sale solo si se escribe mientras se navega.
+  String _textoDelCampo = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _control = TextEditingController();
+    widget.viewModel.addListener(_alCambiarElEstado);
+  }
+
+  @override
+  void dispose() {
+    widget.viewModel.removeListener(_alCambiarElEstado);
+    _control.dispose();
+    super.dispose();
+  }
+
+  void _alCambiarElEstado() {
+    // El campo **no** se toca. Solo se reordena lo de arriba, que es lo que depende
+    // del estado.
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vm = widget.viewModel;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(vm.leyendo?.texto ?? 'Leyendo'),
+        leading: IconButton(
+          tooltip: 'Volver a la biblioteca',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: widget.alVolver,
+        ),
+      ),
+      body: SafeArea(child: _cuerpo(vm)),
+    );
+  }
+
+  Widget _cuerpo(LectorViewModel vm) {
+    final estiloVersiculo = Theme.of(context).textTheme.bodyLarge!.copyWith(
+          fontSize: 16,
+          height: 1.7,
+          color: Colores.texto,
+        );
+
+    return ColumnaDeTexto(
+      estilo: estiloVersiculo,
+      hijo: ListView(
+        // `shrinkWrap` con un `ListView` dentro de un `Column` no hace falta: el
+        // `ListView` es el unico hijo que hace scroll, y el `ColumnaDeTexto` solo
+        // limita el ancho.
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          MargenDeLectura(
+            hijo: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                const SizedBox(height: 8),
+                _campoDeReferencia(vm),
+                const SizedBox(height: 12),
+                _tituloConFlechas(vm),
+                const SizedBox(height: 12),
+                if (vm.aviso != null) ...<Widget>[
+                  AvisoDePasajeInexistente(
+                    texto: vm.aviso!,
+                    ultimoValido: vm.ultimoValido,
+                    alIrAlUltimoValido: () {
+                      final r = vm.irAlUltimoValido();
+                      if (r != null) widget.alPulsarPasaje(r);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ],
+            ),
+          ),
+
+          MargenDeLectura(hijo: _capitulo(vm, estiloVersiculo)),
+
+          PieDeLectura(
+            hijo: MargenDeLectura(
+              hijo: TerminosDelModulo(
+                terminos: vm.terminos,
+                discrepancia: vm.discrepancia,
+                ruta: vm.modulo?.ruta ?? '',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- el campo ---
+
+  Widget _campoDeReferencia(LectorViewModel vm) => CampoDeReferencia(
+        control: _control,
+        alEscribir: (t) {
+          _textoDelCampo = t;
+          vm.escribirBusqueda(t);
+        },
+        alBuscar: () {
+          final r = vm.referenciaEscrita;
+          if (r == null) return;
+          widget.alPulsarPasaje(r);
+        },
+        alLimpiar: () {
+          _textoDelCampo = '';
+          _control.clear();
+          vm.limpiarBusqueda();
+        },
+        esValido: vm.laReferenciaEsValida,
+        hayTexto: _textoDelCampo.trim().isNotEmpty,
+      );
+
+  // --- el titulo y las flechas ---
+
+  Widget _tituloConFlechas(LectorViewModel vm) {
+    final r = vm.leyendo;
+    if (r == null) return const SizedBox.shrink();
+
+    // Las flechas no saben cuantos capitulos hay: **preguntan**. Y preguntan con la
+    // lista que devuelve la consulta al modulo, no con un numero escrito. El KJV
+    // acaba en Juan 21; una traduccion puede acabar antes.
+    //
+    // Y se compara con el **numero de versiculos del capitulo siguiente**, no con el
+    // de capitulos: asi un salto sobre un capitulo que la traduccion no tiene --que
+    // existe-- no lleva a un capitulo en blanco. Ver `capitulosDe`.
+    final capitulos = vm.capitulosDe(r.libro);
+    final pos = capitulos.indexOf(r.capitulo);
+    final anterior = pos > 0 ? capitulos[pos - 1] : null;
+    final siguiente = pos >= 0 && pos < capitulos.length - 1 ? capitulos[pos + 1] : null;
+
+    return TituloDelPasaje(
+      referencia: r,
+      hayAnterior: anterior != null,
+      haySiguiente: siguiente != null,
+      // Con `!` porque los botones estan deshabilitados cuando no hay capitulo, y
+      // un boton deshabilitado no llama. Si alguna vez los llamara, el `!` dira que
+      // se llego aqui con un null, que es mejor que una excepcion en pantalla.
+      alAnterior: () => widget.alPulsarPasaje(Referencia(r.libro, anterior!)),
+      alSiguiente: () => widget.alPulsarPasaje(Referencia(r.libro, siguiente!)),
+      alVolver: widget.alVolver,
+    );
+  }
+
+  // --- el capitulo ---
+
+  Widget _capitulo(LectorViewModel vm, TextStyle estilo) {
+    switch (vm.estado) {
+      case EstadoLecturaTexto.sinModulo:
+        return _nadaPintado(
+          vm.aviso ?? 'No hay ningun texto abierto.',
+          'Vuelve a la biblioteca y elige uno.',
+        );
+
+      case EstadoLecturaTexto.nadaLeido:
+        // Ni spinner ni texto. Un modulo recien abierto sin pasaje pedido no tiene
+        // nada que ensenar, y un "cargando" aqui seria un spinner que gira para
+        // siempre porque no hay nada que termine.
+        return const SizedBox.shrink();
+
+      case EstadoLecturaTexto.cargando:
+        return const _Cargando();
+
+      case EstadoLecturaTexto.fallo:
+        return _nadaPintado(
+          vm.motivoDelFallo ?? 'No se ha podido leer.',
+          'Puedes volver a la biblioteca e intentarlo otra vez.',
+        );
+
+      case EstadoLecturaTexto.noExiste:
+        // El aviso ya esta arriba, con su boton. Aqui no se pinta texto, porque no
+        // hay. Y **no** se pinta un hueco con el numero del versiculo pedido: un
+        // "37" sin texto parece que el versiculo existe y esta en blanco, que es
+        // distinto de que no exista.
+        return const SizedBox.shrink();
+
+      case EstadoLecturaTexto.leyendo:
+        final p = vm.pasaje;
+        if (p == null || p.vacio) {
+          return _nadaPintado('Este pasaje esta vacio en esta traduccion.', '');
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            for (final v in p.versiculos)
+              _Versiculo(numero: v.numero, texto: v.texto, estilo: estilo),
+          ],
+        );
+    }
+  }
+
+  Widget _nadaPintado(String texto, String ayuda) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(texto, style: Theme.of(context).textTheme.bodyLarge),
+            if (ayuda.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 4),
+              Text(
+                ayuda,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(color: Colores.textoSuave),
+              ),
+            ],
+          ],
+        ),
+      );
+}
+
+/// Un versiculo: el numero en su columna y el texto al lado.
+///
+/// Y EL NUMERO NO SE PONE EN UNA CAJA NI EN UN CIRCULO. Un numero dentro de una
+/// forma tiene peso visual y rompe el ritmo de la lectura: el ojo va al numero en
+/// vez de al texto, y leer 36 veces "el numero va primero" es peor que leer el texto
+/// con un numero al margen. Y en un movil el margen se come el ancho, y el ancho es
+/// lo que no sobra.
+///
+/// Y EL NUMERO SE PINTA EN UN ANCHO FIJO, para que todos los versiculos del capitulo
+/// cuenten igual de ancho. Con el numero pegado al texto, el 1 queda en 8 px y el 36
+/// en 20, y el texto empieza en un sitio distinto en cada versiculo. Que el texto
+/// empiece siempre en el mismo sitio es lo que hace que una columna de versiculos se
+/// pueda leer como una columna.
+class _Versiculo extends StatelessWidget {
+  const _Versiculo({required this.numero, required this.texto, required this.estilo});
+
+  final int numero;
+  final String texto;
+  final TextStyle estilo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 34,
+            child: Text(
+              '$numero',
+              textAlign: TextAlign.right,
+              style: estilo.copyWith(
+                fontSize: 13,
+                color: Colores.textoSuave,
+                height: 1.9,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              texto,
+              style: estilo,
+              // Sin esto, una palabra muy larga --un nombre propio largo en otra
+              // escritura, una URL en un texto-- sale del borde. Flutter ya parte
+              // por el ancho, pero no siempre, y un texto que sale del borde es
+              // texto que no se puede seleccionar.
+              softWrap: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Lo que se ve mientras llega el capitulo.
+///
+/// Un `CircularProgressIndicator` centrado y sin texto, porque en un capitulo de tres
+/// segundos un "cargando" parpadeando es ruido. Y no es un `FutureBuilder`: el
+/// ViewModel ya avisa cuando ha terminado, y un `FutureBuilder` dentro del estado
+/// seria un segundo sitio que sabe si hay texto.
+///
+/// Y NO HAY UN DELAY PARA QUE NO PARPADEE. Un spinner que aparece y desaparece en
+/// 12 ms por un capitulo de un versiculo es un fogonazo, y un fogonazo molesta mas
+/// que una espera de 40 ms. Podria remediarse con un temporizador que no pinte nada
+/// hasta los 150 ms, y no se hace: en la maquina de Dart el capitulo de Juan 3 esta
+/// en 4 ms, de modo que cualquier espera solo se veria en produccion, y un
+/// temporizador que aqui nunca se ve es un temporizador que nadie llega a probar.
+class _Cargando extends StatelessWidget {
+  const _Cargando();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 32),
+        child: Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+}
