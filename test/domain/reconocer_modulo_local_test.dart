@@ -19,10 +19,11 @@ import 'package:ab/domain/models/modulo.dart';
 import 'package:ab/domain/use_cases/reconocer_modulo_local.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const String _rutaKjv = '/home/j/aa/modules/build/KJV2006_bible.amod';
-const String _rutaClarke = '/home/j/aa/modules/build/CLARKE_commentary.amod';
-const String _sha256Kjv = 'ce0cb1bc4edbf3341d673739539421bbfed3972e39cbac5fc129f35f25324fe9';
-const String _sha256Clarke = '3df25f8286231c344fb8f47ce74a697b40b4cfeffce0dc311ac7aa5f19c1608c';
+import '../support/fixtures.dart';
+
+/// Rutas y hashes vienen de `fixtures.dart`, el unico sitio donde estan escritos.
+const String _sha256Kjv = sha256Biblia;
+const String _sha256Clarke = sha256Comentario;
 
 /// El manifiesto tal como lo publica el catalogo, con los dos modulos.
 ///
@@ -68,18 +69,9 @@ Manifiesto _manifiestoReal() {
 void main() {
   const reconocer = ReconocerModuloLocal();
 
-  setUpAll(() {
-    for (final r in const [_rutaKjv, _rutaClarke]) {
-      if (!File(r).existsSync()) {
-        fail('falta $r, que es un modulo real del repositorio hermano. Sin el '
-            'fichero REAL estas pruebas no verifican nada.');
-      }
-    }
-  });
-
   group('4.5 un modulo del catalogo se reconoce', () {
     test('el KJV real es su propio modulo, con su hash', () {
-      final bytes = File(_rutaKjv).readAsBytesSync();
+      final bytes = File(rutaBibliaReal).readAsBytesSync();
       final archivo = ArchivoLocal(nombre: 'KJV2006_bible.amod', bytes: bytes);
       final r = reconocer.reconocer(archivo, _manifiestoReal());
 
@@ -92,7 +84,7 @@ void main() {
     });
 
     test('el CLARKE real tambien, y es un comentario', () {
-      final bytes = File(_rutaClarke).readAsBytesSync();
+      final bytes = File(rutaComentarioReal).readAsBytesSync();
       final archivo = ArchivoLocal(nombre: 'CLARKE_commentary.amod', bytes: bytes);
       final r = reconocer.reconocer(archivo, _manifiestoReal());
 
@@ -108,7 +100,7 @@ void main() {
       // cualquier fichero pasara por bueno. Se comprueba cambiando el hash del
       // manifiesto: el fichero sigue siendo el de verdad y tiene que dejar de
       // reconocerse.
-      final bytes = File(_rutaKjv).readAsBytesSync();
+      final bytes = File(rutaBibliaReal).readAsBytesSync();
       final archivo = ArchivoLocal(nombre: 'x.amod', bytes: bytes);
 
       final manifiestoFalso = Manifiesto(
@@ -142,7 +134,7 @@ void main() {
       // Es el caso que da miedo. Un SQLite con un byte cambiado abre PERFECTO y da
       // versiculos casi correctos. Si aqui se aceptara, el fallo no se veria
       // nunca.
-      final bytes = Uint8List.fromList(File(_rutaKjv).readAsBytesSync());
+      final bytes = Uint8List.fromList(File(rutaBibliaReal).readAsBytesSync());
       bytes[12000] = bytes[12000] ^ 0x01;
       final archivo = ArchivoLocal(nombre: 'KJV2006_bible.amod', bytes: bytes);
 
@@ -152,7 +144,7 @@ void main() {
     });
 
     test('y el mensaje lleva su sha256, que es lo unico accionable', () {
-      final bytes = Uint8List.fromList(File(_rutaKjv).readAsBytesSync());
+      final bytes = Uint8List.fromList(File(rutaBibliaReal).readAsBytesSync());
       bytes[12000] = bytes[12000] ^ 0x01;
       final archivo = ArchivoLocal(nombre: 'KJV2006_bible.amod', bytes: bytes);
       final r = reconocer.reconocer(archivo, _manifiestoReal());
@@ -248,7 +240,7 @@ void main() {
 
   group('la funcion es pura', () {
     test('el mismo fichero da SIEMPRE el mismo resultado', () {
-      final bytes = File(_rutaKjv).readAsBytesSync();
+      final bytes = File(rutaBibliaReal).readAsBytesSync();
       final manifiesto = _manifiestoReal();
       final r1 = reconocer.reconocer(
         ArchivoLocal(nombre: 'a.amod', bytes: bytes),
@@ -270,7 +262,7 @@ void main() {
       // El nombre lo pone quien copia. Si influyera, un fichero renombrado
       // dejaria de reconocerse, que es justo el fallo que haria que la gente
       // pensara que el fichero estaba malo.
-      final bytes = File(_rutaKjv).readAsBytesSync();
+      final bytes = File(rutaBibliaReal).readAsBytesSync();
       final manifiesto = _manifiestoReal();
       for (final nombre in [
         'KJV2006_bible.amod',
@@ -287,11 +279,11 @@ void main() {
 
   group('el hash del archivo se calcula bien', () {
     test('el sha256 del KJV real es el que declara el catalogo', () {
-      expect(sha256DeBytes(File(_rutaKjv).readAsBytesSync()), _sha256Kjv);
+      expect(sha256DeBytes(File(rutaBibliaReal).readAsBytesSync()), _sha256Kjv);
     });
 
     test('el sha256 del CLARKE real tambien', () {
-      expect(sha256DeBytes(File(_rutaClarke).readAsBytesSync()), _sha256Clarke);
+      expect(sha256DeBytes(File(rutaComentarioReal).readAsBytesSync()), _sha256Clarke);
     });
   });
 }

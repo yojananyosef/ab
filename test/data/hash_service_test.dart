@@ -11,6 +11,8 @@ import 'dart:io';
 import 'package:ab/data/services/hash_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../support/fixtures.dart';
+
 void main() {
   test('por un solo trozo y por muchos dan el mismo hash', () {
     final bytes = utf8.encode('Genesis 1:1 En el principio creo Dios los cielos y la tierra.');
@@ -28,12 +30,7 @@ void main() {
   test('el hash de un `.amod` REAL por trozos es el que dice el catalogo', () async {
     // Este es el que importa. Si el hash por tramos no coincide con el que
     // declara `catalog.json`, ningun modulo se podria abrir nunca.
-    const esperado = 'ce0cb1bc4edbf3341d673739539421bbfed3972e39cbac5fc129f35f25324fe9';
-    final ruta = '/home/j/aa/modules/build/KJV2006_bible.amod';
-    final fichero = File(ruta);
-    if (!fichero.existsSync()) {
-      fail('falta $ruta. Sin el modulo real esta prueba no verifica nada.');
-    }
+    final fichero = File(rutaBibliaReal);
 
     final h = HashEnCurso();
     final flujo = fichero.openRead();
@@ -42,15 +39,15 @@ void main() {
       trozos.add(trozo.length);
       h.anadir(trozo);
     }
-    expect(h.finalizar(), esperado);
-    expect(h.bytesLeidos, 22544384);
+    expect(h.finalizar(), sha256Biblia);
+    expect(h.bytesLeidos, tamanoBiblia);
     expect(trozos.length, greaterThan(1), reason: 'tiene que leer en varios trozos');
   });
 
   test('y el de 22 MB entero tambien', () {
-    const esperado = 'ce0cb1bc4edbf3341d673739539421bbfed3972e39cbac5fc129f35f25324fe9';
-    final bytes = File('/home/j/aa/modules/build/KJV2006_bible.amod').readAsBytesSync();
-    expect(sha256DeBytes(bytes), esperado);
+    final bytes = File(rutaBibliaReal).readAsBytesSync();
+    expect(bytes.length, tamanoBiblia);
+    expect(sha256DeBytes(bytes), sha256Biblia);
   });
 
   test('el progreso va exactamente por los bytes que han pasado', () {
@@ -74,17 +71,16 @@ void main() {
   });
 
   test('reconoce un sha256 y rechaza lo que no lo es', () {
-    expect(esSha256('ce0cb1bc4edbf3341d673739539421bbfed3972e39cbac5fc129f35f25324fe9'), isTrue);
-    expect(esSha256('CE0CB1BC4EDBF3341D673739539421BBFED3972E39CBAC5FC129F35F25324FE9'), isTrue);
+    expect(esSha256(sha256Biblia), isTrue);
+    expect(esSha256(sha256Biblia.toUpperCase()), isTrue);
     expect(esSha256('corto'), isFalse);
     expect(esSha256('z' * 64), isFalse, reason: 'la z no es hexadecimal');
     expect(esSha256(null), isFalse);
   });
 
   test('el hash da igual en mayusculas y en minusculas', () {
-    const a = 'ce0cb1bc4edbf3341d673739539421bbfed3972e39cbac5fc129f35f25324fe9';
-    expect(mismoHash(a, a.toUpperCase()), isTrue);
-    expect(mismoHash(a, '3df25f8286231c344fb8f47ce74a697b40b4cfeffce0dc311ac7aa5f19c1608c'), isFalse);
-    expect(mismoHash(a, null), isFalse);
+    expect(mismoHash(sha256Biblia, sha256Biblia.toUpperCase()), isTrue);
+    expect(mismoHash(sha256Biblia, sha256Comentario), isFalse);
+    expect(mismoHash(sha256Biblia, null), isFalse);
   });
 }

@@ -11,9 +11,7 @@ import 'package:ab/domain/models/libros.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 
-/// El KJV real de `aa`. Ruta fija y comprobada; si no esta, la prueba dice que
-/// falta en vez de saltarse, porque una prueba que se salta no verifica nada.
-final _kjv = File('/home/j/aa/modules/build/KJV2006_bible.amod');
+import '../support/fixtures.dart';
 
 void main() {
   test('son 66 y el orden es el canonico', () {
@@ -56,11 +54,10 @@ void main() {
     late Database db;
 
     setUpAll(() {
-      if (!_kjv.existsSync()) {
-        fail('falta $_kjv. Sin el modulo real esta prueba no verifica nada, '
-            'y una prueba que no verifica es peor que no tenerla.');
-      }
-      db = sqlite3.open(_kjv.path);
+      // La ruta la resuelve `test/support/fixtures.dart`, que falla con un mensaje
+      // que dice que script hay que ejecutar. Aqui no hay ninguna ruta escrita: por
+      // eso estas pruebas pueden correr en un runner de CI.
+      db = sqlite3.open(rutaBibliaReal);
     });
 
     tearDownAll(() => db.close());

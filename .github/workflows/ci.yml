@@ -47,8 +47,53 @@ jobs:
       - name: flutter analyze
         run: flutter analyze --no-fatal-infos
 
+      # LOS MODULOS REALES, ANTES DE LAS PRUEBAS.
+      #
+      # Cuatro ficheros de pruebas necesitan un `.amod` de verdad, de 22 y 57 MiB,
+      # y **no se versionan**: fijarlos haria que las pruebas comprobaran una
+      # version vieja en vez de lo que se publica hoy. Se bajan aqui.
+      #
+      # Y el script comprueba el sha256 de cada uno contra el manifiesto
+      # publicado antes de dejarlo. Eso quiere decir que este paso, ademas de
+      # preparar las pruebas, **verifica que lo que hay publicado sigue siendo lo
+      # que el catalogo declara**: si alguien publica un modulo con el hash
+      # equivocado, el CI se entera aqui y no cuando alguien intente abrirlo.
+      #
+      # Lo que NO se hace, y es lo importante: no poner un "si no se puede
+      # descargar, seguir igual". Un modulo que no se baja es un modulo que las
+      # pruebas no comprueban, y una suite que comprueba menos de lo que parece es
+      # peor que una suite que falla: la primera da verde.
+      #
+      # La cache es una comodidad, no una confianza. El script vuelve a comprobar el
+      # sha256 de lo que haya en cache y lo vuelve a bajar si no cuadra, asi que una
+      # cache vieja o corrupta no hace que las pruebas comprueben el fichero
+      # equivocado: hacen que se vuelva a bajar.
+      - name: cache de los modulos reales
+        uses: actions/cache@v4
+        with:
+          path: test/fixtures/*.amod
+          key: modulos-${{ hashFiles('test/fixtures/catalog_real.json') }}
+
+      - name: bajar los modulos reales
+        run: bash scripts/preparar-fixtures.sh
+
       - name: flutter test
         run: flutter test
+
+      # LAS PRUEBAS CONTRA EL SITIO REAL, en su propio paso.
+      #
+      # Van aparte por dos razones. La primera es que no son hermeticas, y si
+      # estuvieran en el paso anterior, un fallo de red haria fallar el despliegue
+      # entero. La segunda es que son la unica comprobacion de que la resolucion
+      # del problema de origen cruzado sigue siendo valida hoy: bajan un `.amod` de
+      # verdad por el camino que usa el navegador y comprueban su sha256. Todo lo
+      # demas demuestra que el codigo hace lo que dice; esto demuestra que el sitio
+      # real responde.
+      #
+      # Necesitan `--run-skipped` ademas de `--tags red`, porque el `skip` de
+      # `dart_test.yaml` manda siempre.
+      - name: pruebas contra el sitio real
+        run: flutter test --tags red --run-skipped
 
       - name: construir la version web
         run: flutter build web --release --base-href=/ab/

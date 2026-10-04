@@ -28,21 +28,18 @@ import 'package:ab/domain/use_cases/obtener_modulo.dart';
 import 'package:ab/domain/use_cases/resultado_obtencion.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const String _sha256Kjv = 'ce0cb1bc4edbf3341d673739539421bbfed3972e39cbac5fc129f35f25324fe9';
-const String _rutaKjv = '/home/j/aa/modules/build/KJV2006_bible.amod';
-const int _tamanoKjv = 22544384;
+import '../support/fixtures.dart';
 
-/// El modulo real, en bytes, leido una vez. Son 22 MB; leerlos en cada prueba
-/// haria que la suite tardase mucho mas de lo que necesita.
-Uint8List get _bytesKjv {
-  final f = File(_rutaKjv);
-  if (!f.existsSync()) {
-    fail('falta $_rutaKjv, el modulo real del repositorio hermano. Sin el '
-        'fichero REAL esta prueba no verifica nada, y una prueba que no verifica '
-        'es peor que no tenerla.');
-  }
-  return f.readAsBytesSync();
-}
+/// El sha256 y el tamano vienen de `fixtures.dart`, que es el unico sitio donde
+/// esta la ruta y el hash del modulo real. Repetidos aqui serian dos sitios que
+/// se pueden quedar viejos el uno sin el otro.
+const String _sha256Kjv = sha256Biblia;
+const int _tamanoKjv = tamanoBiblia;
+
+/// El modulo real, en bytes. Son 22 MB, asi que se leen **una vez** y se
+/// comparten: leerlos en cada prueba haria que la suite tardase mucho mas de lo
+/// que necesita.
+final Uint8List _bytesKjv = File(rutaBibliaReal).readAsBytesSync();
 
 void main() {
   group('4.1 y 4.2 el progreso son bytes reales', () {

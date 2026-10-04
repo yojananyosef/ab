@@ -1,0 +1,12 @@
+# Los modulos reales NO se versionan.
+#
+# Son 22 y 57 MiB, y fijarlos a una version haria que las pruebas dejaran de
+# comprobar lo que se publica hoy. Se bajan con `scripts/preparar-fixtures.sh`,
+# que ademas comprueba su sha256 contra el manifiesto publicado.
+#
+# Los dos ficheros JSON SI se versionan: son 1.468 bytes, y fijarlos es lo
+# correcto, porque las pruebas del repositorio tienen que ser hermeticas y no
+# depender de la red para leer el manifiesto. El que se compara con el publicado
+# de verdad es el de `test/red/`, que va en su propio paso de CI.
+*.amod
+*.parcial

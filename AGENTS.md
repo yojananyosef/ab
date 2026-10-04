@@ -361,6 +361,46 @@ ayuda lleva a un foro y no hay forma de cambiar la contrasena. Es el fallo mas
 barato de arreglar y el mas vergonzoso posible. En una app sin cuentas ni
 suscripcion, esto no puede ocurrir por construccion: es una ventaja.
 
+### Las pruebas usan modulos reales, y hay que bajarlos antes
+
+Antes de `flutter test`:
+
+```bash
+bash scripts/preparar-fixtures.sh
+```
+
+Cuatro ficheros de pruebas necesitan un `.amod` de verdad, de 22.544.384 y
+57.536.512 bytes. **No se versionan**, y no es por tamano: es porque fijarlos a una
+version haria que las pruebas comprobaran un `.amod` viejo en vez de lo que se
+publica hoy.
+
+El script los baja del sitio publicado y **comprueba el sha256 de cada uno contra
+el manifiesto antes de dejarlo**, dos veces: una contra lo que declara el
+manifiesto y otra contra una constante escrita en el propio script. Con dos
+comparaciones, un manifiesto alterado que se llevase bien un fichero nuestro
+tampoco pasa.
+
+Y si no estan, las pruebas **fallan**, no se saltan. El mensaje dice que script
+ejecutar. Una prueba que se salta no verifica nada, y una suite donde media parte
+se salta es una suite que da verde sin comprobar.
+
+Esto no fue improvisado: se escribio con una ruta `/home/j/aa/modules/build/...`
+en cuatro ficheros de pruebas, que aqui existe y en un runner de GitHub Actions no.
+Los cuatro despliegues siguientes fallaron con un error que no decia nada de su
+causa. Por eso ahora hay **un solo sitio** con la ruta y el hash, que es
+`test/support/fixtures.dart`, y ninguna prueba lleva una ruta escrita.
+
+### El CI hace lo mismo que tu, en el mismo orden
+
+`analyze` -> bajar fixtures -> `flutter test` -> pruebas contra el sitio real ->
+build web -> comprobar el motor -> desplegar. Si el CI se pone rojo, se puede
+reproducir entero en local con la misma secuencia.
+
+Un detalle que parece pequeno y no lo es: **el paso de pruebas contra el sitio real
+va aparte** de `flutter test`. No son hermeticas, y mezcladas harian que un fallo de
+Internet tirase el despliegue entero. Se lanzan con `--tags red --run-skipped`: las
+dos banderas hacen falta porque el `skip` de `dart_test.yaml` manda siempre.
+
 ### `TMPDIR` va fuera de `/tmp`
 
 `/tmp` en esta maquina es un tmpfs de **3,7 GB**, no un disco. El compilador de
