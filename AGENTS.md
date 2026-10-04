@@ -100,6 +100,60 @@ Un anuncio en un lector de Biblia es un anuncio al lado de la Palabra. Ademas,
 la queja numero uno y mas repetida de los usuarios de pago de las apps que lo
 hacen: han pagado y les aparece un banner.
 
+### Un rango comprimido no es un rango
+
+Medido contra `yojananyosef.github.io` el 3 de octubre de 2026, pidiendo 4 MiB de
+`KJV2006_bible.amod`:
+
+    pedida bytes=0-4194303        ->  206 con 20.766.289 bytes
+                                     content-range: bytes 0-4194303/4562858
+    pedida bytes=20766289-22544383 -> 416
+
+Los dos numeros son **de dos ficheros distintos**. El cliente HTTP pide `gzip` por
+su cuenta, el servidor contesta el rango comprimido y el cliente lo descomprime
+antes de que nadie lo mire: el cuerpo llega con el tamano del fichero real y el
+`Content-Range` con el del comprimido. El siguiente rango se calcula con el
+primero y se sale del fichero.
+
+Por eso `HttpService.rango` manda `Accept-Encoding: identity`. No es una
+optimizacion, y no es que un `.amod` comprimible: es que **no se puede pedir un
+rango de una representacion comprimida**, porque los limites no significan lo
+mismo. Sin esa linea la descarga se declara incompleta cuando el servidor ha
+contestado perfectamente.
+
+Este fallo no lo encuentra ninguna prueba contra un servidor de pruebas, porque un
+`HttpServer` de `dart:io` no comprime nada salvo que se lo pidas. Lo encuentra la
+prueba de `test/red/`, y esa es la razon de que exista.
+
+### La memoria residente mide basura, no memoria viva
+
+Medido el mismo dia, bajando el KJV real de 21,5 MiB, con tres formas de
+acumular los trozos:
+
+| Como | Pico de RSS |
+| --- | --- |
+| `[...acumulado, ...trozo]` | **+1242,8 MiB** |
+| `BytesBuilder(copy: false)` | +43,3 MiB |
+| `Uint8List(total)` reservado | +51,8 MiB |
+
+Dos cosas que hay que saber de esta tabla:
+
+1. La primera encaja **cada byte en un puntero** y ademas copia el acumulado en
+   cada trozo. 55 veces el modulo, y con el comentario de 57 MB serian mas de
+   3 GiB. En un movil de gama baja eso es lo que hace que el sistema mate el
+   proceso, sin dar ningun error.
+
+2. **Las dos ultimas dan numeros que no distinguen nada**, porque la diferencia
+   entre 43 y 52 MiB esta dentro del ruido del recolector. En dos ejecuciones
+   distintas la version con `Uint8List` dio +51,8 y +9,9 MiB. RSS **no mide
+   memoria viva**: incluye la basura que el recolector todavia no se ha llevado.
+
+Por eso la prueba de 4.2 pone el umbral en cuatro veces el modulo y **dice en el
+propio comentario que no demuestra que no haya dos copias en memoria**. Lo que si
+hace es cazar el fallo catastrofico, con un margen de veinticuatro veces. Y la
+comprobacion exacta de por que la eleccion es la buena --una reserva exacta, sin
+crecidas y sin copia final-- es estructural, y se comprueba de otra manera.
+
 ### Una prueba que declara el hash de lo que ella misma sirve no comprueba nada
 
 Esta se pago al escribir las pruebas del catalogo, y es la clase de error que

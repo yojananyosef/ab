@@ -11,7 +11,6 @@
 
 import 'dart:convert';
 
-import 'package:convert/convert.dart';
 import 'package:crypto/crypto.dart';
 
 /// Calcula el sha256 de una secuencia de trozos, sin juntarlos nunca.
@@ -28,23 +27,29 @@ import 'package:crypto/crypto.dart';
 /// ```
 class HashEnCurso {
   HashEnCurso() {
-    _salida = sha256.startChunkedConversion(_acumulador);
+    _salida = sha256.startChunkedConversion(_colector);
   }
 
-  final _acumulador = AccumulatorSink<Digest>();
-  late final ByteConversionSink _salida;
+  /// Recoge el digest final. Uno solo, y se avisa si se pide un segundo.
+  final _Colector _colector = _Colector();
+
+  late ByteConversionSink _salida;
 
   int _bytes = 0;
+  bool _finalizado = false;
 
-  /// Cuantos bytes han pasado por aqui. Es el progreso de la descarga, y sale
-  /// de aqui para que **no haya dos cuentas**: si el progreso lo llevara otro,
-  /// podrian dejar de cuadrar y el progreso diria 20.000.000 de 22.500.000 con
-  /// el hash ya terminado.
+  /// Cuantos bytes han pasado por aqui. Es el progreso de la descarga, y sale de
+  /// aqui para que **no haya dos cuentas**: si el progreso lo llevara otro,
+  /// podrian dejar de cuadrar y la barra diria 20.000.000 de 22.500.000 con el
+  /// hash ya terminado.
   int get bytesLeidos => _bytes;
 
-  /// Anade un trozo. Si el trozo son 4 MB, el trabajo por byte es el mismo.
+  /// Anade un trozo. Si el trozo son 4 MiB, el trabajo por byte es el mismo.
   void anadir(List<int> trozo) {
     if (trozo.isEmpty) return;
+    if (_finalizado) {
+      throw StateError('este hash ya se finalizo; createselo de nuevo');
+    }
     _bytes += trozo.length;
     _salida.add(trozo);
   }
@@ -52,17 +57,58 @@ class HashEnCurso {
   /// Termina y devuelve el hash en hexadecimal en minusculas.
   ///
   /// Llama a `finalizar` una vez. Una segunda llamada daria un hash distinto, y
-  /// eso seria un fallo silencioso: por eso avisa.
+  /// eso seria un fallo silencioso: el hash comprobaria una cosa y la app creeria
+  /// que comprobo otra.
   String finalizar() {
     if (_finalizado) {
       throw StateError('este hash ya se finalizo y no se puede volver a calcular');
     }
     _finalizado = true;
     _salida.close();
-    return _acumulador.events.single.toString();
+    return _colector.digest.toString();
   }
 
-  bool _finalizado = false;
+  /// Empieza de cero, para un reintento.
+  ///
+  /// Sin esto, un hash a medias de un intento fallido se mezclaria con el bueno y
+  /// el resultado seria un hash de nada: dos veces el mismo dato, por dentro y
+  /// por fuera. Con eso, el modulo pasaria o no pasaria el hash por casualidad,
+  /// que es peor que no comprobar.
+  void reiniciar() {
+    if (_finalizado) {
+      throw StateError('no se puede reiniciar un hash ya finalizado: createselo de nuevo');
+    }
+    _salida = sha256.startChunkedConversion(_colector);
+    _bytes = 0;
+  }
+}
+
+/// Guarda el digest final y avisa si se intenta guardar un segundo.
+///
+/// Se escribe aqui en vez de usar `AccumulatorSink` de `package:convert` porque
+/// ese expone `events` como una vista **inmutable**, y para reiniciar hace falta
+/// poder vaciarla. Son nueve lineas y una razon.
+class _Colector implements Sink<Digest> {
+  Digest? _digest;
+
+  Digest get digest {
+    final d = _digest;
+    if (d == null) {
+      throw StateError('el hash no se ha terminado todavia');
+    }
+    return d;
+  }
+
+  @override
+  void add(Digest datos) {
+    if (_digest != null) {
+      throw StateError('este hash ya tiene un resultado: no puede tener dos');
+    }
+    _digest = datos;
+  }
+
+  @override
+  void close() {}
 }
 
 /// El sha256 de un iterable de trozos.

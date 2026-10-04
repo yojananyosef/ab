@@ -1,0 +1,25 @@
+# Que corre por defecto y que no.
+#
+# Las pruebas de `test/red/` van contra el sitio REAL y no son hermeticas. No
+# estan en la suite por defecto a proposito, y la razon esta escrita tambien en
+# la cabecera de `sitio_real_test.dart`:
+#
+# - Una prueba que depende de la red falla cuando falla Internet, y una suite que
+#   falla por eso se deja de mirar entera. Se pierde la comprobacion de que el
+#   codigo esta bien por culpa de la de que el sitio esta vivo.
+# - Bajan 22 y 57 MB. En la suite normal eso son minutos.
+#
+# Para lanzarlas hacen falta las DOS banderas: `--tags red` las selecciona y
+# `--run-skipped` las ejecuta, porque el `skip` de este fichero manda siempre. Es
+# la manera que tiene Dart test de tener pruebas saltadas por defecto y aun asi
+# ejecutables a mano.
+#
+#     flutter test --tags red --run-skipped
+#
+# Y en CI, en un paso aparte. Son la unica prueba de que la resolucion del
+# problema de origen cruzado sigue siendo valida hoy, asi que no se pueden
+# dejar de correr: lo que se hace es no mezclarlas con las que no dependen de
+# nadie.
+tags:
+  red:
+    skip: "prueba contra el sitio real; lanza con --tags red"

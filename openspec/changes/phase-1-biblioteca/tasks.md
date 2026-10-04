@@ -39,14 +39,14 @@
 
 ## 4. Obtencion de modulos
 
-- [ ] 4.1 Obtener por rango con progreso en bytes reales; verificar que un modulo de 22.544.384 bytes reporta de 0 a 22.544.384, sin saltos y sin pasar del total
-- [ ] 4.2 Calcular el sha256 mientras llegan los bytes y no despues; verificar que la memoria no llega a tener el modulo entero dos veces, midiendo el pico en la prueba
-- [ ] 4.3 Distinguir el fallo de origen cruzado del fallo de red, en vez de tratarlos igual. **La URL real que falla es `downloadUrl`, no `browserUrl`**: `browserUrl` ya funciona, y probarla esperando que falle seria una prueba que pasa por lo que no toca. Verificar las dos ramas: con la `downloadUrl` del catalogo publicado, que esta medida como bloqueada, sale el estado de origen no legible; y con un servidor local sin la cabecera, tambien
-- [ ] 4.4 Hacer que el mismo codigo funcione contra un servidor local que envie `Access-Control-Allow-Origin: *`; verificar que el modulo queda `descargado` y no sale ningun aviso
-- [ ] 4.4b **Probar la via principal contra el sitio real, no solo contra el mock.** Descargar un `.amod` desde la `browserUrl` del catalogo publicado y comprobar que el sha256 recibido es el que declara el manifiesto. Es la unica prueba de que este change sirve de algo: todo lo demas del grupo va contra un servidor que controlamos nosotros y que no puede fallar como el de verdad
-- [ ] 4.5 Obtener desde fichero local, por selector y por arrastrar y soltar; verificar que el hash se comprueba contra el manifiesto y que un fichero ajeno se rechaza mostrando su sha256
-- [ ] 4.6 Acotar los reintentos a 3 y terminar en estado final con boton de reintentar; verificar que tras 3 intentos el progreso **NOT** sigue animado y que el error dice cuantos bytes llegaron de los esperados
-- [ ] 4.7 Cancelar una descarga en curso; verificar que tras cancelar no queda ninguna fila en estado `descargando` ni un fichero a medias abierto
+- [x] 4.1 Obtener por rango con progreso en bytes reales; verificar que un modulo de 22.544.384 bytes reporta de 0 a 22.544.384, sin saltos y sin pasar del total
+- [x] 4.2 Calcular el sha256 mientras llegan los bytes y no despues; verificar que la memoria no llega a tener el modulo entero dos veces, midiendo el pico en la prueba
+- [x] 4.3 Distinguir el fallo de origen cruzado del fallo de red, en vez de tratarlos igual. **La URL real que falla es `downloadUrl`, no `browserUrl`**: `browserUrl` ya funciona, y probarla esperando que falle seria una prueba que pasa por lo que no toca. Verificar las dos ramas: con la `downloadUrl` del catalogo publicado, que esta medida como bloqueada, sale el estado de origen no legible; y con un servidor local sin la cabecera, tambien
+- [x] 4.4 Hacer que el mismo codigo funcione contra un servidor local que envie `Access-Control-Allow-Origin: *`; verificar que el modulo queda `descargado` y no sale ningun aviso
+- [x] 4.4b **Probar la via principal contra el sitio real, no solo contra el mock.** Descargar un `.amod` desde la `browserUrl` del catalogo publicado y comprobar que el sha256 recibido es el que declara el manifiesto. Es la unica prueba de que este change sirve de algo: todo lo demas del grupo va contra un servidor que controlamos nosotros y que no puede fallar como el de verdad
+- [x] 4.5 Obtener desde fichero local, por selector y por arrastrar y soltar; verificar que el hash se comprueba contra el manifiesto y que un fichero ajeno se rechaza mostrando su sha256
+- [x] 4.6 Acotar los reintentos a 3 y terminar en estado final con boton de reintentar; verificar que tras 3 intentos el progreso **NOT** sigue animado y que el error dice cuantos bytes llegaron de los esperados
+- [x] 4.7 Cancelar una descarga en curso; verificar que tras cancelar no queda ninguna fila en estado `descargando` ni un fichero a medias abierto
 
 ## 5. Persistencia del modulo en el dispositivo
 

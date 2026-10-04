@@ -87,7 +87,28 @@ class HttpService {
       // navegador y no se puede cambiar desde el codigo: ponerla aqui a mano
       // no concede ningun permiso, solo confunde. El permiso lo tiene que dar
       // el servidor, y no hay forma de pedirlo.
-      ..headers['Accept'] = 'application/octet-stream';
+      ..headers['Accept'] = 'application/octet-stream'
+      // MEDIDO, Y ESTO ES LO QUE HACE QUE ESTA LINEA NO SE BORRE.
+      //
+      // Sin esto, el cliente HTTP pide `gzip` por su cuenta, GitHub Pages
+      // contesta el rango **comprimido**, y el cliente lo descomprime. Medido
+      // contra el sitio real el 3 de octubre de 2026, pidiendo 4 MiB:
+      //
+      //     pedida bytes=0-4194303   ->   206 con 20.766.289 bytes
+      //                                  content-range: bytes 0-4194303/4562858
+      //     pedida bytes=20766289-22544383 -> 416, porque 20766289 esta mas
+      //                                  alla del fichero comprimido
+      //
+      // Es decir: el cuerpo arrives descomprimido y el `Content-Range` habla del
+      // tamano comprimido. Los dos numeros son de dos ficheros distintos, y el
+      // resultado es una descarga que se declara incompleta cuando el servidor
+      // ha contestado perfectamente.
+      //
+      // No se puede pedir un rango de una representacion comprimida: los limites
+      // no significan lo mismo. Por eso se pide `identity`, y no como
+      // optimizacion --que no lo es, porque un `.amod` ya viene comprimido--
+      // sino porque es lo unico que hace que los rangos signifiquen algo.
+      ..headers['Accept-Encoding'] = 'identity';
 
     try {
       final enviada = await _cliente.send(peticion);
