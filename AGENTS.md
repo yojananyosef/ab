@@ -401,6 +401,49 @@ va aparte** de `flutter test`. No son hermeticas, y mezcladas harian que un fall
 Internet tirase el despliegue entero. Se lanzan con `--tags red --run-skipped`: las
 dos banderas hacen falta porque el `skip` de `dart_test.yaml` manda siempre.
 
+### El catalogo se ve aunque el almacenamiento no conteste
+
+Medido en Chrome 154 headless el 4 de octubre de 2026, en la web ya desplegada:
+
+    fetch https://yojananyosef.github.io/aa/latest.json  ->  HTTP 200, tag v0.1.1
+    indexedDB.open('ab', 1)                             ->  nunca resuelve
+
+Ni `onsuccess`, ni `onerror`, ni `onblocked`. Nada. Se queda esperando para siempre.
+
+Y el efecto era el peor posible: la biblioteca **vacia** con el texto "El catalogo no
+declara ningun modulo todavia", que era mentira. El catalogo declara dos. Lo que no
+contestaba era el almacenamiento del navegador, y el aviso **no salia**, porque el
+`await` del almacenamiento estaba antes de aplicar el resultado en pantalla. O sea
+que la app no fallaba: fallaba **mintiendo**, en silencio, con un texto que parecia
+el correcto.
+
+Es el modo de fallo de MyBible en otro traje, y por eso hay tres reglas:
+
+| | |
+| --- | --- |
+| **El catalogo primero** | es lo unico necesario para ensenar la lista, y no tiene nada que ver con el almacenamiento |
+| **El almacenamiento con plazo** | cinco segundos. Un `await` sin plazo sobre un evento que no llega cuelga la pantalla **entera** |
+| **Lo que no se pudo saber, se dice** | y nunca la conclusion de "no hay nada" a partir de un fallo |
+
+Las tres viven en `lib/app/arranque.dart`, que es un fichero y no tres lineas de
+`main.dart` **porque tiene una garantia que hay que poder comprobar**. Y esa garantia
+tiene 17 pruebas, con un doble que se queda colgado exactamente como el navegador.
+
+Dos cosas mas que salieron de arreglarlo:
+
+- **`aplicarResultado` reemplaza la lista de avisos.** Poner los avisos del motor
+  antes de aplicarlo los hacia desaparecer, y el de "el motor no ha arrancado" es el
+  mas importante de todos. Se vio mirando la pantalla, no leyendo el codigo.
+- **Los hashes y los ids van al mismo sitio y fallan a la vez.** Si el navegador no
+  contesta a `ids`, no va a contestar a `idsConHash`: preguntar dos veces es pedir el
+  mismo fallo dos veces y ensenar dos avisos donde bastaba uno.
+
+Y una regla que se dedujo al escribir las pruebas: **"tengo los hashes" no es que la
+llamada haya funcionado, es que cubren a los modulos que hay.** Un indice vacio con un
+modulo descargado quiere decir que el indice se perdio, no que no haya nada que mirar.
+Y eso ocurre de verdad: el indice se escribe al guardar, y un modulo escrito por una
+version anterior no lo tiene.
+
 ### `TMPDIR` va fuera de `/tmp`
 
 `/tmp` en esta maquina es un tmpfs de **3,7 GB**, no un disco. El compilador de

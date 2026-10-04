@@ -25,6 +25,7 @@ import 'package:flutter/material.dart';
 
 import 'data/repositories/catalogo_repository.dart';
 import 'data/services/almacenamiento.dart';
+import 'app/arranque.dart';
 import 'data/services/almacenamiento_de_modulos.dart';
 import 'data/services/http_service.dart';
 import 'data/services/sqlite_service.dart';
@@ -110,47 +111,19 @@ class _AbAppState extends State<AbApp> {
     super.dispose();
   }
 
+  /// Lee el catalogo y lo que hay en el dispositivo.
+  ///
+  /// Delega en [arrancarBiblioteca], y no por gusto: la garantia de que el
+  /// catalogo se ve aunque el almacenamiento no conteste vive ahi, y en un metodo
+  /// privado de un `State` no se puede comprobar con una prueba.
   Future<void> _cargar() async {
     if (!mounted) return;
-    _biblioteca.marcarCargando(true);
-
-    final resultado = await _catalogo.leer();
-    if (!mounted) return;
-
-    // Los ids que ya hay en el dispositivo. Se piden aunque la lectura del
-    // catalogo haya fallado, porque puede haber modulos de una sesion anterior y
-    // son justo los que hay que ensenar aunque no se sepa que mas hay.
-    final ids = await _idsLocales();
-    final hashes = await _hashesLocales();
-
-    _biblioteca.aplicarResultado(resultado, idsLocales: ids, hashesLocales: hashes);
-    if (_avisoDeArranque != null) _biblioteca.anadirAviso(_avisoDeArranque!);
-    _biblioteca.marcarCargando(false);
-  }
-
-  Future<Set<String>> _idsLocales() async {
-    try {
-      return (await _modulos.ids()).toSet();
-    } catch (_) {
-      // Si el almacenamiento no responde, se sigue con una biblioteca vacia de "lo
-      // que tengo". No se propaga: perder la lista de lo descargado es una molestia,
-      // no un fallo de la app.
-      return <String>{};
-    }
-  }
-
-  /// Los hashes de lo que hay en el dispositivo, para poder distinguir "descargado"
-  /// de "hay version nueva".
-  ///
-  /// Viene de un indice de 64 bytes por modulo, no de leer los 22 MiB: hashear 79 MiB
-  /// al arrancar para pintar una lista seria la razon por la que alguien cierra la
-  /// app en un movil viejo.
-  Future<Map<String, String>> _hashesLocales() async {
-    try {
-      return await _modulos.idsConHash();
-    } catch (_) {
-      return const <String, String>{};
-    }
+    await arrancarBiblioteca(
+      leerCatalogo: _catalogo.leer,
+      almacenamiento: _modulos,
+      vista: _biblioteca,
+      avisosPrevios: <String>[?_avisoDeArranque],
+    );
   }
 
   @override
