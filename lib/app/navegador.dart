@@ -97,6 +97,8 @@ import 'package:ab/ui/features/busqueda/view_models/busqueda_view_model.dart';
 import 'package:ab/ui/features/busqueda/views/busqueda_view.dart';
 import 'package:ab/ui/features/indice/view_models/indice_view_model.dart';
 import 'package:ab/ui/features/indice/views/indice_view.dart';
+import 'package:ab/ui/features/lector/widgets/hoja_de_libros.dart';
+import 'package:ab/ui/features/lector/widgets/hoja_de_versiones.dart';
 import 'package:ab/ui/features/biblioteca/views/biblioteca_view.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
 import 'package:ab/ui/features/lector/views/lector_view.dart';
@@ -133,6 +135,24 @@ enum TipoDeCambioDeRuta {
 /// del sistema de ficheros virtual: si fuera sincrono, la pantalla no podria pintar
 /// mientras ocurre y en un `.amod` de 57 MiB se notaria.
 typedef AperturaDeModulo = Future<ModuloAbierto?> Function(String id, Referencia referencia);
+
+/// Un [ModuloAbierto] con los libros y las primeras frases, para el selector.
+///
+/// Y OTRO ENVOLTORIO IGUAL QUE EL DE LA BUSQUEDA Y EL DEL INDICE, y no uno que sirva
+/// para los tres. Cada interfaz es pequena y son tres llamadas; un modulo unico con los
+/// metodos de tres pantallas seria una clase que depende de las tres.
+class _ModuloConLibrosReal implements ModuloConLibros {
+  _ModuloConLibrosReal(this._modulo);
+
+  final ModuloAbierto _modulo;
+
+  @override
+  Map<String, List<int>> librosConCapitulos() => _modulo.librosConCapitulos();
+
+  @override
+  Map<int, String> primeraFraseDeCapitulos(String libro) =>
+      _modulo.primeraFraseDeCapitulos(libro);
+}
 
 /// Un [ModuloAbierto] que se puede indexar por palabra del lexicon.
 ///
@@ -743,6 +763,76 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
     descargar?.call(comentario);
   }
 
+  /// Las Biblias del catalogo, con su estado y su tamano, para el selector de version.
+  ///
+  /// Y SOLO LAS BIBLIAS, no los comentarios. Un selector de version que ofrece el
+  /// Comentario de Adam Clarke es un selector que ofrece cambiar de texto por un
+  /// comentario, y eso es otra pantalla y otro boton --el que ya esta en la barra— con su
+  /// propia hoja. Dos caminos para lo mismo, y uno de los dos mal.
+  ///
+  /// Y EL ESTADO DE CADA UNA VIENE DE LA BIBLIOTECA, que es quien sabe que esta
+  /// descargado, y no de `modulo.tamanoBytes`, que es lo que ocupa en el servidor. Enseñar
+  /// el tamano del servidor como si fuera el coste de bajarlo es un dato que no es el que
+  /// se necesita para decidir.
+  List<VersionDisponible> _versionesDisponibles() {
+    final ids = biblioteca.idsLocales;
+    return <VersionDisponible>[
+      for (final m in biblioteca.manifiesto.modulos)
+        if (TipoDeContenido.fromModulo(m.tipo.enElCatalogo) == TipoDeContenido.biblia)
+          VersionDisponible(
+            id: m.id,
+            nombre: m.nombre,
+            descargado: ids.contains(m.id),
+            bytes: m.tamanoBytes,
+          ),
+    ];
+  }
+
+  /// Abrir el selector de version y cambiar a la que se pulse.
+  ///
+  /// Y SE CIERRA LA HOJA ANTES DE CAMBIAR, y no se cambia con la hoja abierta: cambiar de
+  /// texto reabre el modulo y repinta la pantalla, y una hoja abierta encima de una pantalla
+  /// que se repinta debajo se queda puesta en un sitio que ya no corresponde.
+  Future<void> elegirVersion(BuildContext context) async {
+    final actual = lector.idDelModulo;
+    final elegida = await mostrarHojaDeVersiones(
+      context: context,
+      disponibles: _versionesDisponibles(),
+      abierta: actual,
+    );
+    if (elegida == null || elegida == actual) return;
+    await cambiarDeVersion(elegida);
+  }
+
+  /// Abrir el selector de libro y capitulo, y leer lo que se pulse.
+  ///
+  /// Y SOLO BIBLIAS. Un comentario no tiene capitulos --tiene notas por versiculo— y
+  /// abrirlo aqui daria una lista de libros vacia, que es una pantalla en blanco con un
+  /// titulo encima.
+  Future<void> elegirLibro(BuildContext context) async {
+    final modulo = lector.modulo;
+    if (modulo == null || modulo.tipo != TipoDeContenido.biblia) return;
+
+    final elegido = await mostrarHojaDeLibros(
+      context: context,
+      modulo: _ModuloConLibrosReal(modulo),
+      leyendo: lector.leyendo,
+    );
+    if (elegido == null) return;
+
+    // Y SI ES OTRO LIBRO, LA HOJA SE ABRE EN SU PRIMER CAPITULO Y NO EN EL VERSICULO QUE
+    // SE ESTABA LEYENDO. Al pasar de Juan a Josue no hay un versiculo de Josue que
+    // corresponda al 16 de Juan: inventarlo seria llevar a un sitio que no existe.
+    final esElMismoLibro = lector.leyendo?.libro == elegido.libro;
+    await irA(RutaLectura(
+      lector.idDelModulo ?? '',
+      esElMismoLibro
+          ? elegido
+          : Referencia(elegido.libro, elegido.capitulo),
+      lector.idDelComentario,
+    ));
+  }
+
   /// Los comentarios descargados, con su nombre. De donde sale: el manifiesto.
   List<ComentarioDisponible> _comentariosDisponibles() {
     final ids = biblioteca.idsLocales;
@@ -900,6 +990,9 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
             // nada que ofrecer, y un boton que no hace nada es peor que no tenerlo.
             alDescargarComentario: _sePuedeDescargar(_ruta) ? descargarComentarioPedido : null,
             modulosDelCatalogo: biblioteca.manifiesto.modulos,
+            versiones: _versionesDisponibles(),
+            alAbrirLibros: () => elegirLibro(context),
+            alAbrirVersiones: () => elegirVersion(context),
             alCambiarDeVersion: cambiarDeVersion,
             alVolver: irAHome,
           )

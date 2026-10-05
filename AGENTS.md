@@ -695,6 +695,86 @@ Por eso:
 Y UNA PREFERENCIA SE LEE AL ABRIR LA PANTALLA, no al arrancar la app. Si se leyera al
 arrancar, abrir una pestana nueva al lado de otra se pintaria con el color de la primera.
 
+### LA BARRA ESTABA TAN LLENA QUE AL TITULO LE QUEDABAN 13,9 PIXELES
+
+Medido a 360 px el 5 de octubre de 2026, con la cabecera de dos lineas y el boton de
+comentario como boton con texto:
+
+    hueco que le quedaba al titulo      13,9 pixeles
+    palabra "Comentario" sola          110 pixeles
+    el mismo boton, como icono          48 pixeles
+
+Trece pixeles. "Juan 3:16" no cabe en trece pixeles, y el nombre de la version tampoco.
+
+**Y NO LO HABRIA VISTO NADIE LEYENDO EL CODIGO**: tres widgets correctos, cada uno en su
+sitio, que juntos no dejan sitio. Y el sintoma no es un `overflow`, que es lo que se
+buscaria primero: **un `Text` de 13,9 pixeles no desborda nunca**, se recorta entero y no
+hay excepcion. Un titulo ilegible **no falla**, y por eso la comprobacion que lo caza
+mide el **ancho del widget**:
+
+    a 360 px   el pasaje ocupa mas de 60
+    a 320 px   el pasaje ocupa mas de 50
+
+Y el arreglo fue **quitarle sitio a otro**, no anadirle sitio al titulo: el boton de
+comentario paso a ser icono. El selector de version no es un quinto boton porque a 360 px
+no cabria un quinto boton, y porque de `docs/investigacion-ux.md` es "la interaccion mas
+valiosa de una app de Biblia" --que no cabe en un boton-- y lo que hace falta para que quepa
+es **dejarle sitio** en la barra, que es donde ya se mira.
+
+### `alCambiarDeVersion` ESTABA CABLEADO Y NADIE LO LLAMABA
+
+El enrutador tenia `cambiarDeVersion` con su `replaceState` y su comentario sobre por que,
+desde el principio. **Ningun boton lo llamaba.** Era la interaccion mas valiosa de la
+categoria de `docs/investigacion-ux.md` y era **inalcanzable**, y no habia ninguna prueba
+que se queja: las pruebas comprueban que la funcion hace lo que debe, no que algo la llame.
+
+Con una hoja de codigo que nadie lee, ese es el fallo que no aparece: **una funcion sin
+llamador no falla nunca**.
+
+### EL PRIMER VERSICULO **NO** ES UN RESUMEN DE CAPITULO
+
+La idea de localizacion que se copio de Bible Gateway es "el resumen de cada capitulo en el
+selector de libros". Lo que hay **no es un resumen**, y el nombre lo dice: es la primera
+frase.
+
+Medido sobre el KJV entero, tomando `verse = 1` de los 31.102 versiculos:
+
+    mayoria son Genealogias, Salmos y Proverbios, donde la primera frase no dice nada del
+    capitulo: "1 These are the generations of Adam"
+    Juan 3 y Romanos 1 si la dicen, porque empiezan con un sustantivo propio
+
+Es un **indice de referencia**, no un indice tematico. Un resumen de verdad son las
+palabras del capitulo en tres lineas, y eso **no esta en el modulo**: el lexicon no esta en
+el `.amod` (ver mas abajo). Escribirlo seria el dato de otra persona.
+
+Y el coste sale de una consulta:
+
+    `librosConCapitulos()`      66 libros, 1.189 capitulos,   **8 ms**
+    `primeraFraseDeCapitulos()` Juan, 21 capitulos,         **1 ms**
+
+8 ms es **una** consulta y no 66. Leer los 66 con `libros()` y luego `capitulosDe()` por
+libro son **67** consultas para pintar una lista, y en un movil se nota.
+
+Y LA FRASE SE CORTA EN UN PUNTO, no a un numero de caracteres: cortar a 120 parte frases y
+deja el final colgando en "...y dijo a". Si la frase entera no tiene punto --los cuatro
+evangelios abren sin ninguno-- se corta donde toca y se dice con puntos suspensivos.
+
+### UN TAMANO SE FORMATEA EN UN SITIO, Y EN CASTELLANO
+
+`Modulo.megabytes` era `(tamanoBytes / (1024 * 1024)).toStringAsFixed(1)` y devolvia
+**`"21.5"` con punto**. En castellano el punto separa los millares y la coma los decimales,
+o sea que "21.5 MB" se leia como veintiuno con cinco.
+
+Estaba en **tres** sitios de la interfaz --la biblioteca, el boton de descargar y el de
+quitar el comentario--, con lo que el numero estaba mal en los tres. Y el boton deia
+**"Descargar, 54.9"**, sin unidad, que no dice de que son los 54,9.
+
+Ahora hay un `bytesEnCastellano` en `ui/core/numeros.dart` y **no hay ningun formateador en
+el dominio**. Con la unidad dentro y decimal hasta cien megabytes:
+
+    22.544.384 bytes    21,5 MB      (no 22,5: es dividir por 1.048.576, no por un millon)
+    57.536.512 bytes    54,9 MB
+
 ### EL LEXICON NO ESTA EN EL `.amod`, Y POR ESO NO HAY DICCIONARIO
 
 Medido el 5 de octubre de 2026 sobre el KJV publicado. Las tablas son dos:

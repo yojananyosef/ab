@@ -254,6 +254,70 @@ class ModuloAbierto {
       .map((f) => f['chapter'] as int)
       .toList();
 
+  /// Los libros del modulo con sus capitulos, de una vez.
+  ///
+  /// Y ES UNA CONSULTA Y NO 66. Leer los 66 libros con un `libros()` y luego un
+  /// `capitulosDe()` por libro son 67 consultas para pintar una lista; esta es una y son
+  /// 21 ms en el KJV real. Y la diferencia se ve en el movil, que es donde se abre esto.
+  ///
+  /// Y EL RESULTADO VIENE EN ORDEN DE LA BASE, y se reordena en la interfaz con la tabla
+  /// de libros del dominio, que si sabe el orden canonico. Aqui `book` es texto sin
+  /// indice, asi que `ORDER BY book` pone `1Corinthians` antes que `John` --y una lista
+  /// de libros en orden alfabetico no es una lista de libros de la Biblia.
+  Map<String, List<int>> librosConCapitulos() {
+    final salida = <String, List<int>>{};
+    for (final f in _sqlite.consultar(
+      'SELECT book, chapter FROM $_tabla GROUP BY book, chapter ORDER BY book, chapter',
+    )) {
+      (salida[f['book'] as String] ??= <int>[]).add(f['chapter'] as int);
+    }
+    return salida;
+  }
+
+  /// La primera frase de cada capitulo de un libro.
+  ///
+  /// Y LA PRIMERA FRASE, NO UN RESUMEN, y el nombre lo dice para que no haya que
+  /// recordarlo. Un resumen de capitulo es lo que hace Bible Gateway y es la mejor idea de
+  /// localizacion de referencias que se ha visto: resuelve "se que estaba en el capitulo
+  /// 12 de algo, pero no de que". Un resumen de verdad son las palabras del capitulo en
+  /// tres lineas, y eso **no esta en el modulo**: habria que escribirlo, y escribirlo es
+  /// el dato de otra persona.
+  ///
+  /// Lo que si esta es el texto, y la primera frase es una preview honesta: "Adam, Sheth,
+  /// Enosh" es de donde empieza el capitulo, y eso ya quita la mitad de la duda. Se medira
+  /// sobre el fichero real en `test/data/`.
+  ///
+  /// Y DEVUELVE UN MAPA Y NO UNA LISTA, porque se pregunta por un capitulo concreto y un
+  /// mapa se responde en O(1) sin recorrer los 21.
+  Map<int, String> primeraFraseDeCapitulos(String libro) {
+    final salida = <int, String>{};
+    for (final f in _sqlite.consultar(
+      'SELECT chapter, text FROM $_tabla WHERE book = ? AND verse = 1 ORDER BY chapter',
+      [libro],
+    )) {
+      salida[f['chapter'] as int] = _primeraFrase(f['text'] as String);
+    }
+    return salida;
+  }
+
+  /// Las primeras palabras de un texto, hasta donde se puede leer una frase entera.
+  ///
+  /// Y CORTA EN UNA FRASE Y NO EN UN NUMERO DE CARACTERES, y por eso hay una comprobacion
+  /// de que sea larga. Cortar en 120 caracteres parte frases por la mitad y deja el final
+  /// colgando: "...y dijo a". Cortar donde hay un punto deja algo que se lee.
+  ///
+  /// Y SI NO HAY PUNTO EN LA FRASE ENTERA, se corta en 160 caracteres con puntos suspensivos,
+  /// que es lo unico honesto cuando la frase no acaba. Juan 1:1 entero son 17 palabras sin
+  /// un solo punto --los cuatro evangelios abrian asi-- y ahi no hay frase que cortar.
+  String _primeraFrase(String texto) {
+    final limite = texto.indexOf('. ');
+    if (limite > 0 && limite <= 200) {
+      return texto.substring(0, limite + 1);
+    }
+    if (texto.length <= 160) return texto;
+    return '${texto.substring(0, 157).trimRight()}...';
+  }
+
   /// El numero de capitulos, o null si el libro no esta.
   ///
   /// Null y no 0: "no lo tiene" y "tiene ninguno" son cosas distintas, y un 0

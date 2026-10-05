@@ -266,7 +266,7 @@ class _Datos extends StatelessWidget {
 
     final partes = <String>[
       textoDeIdioma(m.idioma),
-      if (fila.megabytes != null) '${fila.megabytes} MB',
+      if (fila.megabytes != null) fila.megabytes!,
       _textoDeLicencia(m.licencia),
     ];
 

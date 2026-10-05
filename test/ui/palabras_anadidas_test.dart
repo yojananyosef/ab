@@ -124,6 +124,8 @@ void main() {
             alPedirComentario: () {},
             alVerIndice: (_) {},
             alAlternarPalabrasDeJesus: () {},
+            alAbrirLibros: () {},
+            alAbrirVersiones: () {},
             alCambiarDeVersion: (_) {},
           ),
         ),

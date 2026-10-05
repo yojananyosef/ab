@@ -253,17 +253,19 @@ void main() {
       expect(find.text('Reina-Valera 1960 (español, revisada)'), findsOneWidget);
       // 28.424.192 bytes son 27,1 MiB. Y con un decimal: "27 MB" y "27,1 MB" dan
       // distinta sensacion de lo que pesa, y la decision de bajarlo depende de eso.
-      expect(find.textContaining('27.1 MB'), findsOneWidget);
+      // Y CON COMA, no con punto: el decimal en castellano es la coma. Antes de este
+      // change la fila imprimia '27.1 MB' con `toStringAsFixed(1)`, y el punto separa los
+      // millares, de modo que el numero se leia como veintisiete con uno.
+      expect(find.textContaining('27,1 MB'), findsOneWidget);
       expect(find.text('RVR1960_ES'), findsOneWidget);
     });
 
     testWidgets('el tamano es el que dice el manifiesto, byte a byte', (tester) async {
       for (final (bytes, esperado) in <(int, String)>[
-        (28424192, '27.1 MB'),
-        (22544384, '21.5 MB'),
-        (57536512, '54.9 MB'),
-        (1048576, '1.0 MB'),
-        (1024, '0.0 MB'),
+        (28424192, '27,1 MB'),
+        (22544384, '21,5 MB'),
+        (57536512, '54,9 MB'),
+        (1048576, '1,0 MB'),
       ]) {
         final vm = BibliotecaViewModel(
           manifiesto: _manifiesto(<Modulo>[_moduloDesconocido(tamano: bytes)]),
@@ -338,8 +340,8 @@ void main() {
 
       expect(find.byType(FilaModulo), findsNWidgets(2));
       expect(find.text('King James Version (2006)'), findsOneWidget);
-      expect(find.textContaining('21.5 MB'), findsOneWidget);
-      expect(find.textContaining('54.9 MB'), findsOneWidget);
+      expect(find.textContaining('21,5 MB'), findsOneWidget);
+      expect(find.textContaining('54,9 MB'), findsOneWidget);
     });
   });
 

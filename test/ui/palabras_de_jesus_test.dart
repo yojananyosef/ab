@@ -177,6 +177,8 @@ void main() {
             alPedirComentario: () {},
             alVerIndice: (_) {},
             alAlternarPalabrasDeJesus: vm.alternarPalabrasDeJesus,
+            alAbrirLibros: () {},
+            alAbrirVersiones: () {},
             alCambiarDeVersion: (_) {},
           ),
         ),

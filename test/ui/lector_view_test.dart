@@ -102,6 +102,8 @@ Future<LectorViewModel> montarLector(
       alPedirComentario: () {},
       alVerIndice: (_) {},
       alAlternarPalabrasDeJesus: () {},
+      alAbrirLibros: () {},
+      alAbrirVersiones: () {},
       alCambiarDeVersion: alCambiarDeVersion ?? (_) {},
       alVolver: alVolver ?? () {},
     ),

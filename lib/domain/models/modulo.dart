@@ -71,11 +71,18 @@ class Modulo {
   /// GitHub Pages. Para navegador.
   final Uri urlNavegador;
 
-  /// Tamano en megabytes con un decimal, como se ensena.
+  /// NO HAY UN `megabytes` AQUI, Y ANTES SI LO HABIA.
   ///
-  /// Un decimal y no ninguno: la diferencia entre 22,5 MB y 57,5 MB es la que
-  /// hace decidir, y "22 MB" o "57 MB" la esconde.
-  String get megabytes => (tamanoBytes / (1024 * 1024)).toStringAsFixed(1);
+  /// Era `(tamanoBytes / (1024 * 1024)).toStringAsFixed(1)` y devolvia `"21.5"` **con
+  /// punto**: en castellano el punto separa los millares y la coma los decimales, asi que
+  /// "21.5 MB" se lee como veintiuno con cinco megabytes. Y estaba en tres sitios de la
+  /// interfaz --la biblioteca, el boton de descargar y el de quitar el comentario--, con lo
+  /// que el numero estaba mal en los tres.
+  ///
+  /// Ahora lo formatea [bytesEnCastellano], que vive en `ui/core/numeros.dart` y es el
+  /// unico sitio. Y no se ha dejado un atajo aqui para no volver a tener dos: un formateador
+  /// de lo que se ve es de la interfaz, y un modelo de dominio que formatea texto para
+  /// pantalla es un modelo de dominio que sabe como se ve.
 
   /// El mismo modulo con otro hash. Se usa cuando el manifiesto se actualiza y
   /// un modulo descargado tiene una version distinta.
@@ -108,7 +115,7 @@ class Modulo {
   int get hashCode => Object.hash(id, sha256);
 
   @override
-  String toString() => 'Modulo($id, $tipo, $nombre, $megabytes MB)';
+  String toString() => 'Modulo($id, $tipo, $nombre, $tamanoBytes bytes)';
 }
 
 /// De menor a mayor, que es como se lee una lista de descargas: primero lo

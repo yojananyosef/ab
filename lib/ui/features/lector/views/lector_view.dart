@@ -46,12 +46,14 @@ import 'package:ab/domain/models/token_de_texto.dart';
 import 'package:ab/domain/models/pasaje.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/domain/models/versiculo.dart';
+import 'package:ab/ui/core/numeros.dart';
 import 'package:ab/ui/core/tema.dart';
 
 import '../view_models/lector_view_model.dart';
 import '../widgets/campo_de_referencia.dart';
 import '../../busqueda/widgets/columna_de_texto.dart';
 import '../widgets/estilo_de_palabra.dart';
+import '../widgets/hoja_de_versiones.dart';
 import '../widgets/terminos_del_modulo.dart';
 
 class LectorView extends StatefulWidget {
@@ -64,9 +66,12 @@ class LectorView extends StatefulWidget {
     required this.alPedirComentario,
     required this.alVerIndice,
     required this.alAlternarPalabrasDeJesus,
+    required this.alAbrirLibros,
+    required this.alAbrirVersiones,
     this.alDescargarComentario,
     this.alBuscar,
     this.modulosDelCatalogo = const <Modulo>[],
+    this.versiones = const <VersionDisponible>[],
   });
 
   final LectorViewModel viewModel;
@@ -121,6 +126,20 @@ class LectorView extends StatefulWidget {
   /// Poner las palabras de Jesus en rojo, o dejarlas como estaban.
   final VoidCallback alAlternarPalabrasDeJesus;
 
+  /// Abrir el selector de libro y capitulo.
+  final VoidCallback alAbrirLibros;
+
+  /// Abrir el selector de version del texto.
+  final VoidCallback alAbrirVersiones;
+
+  /// Las versiones del catalogo, con su estado, para el selector.
+  ///
+  /// Y SE PREPARA FUERA Y SE PASA, y no se arma en la vista. La vista no sabe que hay un
+  /// manifiesto, ni de donde sale `descargado`, y si lo supiera acabaria preguntando al
+  /// almacenamiento --que es lo que `arranque.dart` hace con un plazo porque en un
+  /// navegador puede no contestar-- para pintar un boton.
+  final List<VersionDisponible> versiones;
+
   @override
   State<LectorView> createState() => _LectorViewState();
 }
@@ -169,7 +188,26 @@ class _LectorViewState extends State<LectorView> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(vm.leyendo?.texto ?? 'Leyendo'),
+        titleSpacing: Medidas.margenEstrecho,
+        // Y EL TITULO **ES** LA CABECERA, y no un `Text` con la referencia. Es la decision
+        // que mas se ve de esta pantalla y la que mas se Habia Tardado: la referencia y la
+        // version son las dos cosas que mas se usan --una para ir a otro sitio, otra para
+        // comparar-- y estaban en un icono y en ningun sitio.
+        //
+        // Y SON DOS LINEAS Y NO UNA CON LOS DOS NOMBRES JUNTOS. En una sola linea a 360 px
+        // sale "Juan 3:16 - King James Version (2006)" recortado, y recortado es peor que
+        // en dos sitios: el nombre de la version es el que se puede perder, porque se sabe
+        // de memoria, y el pasaje es el que no.
+        //
+        // Y NO HAY ICONO DE NINGUNO DE LOS DOS. Se **ahorra** un boton, que es el problema
+        // que tenia la barra --cuatro iconos y ninguno util-- en vez de añadir uno mas.
+        title: _CabeceraDeLectura(
+          referencia: vm.leyendo?.texto ?? 'Leyendo',
+          version: _nombreDeLaVersionAbierta(vm),
+          hayVersion: widget.versiones.isNotEmpty,
+          alPulsarPasaje: widget.alAbrirLibros,
+          alPulsarVersion: widget.alAbrirVersiones,
+        ),
         leading: IconButton(
           tooltip: 'Volver a la biblioteca',
           icon: const Icon(Icons.arrow_back),
@@ -427,7 +465,21 @@ class _LectorViewState extends State<LectorView> {
     if (id == null) return '';
     final modulo = _modulosPorId[id];
     if (modulo == null) return '';
-    return modulo.megabytes;
+    return bytesEnCastellano(modulo.tamanoBytes);
+  }
+
+  /// El nombre de la version que esta abierta, o null si no hay ninguna.
+  ///
+  /// Y SE BUSCA EN `versiones`, que es la lista que trae el estado. Si se buscara en
+  /// `modulosDelCatalogo` saldria el nombre tambien para un modulo que no esta
+  /// descargado, que es un nombre de una traduccion que no se esta leyendo.
+  String? _nombreDeLaVersionAbierta(LectorViewModel vm) {
+    final id = vm.idDelModulo;
+    if (id == null) return null;
+    for (final v in widget.versiones) {
+      if (v.id == id) return v.nombre;
+    }
+    return null;
   }
 
   /// Los modulos del manifiesto que se han pedido descargar, por identificador.
@@ -622,6 +674,128 @@ class _Nota extends StatelessWidget {
 ///
 /// Y CUANDO NO HAY NINGUNO DICE "COMENTARIO", que es lo que hay que hacer, y no un icono
 /// apagado sin texto: un control sin etiqueta en una barra es un control que no se ve.
+/// La cabecera de la pantalla de lectura: el pasaje y la version.
+///
+/// Y ES UNA CLASE SUELTA Y NO UN `title:` CON UN `Column`, por una razon que se ve al
+/// usarla en un movil: un `title` de `AppBar` con dos lineas **centra verticalmente** y no
+/// se deja alinear arriba, asi que el pasaje queda a media altura y la version pegada al
+/// suelo de la barra, y en una barra de 56 px eso son ocho pixeles de hueco entre las dos
+/// lineas y ninguna se lee bien.
+///
+/// Y LAS DOS LINEAS SON PULSABLES, y cada una hace lo suyo: el pasaje abre el selector de
+/// libro y capitulo, y la version abre el selector de texto. Es la division que usa todo
+/// el mundo --YouVersion y Logos-- y es la que hace que una cabecera con dos lineas no sea
+/// un adorno sino el sitio donde estan las dos cosas que mas se tocan.
+///
+/// Y LA LINEA DE LA VERSION SE PINTA EN `bodySmall` Y NO EN `titleSmall`, y con el color
+/// suave. Es un dato secundario --se sabe de memoria cual es la version-- y del mismo modo
+/// el pasaje es el dato primario. Al reves, las dos lineas del mismo peso hacen que la
+/// version parezca tan importante como el pasaje y no lo es.
+///
+/// Y CUANDO NO HAY VERSION NO SE PINTA LA LINEA, y no un hueco. Un modulo sin manifiesto al
+/// que pertenece deja la cabecera a una linea y no con un espacio vacio que empuja el
+/// texto hacia abajo.
+class _CabeceraDeLectura extends StatelessWidget {
+  const _CabeceraDeLectura({
+    required this.referencia,
+    required this.version,
+    required this.hayVersion,
+    required this.alPulsarPasaje,
+    required this.alPulsarVersion,
+  });
+
+  final String referencia;
+  final String? version;
+  final bool hayVersion;
+  final VoidCallback alPulsarPasaje;
+  final VoidCallback alPulsarVersion;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+
+    return Column(
+      // `mainAxisSize: min` es lo que hace que la barra mida lo que mide. Sin el, un
+      // `Column` dentro de un `title` quiere ocupar toda la altura disponible y la barra
+      // crece, y una barra de 80 px en un movil de 640 de alto es un 12 % de pantalla que
+      // se va en decir donde estas.
+      mainAxisSize: MainAxisSize.min,
+      // Y `crossAxisAlignment: stretch`, Y NO `start`. Con `start`, cada hijo del `Column`
+      // recibe la holgura y mide lo que quiere, y entonces el `Flexible` de dentro no tiene
+      // ancho que recortar: el texto no se recorta y la fila **desborda**. Medido a 360 px,
+      // con los tres botones de la barra al lado: **4,1 pixeles de mas**, con el nombre de
+      // la version entero en vez de con puntos suspensivos.
+      //
+      // Y QUEDA UN `start` PARA LO QUE SIGUE, porque el `Column` de dentro del selector de
+      // libros si quiere alinearse a la izquierda. Aqui lo que se quiere es lo contrario:
+      // que las dos lineas ocupen exactamente el ancho del titulo.
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        _linea(
+          texto: referencia,
+          estilo: t.textTheme.titleMedium,
+          descripcion: 'Elegir libro y capitulo',
+          alPulsar: alPulsarPasaje,
+        ),
+        if (version != null)
+          _linea(
+            texto: version!,
+            estilo: t.textTheme.bodySmall?.copyWith(color: Colores.textoSuave),
+            descripcion: 'Elegir la version del texto',
+            alPulsar: alPulsarVersion,
+            sinSeparacion: true,
+          ),
+      ],
+    );
+  }
+
+  Widget _linea({
+    required String texto,
+    required TextStyle? estilo,
+    required String descripcion,
+    required VoidCallback alPulsar,
+    bool sinSeparacion = false,
+  }) {
+    return Semantics(
+      button: true,
+      label: '$texto. $descripcion',
+      child: InkWell(
+        onTap: alPulsar,
+        // Y EL SALPICADO **NO** SE VE SI EL `InkWell` NO TOCA EL BORDE. Un
+        // `InkWell` dentro de un `AppBar` pinta el salpicado donde ocupa el widget, y sin
+        // margen se pinta pegado al borde de los pixeles y no se ve. Este es el motivo de
+        // que el `title` lleve `titleSpacing`: el margen va **ahi** y no en un `Padding`
+        // dentro de la linea, que ademas es lo que hacia desbordar la fila.
+        child: Padding(
+          padding: EdgeInsets.only(right: 4, top: sinSeparacion ? 0 : 1, bottom: 1),
+          child: Row(
+            // Y `Expanded` Y NO `Flexible`. Con `Flexible` holgado, el `Text` pide lo que
+            // necesita hasta el ancho disponible y el `Row` **mide lo que sus hijos piden**:
+            // a 360 px, con la flecha de 20 al lado, la linea se pasaba **4,1 pixeles** y
+            // `overflow: ellipsis` no llegaba a activarse. `Expanded` obliga a que el texto
+            // ocupe el hueco que sobra, y entonces el recorte ocurre.
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  texto,
+                  style: estilo,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              // Y LA FLECHA DESPUES DEL TEXTO Y NO ANTES. Delante parece un boton de
+              // "abrir" del que no se sabe que abre; al lado parece un desplegable, que es
+              // lo que es.
+              Icon(Icons.arrow_drop_down, size: 20, color: Colores.textoSuave),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _BotonDeComentario extends StatelessWidget {
   const _BotonDeComentario({required this.id, required this.alPulsar});
 
@@ -632,32 +806,30 @@ class _BotonDeComentario extends StatelessWidget {
   Widget build(BuildContext context) {
     final hay = id != null;
 
-    return Tooltip(
-      message: hay
+    // Y ES UN **ICONO** Y NO UN BOTON CON TEXTO, y esto se cambio al medir, no por gusto.
+    //
+    // MEDIDO A 360 PX con las dos lineas de cabecera y el boton con su texto: el hueco que
+    // le quedaba al titulo era de **13,9 pixeles**. Trece. El nombre de la version y el
+    // pasaje no cabian en trece pixeles, y lo que se veia era un titulo recortado en seco
+    // y un `overflow` de 6 pixeles en cada linea.
+    //
+    // Y LA PALABRA "Comentario" SE LLEVA **110 PIXELES** SOLA. Con icono se le quedan 48,
+    // y esos 62 pixeles son los que hacen que "Juan 3:16" y "King James Version (2006)"
+    // quepan en una barra de 360.
+    //
+    // Y NO SE PIERDE NADA, porque el estado **ya estaba en el icono** --con color-- y el
+    // identificador exacto estaba en el `tooltip`, que es donde lo busca la gente que quiere
+    // saber que comentario tiene abierto y no solo que hay uno.
+    return IconButton(
+      tooltip: hay
           ? 'El comentario es $id. Púlsalo para cambiarlo o quitarlo.'
           : 'Poner un comentario al lado del texto',
-      child: TextButton.icon(
-        onPressed: alPulsar,
-        icon: Icon(
-          hay ? Icons.comment : Icons.comment_outlined,
-          size: 20,
-          // Y EL ICONO TAMBIEN DICE SI HAY ALGO, y no solo el texto: el color del boton
-          // cambia con el, de modo que se distingue de un vistazo sin leer.
-          color: hay ? Colores.acento : Colores.textoSuave,
-        ),
-        label: Text(
-          hay ? id! : 'Comentario',
-          style: TextStyle(
-            color: hay ? Colores.acento : Colores.textoSuave,
-            fontWeight: hay ? FontWeight.w600 : FontWeight.w400,
-          ),
-        ),
-        // Y `VisualDensity.compact` PORQUE LA BARRA ES ALTA Y EL TEXTO ES DE 16. Con la
-        // densidad normal el boton empuja la barra a 56 de alto y el titulo --"Juan 3:16"--
-        // sube con el, y el titulo no tiene por que moverse porque se haya abierto una
-        // hoja.
-        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+      icon: Icon(
+        hay ? Icons.comment : Icons.comment_outlined,
+        size: 20,
+        color: hay ? Colores.acento : Colores.textoSuave,
       ),
+      onPressed: alPulsar,
     );
   }
 }

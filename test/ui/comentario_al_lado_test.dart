@@ -372,6 +372,8 @@ void main() {
             alPedirComentario: () {},
             alVerIndice: (_) {},
             alAlternarPalabrasDeJesus: () {},
+            alAbrirLibros: () {},
+            alAbrirVersiones: () {},
             alCambiarDeVersion: (_) {},
           ),
         ),
@@ -425,16 +427,56 @@ void main() {
     });
 
     testWidgets('el boton dice el nombre del comentario abierto', (tester) async {
+      // Y EN EL `TOOLTIP`, Y NO EN UN TEXTO EN LA BARRA. El boton paso a ser un icono
+      // porque la palabra "Comentario" se comia **110 pixeles** de una barra de 360 y
+      // dejaba **13,9** para el titulo. Lo que se pierde es el texto en la barra; lo que
+      // se conserva es el nombre exacto, que es lo que esta prueba comprueba, y el icono
+      // sigue diciendo con el color que hay uno abierto.
       await montar(tester, referencia: const Referencia('John', 3, 16));
-      expect(find.widgetWithText(TextButton, 'CLARKE'), findsOneWidget);
+
+      final boton = tester.widget<IconButton>(
+        find.ancestor(of: find.byIcon(Icons.comment), matching: find.byType(IconButton)),
+      );
+      expect(boton.tooltip, contains('CLARKE'));
     });
 
     testWidgets('sin comentario, el boton dice lo que hay que hacer', (tester) async {
       // Y NO UN ICONO APAGADO. Un control sin etiqueta en la barra es un control que no
       // se ve, y lo unico que hay que ofrecer a quien no ha puesto ningun comentario es
-      // la manera de ponerlo.
+      // la manera de ponerlo. El `tooltip` lo dice igual que antes, y el icono cambia de
+      // forma para que se distinga sin leer nada.
       await montar(tester, referencia: const Referencia('John', 3, 16), conComentario: false);
-      expect(find.widgetWithText(TextButton, 'Comentario'), findsOneWidget);
+
+      final boton = tester.widget<IconButton>(
+        find.ancestor(
+            of: find.byIcon(Icons.comment_outlined), matching: find.byType(IconButton)),
+      );
+      expect(boton.tooltip, contains('Poner un comentario'));
+    });
+
+    testWidgets('a 360 px el titulo de la cabecera TIENE sitio', (tester) async {
+      // Y ESTA ES LA PRUEBA QUE ATRAPA EL FALLO, y el fallo era de los que no se ven
+      // leyendo el codigo: la barra estaba tan llena que al titulo le quedaban **13,9
+      // pixeles**, y las dos lineas de cabecera se pasaban 6 pixeles cada una.
+      //
+      // Y NO SE COMPRUEBA QUE NO DESBORDE --eso ya lo dice el renderizado— sino que el
+      // titulo tiene **ancho de verdad**. Un titulo de 13 pixeles no desborda: se recorta
+      // entero y no hay forma de verlo desde fuera. El minimo de 120 sale de medir lo que
+      // ocupa "King James Version..." con la flecha al lado; por debajo de eso el nombre de
+      // la version es ilegible y no vale la pena ensenarlo.
+      await montar(tester, referencia: const Referencia('John', 3, 16));
+
+      // Y DENTRO DE LA BARRA, Y NO POR TODO PANTALLA. "Juan 3:16" sale tres veces en la
+      // pantalla --la cabecera, el campo de referencia y el selector-- y sin acotar, esta
+      // comprobacion mide el ancho del campo de referencia, que es ancho por construccion, y
+      // pasaria siempre.
+      final texto = find.descendant(
+        of: find.byType(AppBar),
+        matching: find.text('Juan 3:16'),
+      );
+      expect(texto, findsOneWidget);
+      expect(tester.getSize(texto).width, greaterThan(120),
+          reason: 'a 360 px el titulo de la cabecera tiene que caber');
     });
 
     testWidgets('el aviso del comentario tiene un boton para quitarlo', (tester) async {
@@ -461,6 +503,8 @@ void main() {
             alPedirComentario: () {},
             alVerIndice: (_) {},
             alAlternarPalabrasDeJesus: () {},
+            alAbrirLibros: () {},
+            alAbrirVersiones: () {},
             alCambiarDeVersion: (_) {},
           ),
         ),
@@ -782,7 +826,11 @@ void main() {
       expect(lector.estado, EstadoLecturaTexto.leyendo);
 
       // Y HAY UN BOTON CON EL TAMANO, que es lo que se decide pulsar.
-      final boton = find.widgetWithText(TextButton, 'Descargar, 54.9');
+      // Y CON LA UNIDAD DENTRO, no fuera. El tamano salia del `Modulo.megabytes`, que
+      // devolvia el numero sin unidad --'54.9'-- y con punto; ahora lo formatea
+      // `bytesEnCastellano`, que da '54,9 MB'. Un boton que dice "Descargar, 54.9" sin
+      // unidad no se sabe si son megas, megas por segundo o mil MeB.
+      final boton = find.widgetWithText(TextButton, 'Descargar, 54,9 MB');
       expect(boton, findsOneWidget);
       await tester.tap(boton);
       await tester.pumpAndSettle();
@@ -830,7 +878,7 @@ void main() {
       await n.irA(const RutaLectura('KJV2006', Referencia('John', 3, 16), 'NOEXISTE'));
       await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(TextButton, 'Descargar, 54.9'), findsNothing);
+      expect(find.widgetWithText(TextButton, 'Descargar, 54,9 MB'), findsNothing);
       expect(find.textContaining('no esta descargado'), findsOneWidget);
       expect(lector.estado, EstadoLecturaTexto.leyendo);
     });

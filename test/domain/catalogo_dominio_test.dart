@@ -13,6 +13,7 @@ import 'dart:io';
 
 import 'package:ab/data/models/catalogo_api.dart';
 import 'package:ab/domain/models/manifiesto.dart';
+import 'package:ab/ui/core/numeros.dart';
 import 'package:ab/domain/models/modulo.dart';
 import 'package:ab/data/services/origen.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -94,12 +95,19 @@ void main() {
       );
       expect(m.total, 2);
       final kjv = m.porId('KJV2006')!;
-      expect(kjv.megabytes, '21.5', reason: '22.544.384 bytes son 21,5 MB');
+      // Y EL TAMANO SE FORMATEA EN UN SOLO SITIO, en `numeros.dart`, y **con coma**. Aqui
+      // estaba `Modulo.megabytes`, que devolvia `toStringAsFixed(1)` y por tanto `"21.5"`
+      // con punto: en castellano un punto separa los millares, asi que el numero de la
+      // biblioteca, el del boton de descarga y el del boton de quitar el comentario estaban
+      // los tres mal.
+      expect(bytesEnCastellano(kjv.tamanoBytes), '21,5 MB',
+          reason: '22.544.384 bytes son 21,5 MB');
       expect(kjv.tipo, TipoModulo.biblia);
       expect(kjv.urlsCoincidenEnElFichero, isTrue);
       final clar = m.porId('CLARKE')!;
       expect(clar.tipo, TipoModulo.comentario);
-      expect(clar.megabytes, '54.9', reason: '57.536.512 bytes son 54,9 MB');
+      expect(bytesEnCastellano(clar.tamanoBytes), '54,9 MB',
+          reason: '57.536.512 bytes son 54,9 MB');
       expect(m.deTipo(TipoModulo.biblia).length, 1);
       expect(m.deTipo(TipoModulo.comentario).length, 1);
       expect(m.idiomas, ['eng']);

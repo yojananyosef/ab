@@ -47,3 +47,27 @@ String numeroEnCastellano(int numero) {
 
   return '$conSigno${grupos.reversed.join('.')}';
 }
+
+/// Un tamano en bytes, en castellano, en una unidad que se pueda decidir de un vistazo.
+///
+/// Y **UN SOLO** Y NO UNO POR PANTALLA. `Modulo.megabytes` hacia `toStringAsFixed(1)` y
+/// devolvia `"21.5"`, con **punto**: en castellano el punto separa los millares y la coma
+/// los decimales, asi que "21.5 MB" se lee como veintiuno con cinco. Estaba en la
+/// biblioteca, en el boton de descarga y en el boton de "quitar el comentario".
+///
+/// Y CON DECIMAL HASTA CIENT Y ENTERO DE AHI EN ADELANTE. Por debajo de cien, un decimal
+/// ayuda: 22,5 frente a 22 cambia la percepcion de lo que se esta bajando. Por encima, un
+/// decimal es ruido --"104,3 MB" no se distingue de "104,4" a simple vista— y se redondea.
+String bytesEnCastellano(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+
+  const megas = 1024 * 1024;
+  if (bytes < megas) {
+    final kb = bytes / 1024;
+    return '${kb.round()} KB';
+  }
+
+  final mb = bytes / megas;
+  if (mb < 100) return '${mb.toStringAsFixed(1).replaceAll('.', ',')} MB';
+  return '${mb.round()} MB';
+}

@@ -29,6 +29,7 @@ import 'package:ab/data/repositories/catalogo_repository.dart';
 import 'package:ab/domain/models/estado_modulo.dart';
 import 'package:ab/domain/models/manifiesto.dart';
 import 'package:ab/domain/models/modulo.dart';
+import 'package:ab/ui/core/numeros.dart';
 
 import 'aviso.dart';
 
@@ -61,7 +62,9 @@ class FilaDeModulo {
   ///
   /// Null y no 0: un modulo retirado no tiene tamano conocido, y poner 0,0 MB
   /// seria decir que no ocupa nada, que es una informacion falsa.
-  String? get megabytes => modulo?.megabytes;
+  String? get megabytes => modulo?.tamanoBytes == null
+      ? null
+      : bytesEnCastellano(modulo!.tamanoBytes);
 
   /// Un id: el del manifiesto si hay, o el identificador guardado.
   String get id => modulo?.id ?? idLocal;
