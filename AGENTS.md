@@ -577,26 +577,123 @@ Y CADA UNO DE ESTOS CUATRO SALIO EN UN "FALLO" QUE DECIA LA VERDAD A MEDIAS. Un 
 dice la verdad a medias es peor que uno que no dice nada: hace perder el rato mirando la
 app en vez de mirar el fallo.
 
-### LA PALABRA DE DIOS EN ROJO NO ESTA EN ESTOS MODULOS
+### LAS PALABRAS DE JESUS SI ESTAN, Y SE PINTAN EN ROJO
 
-Medido el 5 de octubre de 2026 sobre el KJV entero: 31.102 versiculos, y **ni una marca de
-habla divina**. Lo que hay son diez marcas distintas, y son estas:
+**ESTA SECCION CORRIGE UNA QUE ESTABA MAL.** Antes decia que la palabra de Dios en rojo no
+se podia pintar, y la razon que daba era que no habia ninguna marca de habla divina en los
+modulos. La razon era cierta: no la hay. **La conclusion era falsa**, porque se busco una
+marca --`\divine`, `\god`, una lista de versiculos-- y no se miraron las que hay.
 
-    \w    630.866    una palabra con su numero del lexicon
-    \+w    72.386    lo mismo, dentro de un parrafo
-    \add   41.692    texto que puso el traductor
-    \f     13.918    nota al pie
-    \nd    13.740    sin divisor
-    \p, \q1, \b, \s1, \tl   estructura
+La marca es **`\wj`**, que en USFM es el marcador de **palabras de Jesus**, el mismo que
+usan las Biblias de letras rojas. Esta ahi, y el parser no la miraba. Medido el 5 de
+octubre de 2026 sobre el KJV entero, con el parser de la aplicacion:
 
-No hay `\divine`, no hay `dd` que marque el hablar de Dios, no hay convencion ninguna. La
-palabra de Dios en rojo viene de otra parte --de una lista de versiculos, de una marca que
-este catalogo no trae-- y **sin ella no se puede**, porque pintar de rojo lo que uno no
-sabe que es la Palabra es inventarse el dato.
+    versiculos del KJV                     31.102
+    con palabras de Jesus                   2.015
+    palabras de Jesus                   41.284   de 835.159   (4,94 %)
+    aperturas `\wj`                       2.038
+    versiculos con `\wj`                   2.028
 
-Lo que si sale del `raw`, y sale de verdad: el **numero del lexicon** de cada palabra (`Dios`
-es `G2316` en Juan 3:16) y **que palabras puso el traductor** (Juan 3:16 no tiene ni una:
-es texto que el KJV no toco).
+Los tres numeros de `\wj` son distintos y hay que saber cual es cual: hay **2.038
+aperturas en 2.028 versiculos** porque Juan 21:15, Juan 21:16 y ocho mas abren el marcador
+dos veces dentro del mismo versiculo. Y de los 2.028, **2.015** reciben anotaciones: los
+13 que faltan tienen el marcado descuadrado con el texto y se descartan enteros, que es la
+misma regla que para el numero del lexicon.
+
+Y POR LIBRO, que es donde se ve que el marcador dice lo que dice:
+
+    Mateo 641   Lucas 584   Juan 415   Marcos 284
+    Apocalipsis 61   Hechos 27   1 Corintios 2   2 Corintios 1
+    Genesis 0   Salmos 0   Exodo 0   (y los otros 18 del Antiguo Testamento, 0)
+
+**LAS DOS FILAS DE CORINTIOS SON LA PRUEBA.** En 1 Corintios 11:24 y 2 Corintios 12:9 son
+palabras de Cristo **citadas por Pablo**. Si `\wj` significara "dialogo", tambien las
+traeria; si significara "habla divina", no, porque Pablo no es Cristo.
+
+### LO QUE SE PINTA EN ROJO SON LAS PALABRAS DE JESUS, NO LAS DE DIOS
+
+Y ESTA ES LA DISTINCION QUE HAY QUE PODER DECIR, porque son dos cosas y solo una es
+cierta:
+
+| | |
+| --- | --- |
+| **Lo que dijo Jesus** | **si**, en 2.015 versiculos, y se pinta en rojo |
+| **Lo que dijo el Dios del Antiguo Testamento** | **no**, en ninguno de los 21 libros |
+
+Lo segundo no esta en ningun sitio de este catalogo. No hay `\divine`, no hay
+`\god`, no hay convencion. Y no hay de donde sacarlo: inventar una lista de versiculos en
+los que Dios habla es escribir el dato de otra persona y atribuirselo al modulo, que es lo
+peor que puede hacer un lector de Biblia.
+
+Por eso el interruptor se llama **"Palabras de Jesus en rojo"** y no "Palabra de Dios", y
+por eso se pinta en rojo lo que el modulo marca y no lo que uno cree que deberia.
+
+### Y LO MISMO CON LOS VERSICULOS: `\wj` MARCA, NO RESUELVE
+
+Medido, y con los dos lados porque los dos importan:
+
+    Juan 3:16    25 de 25 palabras    todo el versiculo es de Jesus
+    Juan 3:11    24 de 24
+    Juan 3:28     0 de 20             el Bautista
+    Juan 3:29     0 de 32             el narrador
+    Juan 3:36     0 de 28             el narrador
+
+Si el marcador marcara el capitulo entero, o no marcara nada, esos cuatro darian el mismo
+resultado. **Por eso la comprobacion que importa es "tiene marca Y el siguiente no la
+tiene"**, y no "tiene marca". Con una sola de las dos, un rojo puesto sin criterio seria
+rojo en todo Juan 3 y no estaria diciendo nada.
+
+Y el fallo de la bandera es el de siempre: `\wj` se lee de la **pila**, no de una bandera
+que se ponia al abrir y no se apagaba al cerrar. Con la bandera, Juan 3:28 --20 palabras del
+Bautista-- salia entero rojo.
+
+### EL COLOR ES TEXTO, Y EL CONTRASTE SE MIDE
+
+El rojo de las palabras de Jesus es `0xFF992B22`, y da **7,33:1** sobre el fondo de la
+pantalla y **7,71:1** sobre la superficie. El umbral de AAA para texto normal es 7:1, y el
+texto corriente da 16,96:1.
+
+No se eligio a ojo. Es color de **texto de cuerpo**, y un rojo claro de letras rojas se lee
+como texto deshabilitado y no como Escritura. Y la comprobacion esta **viva en cada
+ejecucion**: si alguien cambia el color del tema y lo deja en 4:1, la prueba se pone roja.
+
+Y NO ES EL COLOR DE `peligro` CON OTRO NOMBRE. Si las dos cosas fueran el mismo color, un
+dia el aviso de error pasaria a ser del color de la Palabra de Cristo y nadie sabria que
+paso. Cada color dice una cosa.
+
+### LAS DOS MARCAS SE SUMAN, Y EN ESTE CATALOGO NUNCA COINCIDEN
+
+Medido: de 835.159 palabras del KJV, **cero** son a la vez `\add` y `\wj`. Asi que el caso
+de las dos marcas **no se puede probar con el fichero real**, y por eso la decision de
+estilo esta en `widgets/estilo_de_palabra.dart`, una funcion pura que se prueba entera.
+
+Y NO HAY QUE ELEGIR UNA. La primera version hacia que "el subrayado ganara" sobre el rojo, y
+una palabra anadida por el traductor **dentro** de las palabras de Jesus salia negra con
+subrayado: el rojo se perdia justo en el unico sitio donde mas se nota. Y con el interruptor
+apagado el subrayado **se queda**: apagar el color no puede borrar informacion del modulo.
+
+### UNA PREFERENCIA QUE SE LEE SIN PLAZO CUELGA LA PANTALLA
+
+El interruptor guarda si esta puesto, en `Almacenamiento`, que es donde vive la unica
+preferencia de lectura. Leerla es un `await` sobre `localStorage`, y ya hay un caso medido
+en este repositorio --el almacenamiento del navegador que nunca contesta-- donde un `await`
+sin plazo **cuelga la pantalla entera**.
+
+La primera version no tenia plazo. La prueba con un almacenamiento que devuelve una promesa
+que no se resuelve **se quedo colgando cinco minutos** y dio `TimeoutException`, que es la
+forma exacta del fallo que existe fuera de las pruebas.
+
+Por eso:
+
+- **Cinco segundos**, no uno: el caso medido no es lento, es que no contesta.
+- **Es un parametro**, para que una prueba lo baje a diez milisegundos y pueda comprobar el
+  caso sin esperar.
+- **Si no contesta, se queda el valor de partida y no se avisa.** Aqui, a diferencia del
+  catalogo, el silencio si es lo correcto: lo que se ha perdido es una preferencia --dos
+  toques-- y un aviso en medio de Juan 3 no le sirve a nadie.
+
+Y UNA PREFERENCIA SE LEE AL ABRIR LA PANTALLA, no al arrancar la app. Si se leyera al
+arrancar, abrir una pestana nueva al lado de otra se pintaria con el color de la primera.
 
 ### EL LEXICON NO ESTA EN EL `.amod`, Y POR ESO NO HAY DICCIONARIO
 

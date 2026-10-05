@@ -890,6 +890,7 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
             // saber donde mas sale `G2316` ya esta leyendo la palabra y la toca. Un boton
             // en la barra obligaria a escribir el numero, y nadie escribe `G2316`.
             alVerIndice: verElIndiceDe,
+            alAlternarPalabrasDeJesus: lector.alternarPalabrasDeJesus,
             // Y LA LUPA ABRE LA BUSQUEDA **DEL TEXTO ABIERTO**, y no una busqueda en
             // general. No hay una busqueda en general todavia y no la hay a proposito:
             // ver `buscar-en-el-texto`.

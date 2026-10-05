@@ -79,3 +79,15 @@ const String claveManifiestoGuardado = 'ab.manifiesto.ultimo';
 
 /// La clave con la que se guarda de que release vino ese manifiesto.
 const String claveEtiquetaGuardada = 'ab.manifiesto.etiqueta';
+
+/// La clave con la que se guarda si las palabras de Jesus se pintan en rojo.
+///
+/// Y ES UNA PREFERENCIA Y NO UNA NOTA, y por eso cabe aqui: se puede volver a poner como
+/// estaba con dos toques, y perderla no es perder trabajo. Lo que no se guarda aqui, nunca,
+/// es nada que la persona haya escrito. Ver la cabecera de este fichero.
+///
+/// Y EL VALOR ES `si` O `no` Y NO `true` O `false`, porque [Almacenamiento] guarda texto y
+/// porque en castellano se lee. Y LA AUSENCIA ES `si`, que es lo que pasa la primera vez:
+/// quien no ha tocado el interruptor quiere las letras rojas, que es lo que espera de una
+/// Biblia con las palabras de Jesus marcadas.
+const String clavePalabrasDeJesus = 'ab.lector.palabrasDeJesus';

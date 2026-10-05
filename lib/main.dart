@@ -123,7 +123,11 @@ class _AbAppState extends State<AbApp> {
     _catalogo = CatalogoRepository(http: _http, almacenamiento: const Preferencias());
     _modulos = crearAlmacenamientoDeModulos();
     _biblioteca = BibliotecaViewModel();
-    _lector = LectorViewModel();
+    // Y CON LAS PREFERENCIAS DEL SISTEMA, que es donde vive la unica preferencia de
+    // lectura --si las palabras de Jesus van en rojo. Es la primera vez que el lector
+    // guarda algo, y es una preferencia y no una nota: `almacenamiento.dart` tiene el
+    // motivo de por que esa diferencia lo es todo.
+    _lector = LectorViewModel(almacenamientoDeLectura: const Preferencias());
 
     // El proveedor de rutas va aqui y no dentro de `MaterialApp.router`, porque es el
     // **mismo** que necesita el enrutador para poder reportarle las rutas. Si cada uno

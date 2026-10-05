@@ -121,6 +121,12 @@ List<AnotacionDePalabra> anotacionesDe(String raw) {
         // 1:19, que tiene dos `dd` y despues `Peleg;` y `Joktan` -- y `Peleg` salia
         // marcado como anadido cuando lo puso el modulo.
         esAnadido: abiertas.contains('add'),
+        // Y LO MISMO CON `\wj`, Y POR LA PILA Y NO CON UNA BANDERA, por lo mismo que
+        // `\add`. La bandera se ponia al abrir `\wj` y no se apagaba al cerrar, y todo lo
+        // que venia despues --el resto del versiculo-- salia marcado como de Jesus.
+        //
+        // Y `\wj` SE USA IGUAL QUE `\add`: abre con `\wj` y cierra con `\wj*`.
+        esPalabraDeJesus: abiertas.contains('wj'),
       ));
       esLaPrimera = false;
     }

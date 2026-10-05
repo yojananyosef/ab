@@ -24,8 +24,8 @@ class Versiculo {
   ///
   /// Lo que si se hace, mas adelante y en otro sitio, es CONSUMIR el marcado:
   /// el modulo guarda un `raw` con marcas USFM como `\\+w Dios|strong="G2316"`,
-  /// y de ahi sale la palabra de Dios en rojo. El texto plano sale del campo
-  /// `text`, que ya viene limpio.
+  /// y de ahi sale el numero del lexicon y la marca `\\wj`, que es la de las palabras
+  /// de Jesus. El texto plano sale del campo `text`, que ya viene limpio.
   final String texto;
 
   /// Lo que el modulo marco de cada palabra, en el mismo orden que las palabras de [texto].
@@ -47,6 +47,18 @@ class Versiculo {
         for (var i = 0; i < anotaciones.length; i++)
           if (anotaciones[i].esAnadido && i < palabras.length) palabras[i],
       ];
+
+  /// Cuantas palabras de este versiculo dijo Jesus.
+  ///
+  /// Y MEDIDO: Juan 3:16 da 25 de 25 y Juan 3:29 da 0 de 32. Y en el Antiguo Testamento
+  /// **siempre** da 0, porque alli el modulo no marca nada. Un 0 aqui no es un fallo del
+  /// que se pueda quejar uno, es la respuesta correcta para la mitad del canon.
+  int palabrasDeJesus() =>
+      anotaciones.where((a) => a.esPalabraDeJesus).length;
+
+  /// Si el modulo marco alguna palabra como dicha por Jesus.
+  bool get tienePalabrasDeJesus =>
+      anotaciones.any((a) => a.esPalabraDeJesus);
 
   /// [texto] partido en palabras, con la puntuacion donde estaba.
   ///

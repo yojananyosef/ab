@@ -35,6 +35,8 @@
 // busca el boton, espera que este. Cuando se anada, que este en el lector y no solo
 // en una pantalla a la que hay que ir.
 
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -49,6 +51,7 @@ import 'package:ab/ui/core/tema.dart';
 import '../view_models/lector_view_model.dart';
 import '../widgets/campo_de_referencia.dart';
 import '../../busqueda/widgets/columna_de_texto.dart';
+import '../widgets/estilo_de_palabra.dart';
 import '../widgets/terminos_del_modulo.dart';
 
 class LectorView extends StatefulWidget {
@@ -60,6 +63,7 @@ class LectorView extends StatefulWidget {
     required this.alVolver,
     required this.alPedirComentario,
     required this.alVerIndice,
+    required this.alAlternarPalabrasDeJesus,
     this.alDescargarComentario,
     this.alBuscar,
     this.modulosDelCatalogo = const <Modulo>[],
@@ -114,6 +118,9 @@ class LectorView extends StatefulWidget {
   /// abierto-- y este no, porque es justo lo que se ofrece cuando hay texto.
   final void Function(String numero) alVerIndice;
 
+  /// Poner las palabras de Jesus en rojo, o dejarlas como estaban.
+  final VoidCallback alAlternarPalabrasDeJesus;
+
   @override
   State<LectorView> createState() => _LectorViewState();
 }
@@ -136,6 +143,11 @@ class _LectorViewState extends State<LectorView> {
     super.initState();
     _control = TextEditingController();
     widget.viewModel.addListener(_alCambiarElEstado);
+    // Y LA PREFERENCIA SE LEE AL ABRIR LA PANTALLA, y no al arrancar la app. Es una
+    // lectura, es idempotente, y el momento en que puede haber cambiado es justo este: si
+    // se leyera al arrancar, abrir una pestana nueva --que es como se lee en el escritorio,
+    // una al lado de otra-- se pintaria con el color de la primera.
+    unawaited(widget.viewModel.cargarPreferencias());
   }
 
   @override
@@ -170,6 +182,24 @@ class _LectorViewState extends State<LectorView> {
               icon: const Icon(Icons.search),
               onPressed: widget.alBuscar,
             ),
+          // Y EL INTERRUPTOR DE LAS LETRAS ROJAS. El icono es un circulo medio
+          // relleno, que es lo que es literalmente el texto: una parte en color y otra
+          // sin color. Y va con el estado en el `tooltip`, porque un icono que cambia de
+          // tono no dice si esta puesto o quitado.
+          IconButton(
+            tooltip: vm.mostrarPalabrasDeJesus
+                ? 'Palabras de Jesus en rojo: si'
+                : 'Palabras de Jesus en rojo: no',
+            icon: Icon(
+              vm.mostrarPalabrasDeJesus ? Icons.tonality : Icons.tonality_outlined,
+              // Y EL COLOR DEL ICONO TAMBIEN DICE EL ESTADO, porque el `tooltip` en movil
+              // solo sale si se deja el dedo quieto, y eso casi nadie lo hace.
+              color: vm.mostrarPalabrasDeJesus
+                  ? Colores.palabraDeJesus
+                  : Colores.textoSuave,
+            ),
+            onPressed: widget.alAlternarPalabrasDeJesus,
+          ),
           _BotonDeComentario(
             id: vm.idDelComentario,
             alPulsar: widget.alPedirComentario,
@@ -375,7 +405,12 @@ class _LectorViewState extends State<LectorView> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             for (final v in p.versiculos) ...<Widget>[
-              _Versiculo(versiculo: v, estilo: estilo, alVerIndice: widget.alVerIndice),
+              _Versiculo(
+                versiculo: v,
+                estilo: estilo,
+                alVerIndice: widget.alVerIndice,
+                mostrarPalabrasDeJesus: vm.mostrarPalabrasDeJesus,
+              ),
               if (conNotas) ..._notasDe(vm, v.numero, estilo),
             ],
           ],
@@ -730,6 +765,7 @@ class _TextoDelVersiculo extends StatefulWidget {
     required this.versiculo,
     required this.estilo,
     required this.alVerIndice,
+    required this.mostrarPalabrasDeJesus,
   });
 
   final Versiculo versiculo;
@@ -737,6 +773,10 @@ class _TextoDelVersiculo extends StatefulWidget {
 
   /// Abrir el indice de un numero del lexicon. Lo llama quien ha pulsado la palabra.
   final void Function(String numero) alVerIndice;
+
+  /// Si las palabras de Jesus van en rojo.
+  final bool mostrarPalabrasDeJesus;
+
 
   @override
   State<_TextoDelVersiculo> createState() => _TextoDelVersiculoState();
@@ -841,27 +881,18 @@ class _TextoDelVersiculoState extends State<_TextoDelVersiculo> {
     );
   }
 
-  /// El estilo de una palabra: subrayado si la puso el traductor, y nada mas si tiene
-  /// indice.
+  /// El estilo de una palabra, delegado a [estiloDePalabra].
   ///
-  /// Y LA PALABRA PULSABLE **NO** LLEVA ESTILO ALGUNO, y es una decision. Un enlace con
-  /// color parece otra cosa de la que es; un enlace con subrayado parece que es lo que
-  /// esta夯subrayado y no lo que se puede pulsar. Y lo que hace falta es que se note que
-  /// **se puede tocar**, y de eso se encarga el cursor de la mano, que es del navegador y no
-  /// pinta nada en el texto.
-  ///
-  /// Y SI ES LAS DOS COSAS A LA VEZ --traductor y con lexicon-- el subrayado gana, porque
-  /// es el dato que no se ve de otra manera. Con las dos decoraciones a la vez una palabra
-  /// sale subrayada y en otro color y parece que le pasa algo.
+  /// Y AQUI NO HAY NINGUNA DECISION, y por eso esta el metodo entero. La tabla de que
+  /// marca se pinta con que marca esta en `widgets/estilo_de_palabra.dart`, que es donde
+  /// se puede probar entera.
   TextStyle? _estiloDePalabra(List<AnotacionDePalabra> anotaciones, int i) {
     if (i >= anotaciones.length) return null;
-    return anotaciones[i].esAnadido
-        ? widget.estilo.copyWith(
-            decoration: TextDecoration.underline,
-            decorationColor: Colores.textoSuave,
-            decorationThickness: 1,
-          )
-        : null;
+    return estiloDePalabra(
+      anotaciones[i],
+      widget.estilo,
+      mostrarPalabrasDeJesus: widget.mostrarPalabrasDeJesus,
+    );
   }
 }
 
@@ -883,6 +914,7 @@ class _Versiculo extends StatelessWidget {
     required this.versiculo,
     required this.estilo,
     required this.alVerIndice,
+    required this.mostrarPalabrasDeJesus,
   });
 
   final Versiculo versiculo;
@@ -891,6 +923,9 @@ class _Versiculo extends StatelessWidget {
   /// Pasa de la palabra al indice. Se pasa de uno a otro porque `_Versiculo` esta en medio
   /// y no sabe que hay un indice detras.
   final void Function(String numero) alVerIndice;
+
+  /// Si las palabras de Jesus van en rojo. Tambien se pasa de uno a otro, y por lo mismo.
+  final bool mostrarPalabrasDeJesus;
 
   @override
   Widget build(BuildContext context) {
@@ -917,6 +952,7 @@ class _Versiculo extends StatelessWidget {
               versiculo: versiculo,
               estilo: estilo,
               alVerIndice: alVerIndice,
+              mostrarPalabrasDeJesus: mostrarPalabrasDeJesus,
             ),
           ),
         ],

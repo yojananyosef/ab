@@ -54,6 +54,19 @@ class Colores {
   static const Color peligro = Color(0xFF9B2C22);
 
   static const Color acento = Color(0xFF2F5D50);
+
+  /// Las palabras que dijo Jesus, en rojo.
+  ///
+  /// Y ESTE ROJO NO ES [peligro] CON OTRO NOMBRE, y es una distincion que hay que hacer
+  /// ahora: si las dos fueran el mismo color, un dia el aviso de error pasaria a ser del
+  /// color de la Palabra de Cristo y nadie sabria que paso. Cada color dice una cosa.
+  ///
+  /// Y EL CONTRASTE ESTA MEDIDO, no elegido a ojo, porque es el color de **texto de
+  /// cuerpo** y un rojo claro de letras rojas se lee como textodisabled y no como
+  /// Escritura. Sobre [fondo] da **7,33:1** y sobre [superficie] **7,71:1**, y el umbral
+  /// de AAA para texto normal es 7:1. El texto corriente da 16,96:1 sobre [fondo], y el
+  /// rojo se queda a mas de la mitad: se distingue de un vistazo y no se pierde al sol.
+  static const Color palabraDeJesus = Color(0xFF992B22);
 }
 
 /// El tema.

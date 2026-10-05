@@ -25,13 +25,24 @@
 
 import 'package:flutter/foundation.dart';
 
+import 'dart:async';
+
 import 'package:ab/data/repositories/modulo_repository.dart';
+import 'package:ab/data/services/almacenamiento.dart';
 import 'package:ab/domain/models/libro.dart';
 import 'package:ab/domain/models/libros.dart';
 import 'package:ab/domain/models/nota.dart';
 import 'package:ab/domain/models/pasaje.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/domain/models/terminos.dart';
+
+/// El plazo por defecto para leer una preferencia. Cinco segundos.
+///
+/// Y CINCO Y NO UN SEGUNDO, porque el caso medido --el almacenamiento del navegador que
+/// nunca contesta-- no es lento: no contesta. Un plazo corto no lo arregla, solo haria que
+/// una preferencia se perdiera antes. Y cinco segundos es invisible para quien esta
+/// esperando, porque mientras tanto se esta leyendo el texto.
+const Duration plazoDePreferenciaPorDefecto = Duration(seconds: 5);
 
 /// Los estados de la pantalla de lectura. Cinco, y ninguno es "cargando para
 /// siempre".
@@ -67,10 +78,102 @@ class LectorViewModel extends ChangeNotifier {
   /// que texto abrir: quien decide es la biblioteca, y el lector recibe el modulo ya
   /// abierto. Un constructor que aceptara el repositorio invitaria a que el lector
   /// abriera un modulo por su cuenta, y entonces habria dos sitios decidiendo cual.
-  LectorViewModel({this._abierto});
+  LectorViewModel({
+    this._abierto,
+    Almacenamiento? almacenamientoDeLectura,
+    this.plazoDeLectura = plazoDePreferenciaPorDefecto,
+  }) : _almacenamiento = almacenamientoDeLectura;
 
+  /// Cuanto se espera a las preferencias antes de renunciar.
+  ///
+  /// Y ES UN PARAMETRO Y NO UN `const` POR DENTRO, para que una prueba pueda bajarlo a
+  /// diez milisegundos y comprobar el caso --el almacenamiento que no contesta-- sin
+  /// esperar cinco segundos. Es lo mismo que hace `arranque.dart` con el catalogo, y por
+  /// el mismo motivo: un `await` sin plazo sobre un evento que no llega **cuelga la
+  /// pantalla entera**, y hay un caso medido en este repositorio --`localStorage` en un
+  /// navegador que no responde-- donde eso ocurre de verdad.
+  final Duration plazoDeLectura;
 
   ModuloAbierto? _abierto;
+
+  /// Donde se guarda si las palabras de Jesus van en rojo.
+  ///
+  /// Y OPCIONAL, y no obligatorio, porque el lector se construye en 24 pruebas que no
+  /// traen almacenamiento y no tienen por que traerlo. Sin almacenamiento el interruptor
+  /// funciona igual y no se guarda: es una preferencia y perderla son dos toques.
+  ///
+  /// Y ES LA INTERFAZ [Almacenamiento] Y NO LAS PREFERENCIAS DEL SISTEMA, por lo mismo que
+  /// en el repositorio del catalogo: una prueba que escribiera en las preferencias de
+  /// verdad dejaria basura entre ejecuciones y fallaria la segunda vez por un motivo que
+  /// no tiene que ver con lo que comprueba.
+  final Almacenamiento? _almacenamiento;
+
+  /// Si las palabras que dijo Jesus se pintan en rojo.
+  ///
+  /// Y **VERDAD** DE PARTIDA, sin preguntar. Dos motivos, y el segundo es el que decide:
+  ///
+  /// 1. Es lo que espera quien abre una app de Biblia en la que el dato esta. Una
+  ///    preferencia oculta tras un interruptor apagado es una funcion que no existe.
+  /// 2. Medido en el KJV: son 41.284 palabras de 835.159, el **4,94 %** del texto. Es una
+  ///    linea de cada veinte, y no una pantalla en rojo. Si fuera la mitad del canon habria
+  ///    que pensarselo mas; con este numero no hay nada queCV balancing reconsider.
+  ///
+  /// Y NO AFECTA AL TEXTO, que es lo unico que no se toca. El color va en el `TextSpan` y
+  /// se quita dejando el texto exactamente igual, y por eso el interruptor se puede
+  /// tocar sin miedo.
+  bool _mostrarPalabrasDeJesus = true;
+  bool get mostrarPalabrasDeJesus => _mostrarPalabrasDeJesus;
+
+  /// Leer la preferencia guardada.
+  ///
+  /// Y SE LEE AL ABRIR Y NO EN CADA `build`, y con la excepcion **atrapada aqui**. Un
+  /// `catch` sin Ventaja en un `Future` que se lanza desde `main` deja la pantalla a
+  /// medias: en el navegador, `SharedPreferences.getInstance()` depende de `localStorage`,
+  /// y hay un caso medido --el del almacenamiento del navegador que nunca contesta-- donde
+  /// esa llamada se queda esperando para siempre. Bloquear la lectura del texto por un
+  /// interruptor de color seria el mismo fallo que el del catalogo, en un sitio donde no
+  /// hace falta.
+  ///
+  /// Y SI FALLA, SE QUEDA EL VALOR DE PARTIDA Y NO SE AVISA. Aqui si se rompe el silencio
+  /// que en el catalogo no se rompe, y el motivo: lo que se ha perdido es una preferencia
+  /// que se vuelve a poner en dos toques, y un aviso de "no se ha podido leer tu
+  /// preferencia de color" en medio de la lectura de Juan 3 no le sirve a nadie.
+  Future<void> cargarPreferencias() async {
+    final a = _almacenamiento;
+    if (a == null) return;
+    try {
+      final guardado = await a.leer(clavePalabrasDeJesus).timeout(plazoDeLectura);
+      if (guardado == null) return;
+      _mostrarPalabrasDeJesus = guardado != 'no';
+    } catch (_) {
+      // Se queda como estaba. Ver el comentario de arriba.
+    }
+    notifyListeners();
+  }
+
+  /// Poner las palabras de Jesus en rojo, o dejarlas como estaban.
+  ///
+  /// Y **GUARDA**, porque es una preferencia y una preferencia que se pierde al recargar
+  /// es una preferencia que hay que volver a buscar cada vez. Y guardar **no** interrumpe:
+  /// el color cambia al instante y la escritura va por detras. Al reves --esperar a que se
+  /// guarde para pintar-- un interruptor que tarda se siente roto.
+  ///
+  /// Y EL VALOR ES `si` Y `no`, no `true` y `false`: [Almacenamiento] guarda texto, y
+  /// ademas asi se puede leer el fichero de preferencias de un vistazo.
+  void alternarPalabrasDeJesus() {
+    _mostrarPalabrasDeJesus = !_mostrarPalabrasDeJesus;
+    notifyListeners();
+
+    final a = _almacenamiento;
+    if (a == null) return;
+    // Sin `await` y sin `catch`: si la escritura falla, se ha perdido una preferencia y
+    // no un texto. Un `unawaited` con `catch` es lo unico que no avisa de un error que no
+    // tiene consecuencia y hace ruido cuando si la tiene.
+    unawaited(
+      a.escribir(clavePalabrasDeJesus, _mostrarPalabrasDeJesus ? 'si' : 'no')
+          .catchError((Object _) {}),
+    );
+  }
 
   // --- el comentario que va al lado ---
   //

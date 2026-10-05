@@ -101,6 +101,7 @@ Future<LectorViewModel> montarLector(
       alPulsarPasaje: (r) => (alPulsarPasaje ?? (_, ref) => vm.leer(ref))(vm, r),
       alPedirComentario: () {},
       alVerIndice: (_) {},
+      alAlternarPalabrasDeJesus: () {},
       alCambiarDeVersion: alCambiarDeVersion ?? (_) {},
       alVolver: alVolver ?? () {},
     ),

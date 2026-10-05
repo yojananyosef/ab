@@ -23,14 +23,28 @@
 // se guarda aqui es el **numero**, y a partir de el se puede hacer un indice; pintarlo es
 // otro change.
 //
-// Y LO QUE **NO** SE PUEDE SACAR DE ESTE DATO, y es lo mas importante de este fichero:
+// Y LO QUE **SI** SE SACA DE ESTE DATO, y que no se habia visto: LAS PALABRAS DE JESUS.
 //
-// LA PALABRA DE DIOS EN ROJO NO ESTA AQUI. No hay ninguna marca de habla divina en los
-// modulos de este catalogo. Se ha buscado una y no esta: lo que hay son `\add`, que son
-// texto **anadido por los traductores**, y los `strong`, que son el lexicon. La palabra de
-// Dios en rojo viene de otra parte --de una convencion de marcado, de una marca `\divine`,
-// de una lista de versiculos-- y sin ella **no se puede pintar en rojo** sin inventarse que
-// se sabe cual es. Ver `AGENTS.md` y el proposal del change.
+// Aqui estaba escrito que la palabra de Dios en rojo no se puede pintar, y era verdad con
+// lo que se habia buscado y **falso con lo que hay**. Se busco una marca de habla divina
+// --`\divine`, `\god`, una lista de versiculos-- y no la hay. Lo que hay es `\wj`, que en
+// USFM es el marcador de **palabras de Jesus**, el mismo que usan las Biblias de letras
+// rojas para pintar lo que dijo el. Medido el 5 de octubre de 2026 sobre el KJV entero:
+//
+//     \wj   2.038 aperturas   en 2.028 versiculos
+//     Mateo 644   Lucas 587   Juan 419   Marcos 286
+//     Apocalipsis 62   Hechos 27   1 Corintios 2   2 Corintios 1
+//
+// Y las dos ultimas filas son la prueba de que el marcador dice lo que dice: en 1
+// Corintios 11:24 y 2 Corintios 12:9 son palabras de Cristo citadas por Pablo. Un
+// marcador que significara "dialogo" tambien los traeria; uno que significara "habla
+// divina" no, porque Pablo no es Cristo.
+//
+// ASI QUE LO QUE SE PINTA EN ROJO SON **LAS PALABRAS DE JESUS**, y se llaman asi. Lo que
+// no se puede sigue sin poder: **las palabras de Dios** en general --el Dios del Antiguo
+// Testamento hablando a Moises, los profetas-- no estan marcadas en ningun sitio de este
+// catalogo, y no hay donde sacarlas. Pintar de rojo un texto cuyo hablante no se sabe seria
+// inventarse el dato.
 
 /// El numero del lexicon y la marca de "anadido" de UNA palabra.
 ///
@@ -53,7 +67,11 @@
 /// preferible un versiculo sin el numero del lexicon a un versiculo con el numero de otra
 /// palabra.
 class AnotacionDePalabra {
-  const AnotacionDePalabra({this.strong, this.esAnadido = false});
+  const AnotacionDePalabra({
+    this.strong,
+    this.esAnadido = false,
+    this.esPalabraDeJesus = false,
+  });
 
   /// El numero del lexicon, tal cual: `G2316` para `Dios` en griego, `H0436` en hebreo.
   final String? strong;
@@ -61,8 +79,22 @@ class AnotacionDePalabra {
   /// Si el modulo dice que la puso el traductor.
   final bool esAnadido;
 
+  /// Si el modulo dice que la dijo Jesus.
+  ///
+  /// Y VIENE DE LA MARCA `\wj`, QUE EN USFM ES EXACTAMENTE ESO. Medido el 5 de octubre de
+  /// 2026 sobre el KJV entero: 2.028 versiculos la tienen, y son los evangelios mas las
+  /// citas de Cristo en los Hechos, el Apocalipsis y las epistolas.
+  ///
+  /// Y SE LLAMA ASI Y NO "esPalabraDeDios" PORQUE NO ES LO MISMO. Las palabras de Dios en
+  /// general --el Dios del Antiguo Testamento hablando a Moises-- **no estan marcadas en
+  /// ningun sitio de este catalogo**. Lo unico que hay marcado es lo que dijo Jesus, y
+  /// llamarlo de otra cosa seria ensenar algo que el modulo no dice.
+  final bool esPalabraDeJesus;
+
   @override
-  String toString() => '${strong ?? '-'} ${esAnadido ? 'anadido' : '-'}';
+  String toString() => '${strong ?? '-'} '
+      '${esAnadido ? 'anadido' : '-'} '
+      '${esPalabraDeJesus ? 'de Jesus' : '-'}';
 }
 
 /// Un versiculo: su texto y las anotaciones de sus palabras.
@@ -99,7 +131,7 @@ class TextoAnotado {
   /// Y ES LA QUE MIRA LA PANTALLA, porque pintar una lista de anotaciones vacias es lo
   /// mismo que no pintar nada, con mas trabajo.
   bool get tieneAlgoQuePintar =>
-      anotaciones.any((a) => a.strong != null || a.esAnadido);
+      anotaciones.any((a) => a.strong != null || a.esAnadido || a.esPalabraDeJesus);
 
   /// El texto partido en palabras, con la puntuacion donde estaba.
   ///
@@ -127,6 +159,24 @@ class TextoAnotado {
 
   /// Si el modulo trae numeros del lexicon.
   bool get tieneStrongs => anotaciones.any((a) => a.strong != null);
+
+  /// Cuantas palabras de este versiculo dijo Jesus.
+  int get palabrasDeJesus =>
+      anotaciones.where((a) => a.esPalabraDeJesus).length;
+
+  /// Si el modulo marco alguna palabra como dicha por Jesus.
+  ///
+  /// Y MEDIDO, y con los dos lados porque los dos importan: en Juan 3 el versiculo **16
+  /// entero** --sus 25 palabras-- es de Jesus, y 3:28, 3:29, 3:30 y 3:36 **no tienen ni
+  /// una**, porque son palabras del narrador. Si el marcador marcara el capitulo entero o
+  /// no marcara nada, esos cuatro habrian salido de la otra manera. Es el mismo par que
+  /// 3:11, donde las 24 palabras del versiculo son suyas.
+  ///
+  /// Y DE TODO EL KJV: 2.015 versiculos y 41.284 palabras, el **4,94 %** del texto. En el
+  /// Antiguo Testamento **ninguno**, y no por fallo del parser: alli no hay nada marcado,
+  /// porque las palabras de Dios las dice el Dios del Antiguo Testamento y este catalogo
+  /// no las marca. Ver el metodo.
+  bool get tienePalabrasDeJesus => anotaciones.any((a) => a.esPalabraDeJesus);
 
   @override
   String toString() =>
