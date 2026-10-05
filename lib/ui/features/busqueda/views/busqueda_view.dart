@@ -30,7 +30,7 @@ import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/domain/models/resultado_de_busqueda.dart';
 import 'package:ab/ui/core/numeros.dart';
 import 'package:ab/ui/core/tema.dart';
-import 'package:ab/ui/features/lector/widgets/columna_de_texto.dart';
+import 'package:ab/ui/features/busqueda/widgets/columna_de_texto.dart';
 
 import '../view_models/busqueda_view_model.dart';
 

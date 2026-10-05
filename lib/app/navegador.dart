@@ -85,6 +85,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import 'package:ab/data/repositories/modulo_repository.dart';
+import 'package:ab/domain/models/indice_de_strong.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/domain/models/resultado_de_busqueda.dart';
 import 'package:ab/domain/models/tipo_de_contenido.dart';
@@ -94,6 +95,8 @@ import 'sonda_nativa.dart'
 import 'package:ab/ui/features/biblioteca/view_models/biblioteca_view_model.dart';
 import 'package:ab/ui/features/busqueda/view_models/busqueda_view_model.dart';
 import 'package:ab/ui/features/busqueda/views/busqueda_view.dart';
+import 'package:ab/ui/features/indice/view_models/indice_view_model.dart';
+import 'package:ab/ui/features/indice/views/indice_view.dart';
 import 'package:ab/ui/features/biblioteca/views/biblioteca_view.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
 import 'package:ab/ui/features/lector/views/lector_view.dart';
@@ -130,6 +133,26 @@ enum TipoDeCambioDeRuta {
 /// del sistema de ficheros virtual: si fuera sincrono, la pantalla no podria pintar
 /// mientras ocurre y en un `.amod` de 57 MiB se notaria.
 typedef AperturaDeModulo = Future<ModuloAbierto?> Function(String id, Referencia referencia);
+
+/// Un [ModuloAbierto] que se puede indexar por palabra del lexicon.
+///
+/// Y OTRO ENVOLTORIO IGUAL QUE EL DE LA BUSQUEDA, y no uno solo que sirva para los dos.
+/// Cada interfaz es pequena y se implementa con las tres llamadas de la suya; un modulo
+/// unico con metodos de las dos pantallas seria una clase que depende de las dos.
+class _ModuloIndiciableReal implements ModuloIndiciable {
+  _ModuloIndiciableReal(this._modulo);
+
+  final ModuloAbierto _modulo;
+
+  @override
+  int versiculosConStrong(String numero) => _modulo.versiculosConStrong(numero);
+
+  @override
+  List<IndiceDeStrong> indiceDeStrong(String numero) => _modulo.indiceDeStrong(numero);
+
+  @override
+  Map<String, int> formasDeStrong(String numero) => _modulo.formasDeStrong(numero);
+}
 
 /// Un [ModuloAbierto] que sabe Buscar, para la pantalla de busqueda.
 ///
@@ -175,6 +198,13 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   /// un segundo sitio al que volver cuando se anada la siguiente. El enrutador es el
   /// unico que sabe que hay tres pantallas.
   final BusquedaViewModel _busqueda = BusquedaViewModel();
+
+  /// La pantalla del indice de una palabra del lexicon.
+  ///
+  /// Y EL TERCER VIEWMODEL QUE EL ENRUTADOR CREA, y por el mismo motivo que el segundo:
+  /// `main.dart` compone lo que existe desde el principio, y ahi seria un segundo sitio al
+  /// que volver cuando se anada la siguiente pantalla.
+  final IndiceViewModel _indice = IndiceViewModel();
   final AperturaDeModulo abrir;
 
   /// Lo que hace la biblioteca que el enrutador no sabe hacer: descargar, abrir un
@@ -438,6 +468,9 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
         // o sea, lo primero que hace quien recibe el enlace.
         await _aplicarComentario(comentario);
 
+      case RutaIndice(:final modulo, :final numero):
+        await _aplicarIndice(modulo, numero);
+
       case RutaBusqueda(:final modulo, :final palabra):
         await _aplicarBusqueda(modulo, palabra);
 
@@ -450,6 +483,70 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
         _ruta = _ruta;
     }
     notifyListeners();
+  }
+
+  /// Poner en su sitio el indice de una palabra.
+  ///
+  /// Y ABRE EL TEXTO SI NO ESTA ABIERTO, con el mismo camino que el lector y que la
+  /// busqueda, porque `/indice/KJV2006/G2316` es un enlace completo y tiene que funcionar
+  /// en un dispositivo donde el texto este o no este.
+  ///
+  /// Y **NO SE CIERRA EL PASAJE AL VOLVER**: el indice se llega desde una palabra del
+  /// versiculo que se esta leyendo, y al volver hay que estar en ese versiculo. Por eso
+  /// vuelve con `lectura.leyendo` y no con "Juan 1".
+  Future<void> _aplicarIndice(String modulo, String numero) async {
+    if (lector.idDelModulo != modulo) {
+      final abierto = await abrir(modulo, const Referencia('John', 1));
+      if (abierto == null) {
+        lector.sinModulo('El texto "$modulo" no esta descargado en este dispositivo.');
+        _ruta = const RutaBiblioteca();
+        notifyListeners();
+        return;
+      }
+      lector.abrir(
+        abierto,
+        licenciaDelManifiesto: biblioteca.manifiesto.porId(modulo)?.licencia,
+      );
+    }
+    _ruta = RutaIndice(modulo, numero);
+    await _indice.abrir(_moduloIndiciable(), numero: numero);
+  }
+
+  /// El modulo abierto, para el indice.
+  ModuloIndiciable _moduloIndiciable() => _ModuloIndiciableReal(lector.modulo!);
+
+  /// Abrir el indice de un numero del lexicon en el texto abierto.
+  ///
+  /// Y ES `replaceState`, y no `pushState`, porque el indice es una pantalla **encima** del
+  /// pasaje y volver tiene que devolver al pasaje y no a como estaba antes de pulsar. Con
+  /// `pushState`, el gesto de atras devolveria a como estaba antes de tocar la palabra, y
+  /// quien solo queria volver a leer se queda en otra parte.
+  Future<void> verElIndiceDe(String numero) async {
+    final id = lector.idDelModulo;
+    if (id == null) return;
+    await ajustarA(RutaIndice(id, numero));
+  }
+
+  /// Volver del indice al pasaje de donde se vino.
+  ///
+  /// Y ES `pushState` PORQUE SE VUELVE, y no "atras" de una lista. Con el indice no se
+  /// sustituye el pasaje: el pasaje sigue ahi debajo y el indice viene encima, y volver
+  /// tiene que devolver a donde se estaba leyendo, con el comentario que hubiera.
+  Future<void> volverDelIndice() async {
+    final id = lector.idDelModulo;
+    final referencia = lector.leyendo;
+    if (id == null || referencia == null) {
+      await irAHome();
+      return;
+    }
+    await irA(RutaLectura(id, referencia, lector.idDelComentario));
+  }
+
+  /// Abrir un pasaje desde el indice.
+  Future<void> abrirDesdeElIndice(Referencia referencia) async {
+    final id = lector.idDelModulo;
+    if (id == null) return;
+    await irA(RutaLectura(id, referencia, lector.idDelComentario));
   }
 
   /// Poner en su sitio una busqueda.
@@ -757,7 +854,13 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
     // busqueda sin modulo es un campo de texto que no busca nada.
     final leyendo = _ruta is RutaLectura && lector.estado != EstadoLecturaTexto.sinModulo;
 
-    final pantalla = _ruta is RutaBusqueda && lector.modulo != null
+    final pantalla = _ruta is RutaIndice && lector.modulo != null
+        ? IndiceView(
+            viewModel: _indice,
+            alPulsarPasaje: abrirDesdeElIndice,
+            alVolver: volverDelIndice,
+          )
+        : _ruta is RutaBusqueda && lector.modulo != null
         ? BusquedaView(
             viewModel: _busqueda,
             alPulsarResultado: abrirDesdeLaBusqueda,
@@ -783,6 +886,10 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
             // justo lo que `use_build_context_synchronously` avisa de y por lo que
             // existe.
             alPedirComentario: () => elegirComentario(context),
+            // Y EL INDICE SE ABRE DESDE LA PALABRA, y no desde un boton: quien quiere
+            // saber donde mas sale `G2316` ya esta leyendo la palabra y la toca. Un boton
+            // en la barra obligaria a escribir el numero, y nadie escribe `G2316`.
+            alVerIndice: verElIndiceDe,
             // Y LA LUPA ABRE LA BUSQUEDA **DEL TEXTO ABIERTO**, y no una busqueda en
             // general. No hay una busqueda en general todavia y no la hay a proposito:
             // ver `buscar-en-el-texto`.
@@ -840,6 +947,7 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   @override
   void dispose() {
     biblioteca.removeListener(_alCambiarLaBiblioteca);
+    _indice.dispose();
     _busqueda.dispose();
     lector.dispose();
     super.dispose();

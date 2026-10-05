@@ -101,6 +101,16 @@ class TextoAnotado {
   bool get tieneAlgoQuePintar =>
       anotaciones.any((a) => a.strong != null || a.esAnadido);
 
+  /// El texto partido en palabras, con la puntuacion donde estaba.
+  ///
+  /// Y SOLO EXISTE CUANDO HAY ANOTACIONES, y es a proposito: quien la necesita es el
+  /// indice de palabras, que empareja por posicion, y ahi siempre las hay. Sin anotaciones
+  /// se devuelve una lista vacia y no `texto.split(' ')`, para que un modulo sin lexicon no
+  /// gaste en partir un texto de 141 caracteres cada vez que se pinta.
+  List<String> get palabras => tieneAnotaciones
+      ? texto.split(' ')
+      : const <String>[];
+
   /// La anotacion de la palabra [i].
   ///
   /// Null si no hay anotaciones o si [i] se sale, que es lo que pasa en un versiculo sin

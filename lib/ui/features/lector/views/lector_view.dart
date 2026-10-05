@@ -35,10 +35,12 @@
 // busca el boton, espera que este. Cuando se anada, que este en el lector y no solo
 // en una pantalla a la que hay que ir.
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import 'package:ab/domain/models/modulo.dart';
 import 'package:ab/domain/models/nota.dart';
+import 'package:ab/domain/models/token_de_texto.dart';
 import 'package:ab/domain/models/pasaje.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/domain/models/versiculo.dart';
@@ -46,7 +48,7 @@ import 'package:ab/ui/core/tema.dart';
 
 import '../view_models/lector_view_model.dart';
 import '../widgets/campo_de_referencia.dart';
-import '../widgets/columna_de_texto.dart';
+import '../../busqueda/widgets/columna_de_texto.dart';
 import '../widgets/terminos_del_modulo.dart';
 
 class LectorView extends StatefulWidget {
@@ -57,6 +59,7 @@ class LectorView extends StatefulWidget {
     required this.alCambiarDeVersion,
     required this.alVolver,
     required this.alPedirComentario,
+    required this.alVerIndice,
     this.alDescargarComentario,
     this.alBuscar,
     this.modulosDelCatalogo = const <Modulo>[],
@@ -103,6 +106,13 @@ class LectorView extends StatefulWidget {
   /// Y OPCIONAL, porque hay una pantalla --la biblioteca-- donde no hay texto abierto y no
   /// hay nada que buscar. Un boton que no hace nada es peor que no tenerlo.
   final VoidCallback? alBuscar;
+
+  /// Abrir el indice de la palabra [numero] en este texto.
+  ///
+  /// Y OBLIGATORIA, y no opcional como `alBuscar`, porque sin lexicon no hay indice y la
+  /// palabra no es pulsable: el boton de buscar puede faltar --en la biblioteca no hay texto
+  /// abierto-- y este no, porque es justo lo que se ofrece cuando hay texto.
+  final void Function(String numero) alVerIndice;
 
   @override
   State<LectorView> createState() => _LectorViewState();
@@ -365,7 +375,7 @@ class _LectorViewState extends State<LectorView> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             for (final v in p.versiculos) ...<Widget>[
-              _Versiculo(versiculo: v, estilo: estilo),
+              _Versiculo(versiculo: v, estilo: estilo, alVerIndice: widget.alVerIndice),
               if (conNotas) ..._notasDe(vm, v.numero, estilo),
             ],
           ],
@@ -715,19 +725,94 @@ class _AvisoDelComentario extends StatelessWidget {
 /// 2026 sobre el KJV entero, no hay ni una marca de habla divina en 31.102 versiculos. Lo
 /// que hay son los numeros del lexicon y los `\add`. Pintar de rojo lo que uno no sabe
 /// que es la Palabra es inventarse el dato, y este dato es la Escritura.
-class _TextoDelVersiculo extends StatelessWidget {
-  const _TextoDelVersiculo({required this.versiculo, required this.estilo});
+class _TextoDelVersiculo extends StatefulWidget {
+  const _TextoDelVersiculo({
+    required this.versiculo,
+    required this.estilo,
+    required this.alVerIndice,
+  });
 
   final Versiculo versiculo;
   final TextStyle estilo;
 
+  /// Abrir el indice de un numero del lexicon. Lo llama quien ha pulsado la palabra.
+  final void Function(String numero) alVerIndice;
+
+  @override
+  State<_TextoDelVersiculo> createState() => _TextoDelVersiculoState();
+}
+
+/// Y ES UN `StatefulWidget` Y NO UNO SIN ESTADO POR LOS **GESTORES DE GESTO**.
+///
+/// Y NO ES UN DETALLE DE FORMA. Un `TapGestureRecognizer` es un objeto que hay que
+/// **cerrar**, y el `dispose` es el unico sitio donde se puede. Sin estado no hay
+/// `dispose`: los reconocedores se acumulan en cada `build` --y `build` corre en cada
+/// cambio de estado del lector, que son varios por capitulo-- y cada uno se queda
+/// apuntando a un `TextSpan` que ya no existe.
+///
+/// Y SE CREAN EN `initState` Y SE RELLENAN EN `didUpdateWidget`, y no en `build`: un
+/// reconocedor por palabra **por build** es trabajo de GPU por cada tecla que se escribe
+/// en el campo de arriba.
+class _TextoDelVersiculoState extends State<_TextoDelVersiculo> {
+  /// Un reconocedor por palabra **con numero**, y `null` en las que no lo tienen.
+  ///
+  /// Y LA LISTA MIDE LAS PALABRAS DEL VERSICULO Y NO LAS QUE TIENEN NUMERO, y por eso es
+  /// una lista y no un mapa: el indice de la palabra es el mismo numero que ocupa la
+  /// palabra, y buscar en un mapa en cada `build` seria trabajo por palabra por repintado.
+  List<TapGestureRecognizer?>? _gestores;
+
+  @override
+  void initState() {
+    super.initState();
+    _gestores = _crearGestores(widget.versiculo);
+  }
+
+  @override
+  void didUpdateWidget(_TextoDelVersiculo anterior) {
+    super.didUpdateWidget(anterior);
+    // Y SOLO SI EL VERSICULO **HA CAMBIADO**. Al cambiar de palabra buscada o de cualquier
+    // otra cosa de la pantalla el versiculo es el mismo, y rehacer los reconocedores seria
+    // tirar los que ya estan bien.
+    if (anterior.versiculo != widget.versiculo) {
+      _cerrarGestores();
+      _gestores = _crearGestores(widget.versiculo);
+    }
+  }
+
+  @override
+  void dispose() {
+    _cerrarGestores();
+    super.dispose();
+  }
+
+  void _cerrarGestores() {
+    for (final g in _gestores ?? const <TapGestureRecognizer?>[]) {
+      g?.dispose();
+    }
+    _gestores = null;
+  }
+
+  List<TapGestureRecognizer?>? _crearGestores(Versiculo v) {
+    if (v.anotaciones.isEmpty) return null;
+    return <TapGestureRecognizer?>[
+      for (var i = 0; i < v.palabras.length; i++)
+        if (i < v.anotaciones.length && v.anotaciones[i].strong != null)
+          // Y UN GESTOR POR PALABRA **CON NUMERO**, y no por palabra. Una palabra sin
+          // numero no es pulsable porque no hay nada a que ir: el indice es de numeros.
+          TapGestureRecognizer()
+            ..onTap = () => widget.alVerIndice(v.anotaciones[i].strong!),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final anotaciones = versiculo.anotaciones;
+    final v = widget.versiculo;
+    final anotaciones = v.anotaciones;
+
     if (anotaciones.isEmpty) {
       return Text(
-        versiculo.texto,
-        style: estilo,
+        v.texto,
+        style: widget.estilo,
         // Sin esto, una palabra muy larga --un nombre propio largo en otra escritura, una
         // URL en un texto-- sale del borde. Flutter ya parte por el ancho, pero no
         // siempre, y un texto que sale del borde es texto que no se puede seleccionar.
@@ -735,32 +820,48 @@ class _TextoDelVersiculo extends StatelessWidget {
       );
     }
 
-    final palabras = versiculo.palabras;
+    final palabras = v.palabras;
     return Text.rich(
       TextSpan(
-        style: estilo,
+        style: widget.estilo,
         children: <InlineSpan>[
           for (var i = 0; i < palabras.length; i++) ...<InlineSpan>[
             if (i > 0) const TextSpan(text: ' '),
             TextSpan(
               text: palabras[i],
-              style: (anotaciones[i].esAnadido)
-                  // Y UN SUBRAYADO Y NO UN COLOR. Un color pondria algo en el sitio del
-                  // texto que no es texto --"esto es distinto"-- y un subrayado dice lo
-                  // mismo sin escribir nada donde el versiculo esta. Y el color de la
-                  // palabra de Dios en rojo esta libre para cuando se pueda saber cual es.
-                  ? estilo.copyWith(
-                      decoration: TextDecoration.underline,
-                      decorationColor: Colores.textoSuave,
-                      decorationThickness: 1,
-                    )
+              recognizer: (_gestores != null && i < _gestores!.length)
+                  ? _gestores![i]
                   : null,
+              style: _estiloDePalabra(anotaciones, i),
             ),
           ],
         ],
       ),
       softWrap: true,
     );
+  }
+
+  /// El estilo de una palabra: subrayado si la puso el traductor, y nada mas si tiene
+  /// indice.
+  ///
+  /// Y LA PALABRA PULSABLE **NO** LLEVA ESTILO ALGUNO, y es una decision. Un enlace con
+  /// color parece otra cosa de la que es; un enlace con subrayado parece que es lo que
+  /// esta夯subrayado y no lo que se puede pulsar. Y lo que hace falta es que se note que
+  /// **se puede tocar**, y de eso se encarga el cursor de la mano, que es del navegador y no
+  /// pinta nada en el texto.
+  ///
+  /// Y SI ES LAS DOS COSAS A LA VEZ --traductor y con lexicon-- el subrayado gana, porque
+  /// es el dato que no se ve de otra manera. Con las dos decoraciones a la vez una palabra
+  /// sale subrayada y en otro color y parece que le pasa algo.
+  TextStyle? _estiloDePalabra(List<AnotacionDePalabra> anotaciones, int i) {
+    if (i >= anotaciones.length) return null;
+    return anotaciones[i].esAnadido
+        ? widget.estilo.copyWith(
+            decoration: TextDecoration.underline,
+            decorationColor: Colores.textoSuave,
+            decorationThickness: 1,
+          )
+        : null;
   }
 }
 
@@ -778,10 +879,18 @@ class _TextoDelVersiculo extends StatelessWidget {
 /// empiece siempre en el mismo sitio es lo que hace que una columna de versiculos se
 /// pueda leer como una columna.
 class _Versiculo extends StatelessWidget {
-  const _Versiculo({required this.versiculo, required this.estilo});
+  const _Versiculo({
+    required this.versiculo,
+    required this.estilo,
+    required this.alVerIndice,
+  });
 
   final Versiculo versiculo;
   final TextStyle estilo;
+
+  /// Pasa de la palabra al indice. Se pasa de uno a otro porque `_Versiculo` esta en medio
+  /// y no sabe que hay un indice detras.
+  final void Function(String numero) alVerIndice;
 
   @override
   Widget build(BuildContext context) {
@@ -804,7 +913,11 @@ class _Versiculo extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: _TextoDelVersiculo(versiculo: versiculo, estilo: estilo),
+            child: _TextoDelVersiculo(
+              versiculo: versiculo,
+              estilo: estilo,
+              alVerIndice: alVerIndice,
+            ),
           ),
         ],
       ),

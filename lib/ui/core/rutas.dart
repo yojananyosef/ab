@@ -154,6 +154,37 @@ class RutaBusqueda extends Ruta {
   String toString() => 'buscar $modulo "$palabra"';
 }
 
+/// El indice de una palabra en un texto abierto.
+///
+///     /indice/KJV2006/G2316
+///
+/// Y DICE EL **NUMERO**, no la palabra. Es lo unico que esta en el modulo: ver
+/// `indice_de_strong.dart`. La palabra la pone quien pulsa, y un enlace con la palabra
+/// tendria que adivinar cual de las que llevan ese numero es la buena, que en el KJV son
+/// `God`, `gods`, `godly` y `gods` otra vez para el mismo `G2316`.
+///
+/// Y EL NUMERO VA **CRUDO**, como va en la ruta del pasaje. Con la letra: `G` es griego y
+/// `H` hebreo, y `G2316` y `H2316` son dos entradas distintas del lexicon.
+class RutaIndice extends Ruta {
+  const RutaIndice(this.modulo, this.numero);
+
+  /// El identificador del modulo en el que se busca, tal cual lo declara el manifiesto.
+  final String modulo;
+
+  /// El numero del lexicon, tal cual lo trae el modulo.
+  final String numero;
+
+  @override
+  bool operator ==(Object other) =>
+      other is RutaIndice && other.modulo == modulo && other.numero == numero;
+
+  @override
+  int get hashCode => Object.hash(modulo, numero);
+
+  @override
+  String toString() => 'indice $modulo $numero';
+}
+
 /// Una ruta que no se entiende.
 ///
 /// No es un error: es lo que llega al abrir una direccion escrita a mano con un
@@ -209,6 +240,7 @@ class Rutas {
     // Con estrategia de barra y sin prefijo: `/leer/...`.
     if (ruta.startsWith(prefijoDeLectura)) return _leerPasaje(ruta);
     if (ruta.startsWith(prefijoDeBusqueda)) return _buscar(ruta);
+    if (ruta.startsWith(prefijoDeIndice)) return _indice(ruta);
 
     // Con prefijo de despliegue: `/ab/leer/...`. Se toma la **ultima** aparicion
     // porque un pasaje no lleva barras, asi que la ultima es la buena.
@@ -223,9 +255,13 @@ class Rutas {
     final corteDeBusqueda = ruta.lastIndexOf(prefijoDeBusqueda);
     if (corteDeBusqueda > 0) return _buscar(ruta.substring(corteDeBusqueda));
 
+    final corteDelIndice = ruta.lastIndexOf(prefijoDeIndice);
+    if (corteDelIndice > 0) return _indice(ruta.substring(corteDelIndice));
+
     // Sin barra inicial, por si llega como `leer/...`.
     if (ruta.startsWith('leer/')) return _leerPasaje('/$ruta');
     if (ruta.startsWith('buscar/')) return _buscar('/$ruta');
+    if (ruta.startsWith('indice/')) return _indice('/$ruta');
 
     return RutaDesconocida(ruta);
   }
@@ -303,6 +339,33 @@ class Rutas {
     return RutaBusqueda(modulo, palabra);
   }
 
+  /// `/indice/{modulo}/{numero}`.
+  ///
+  /// Y DOS PARTES, y sin barra final tolera: un indice sin numero no es un indice, es un
+  /// fallo de escritura, y por eso `/indice/KJV2006/` no se entiende.
+  static const String prefijoDeIndice = '/indice/';
+
+  /// La parte que va despues de `/indice/`: `{modulo}/{numero}`.
+  static Ruta _indice(String ruta) {
+    final resto = ruta.substring(prefijoDeIndice.length);
+    final partes = resto.split('/');
+    if (partes.length != 2) return RutaDesconocida(ruta);
+
+    final modulo = Uri.decodeComponent(partes[0]);
+    final numero = Uri.decodeComponent(partes[1]).trim().toUpperCase();
+
+    // Y EL NUMERO **SE COMPRUEBA AQUI**, y no en la pantalla. Una ruta que no se entiende
+    // avisa y se queda donde estaba; una ruta que se entiende pero lleva un numero que no
+    // es un numero del lexicon abre una pantalla vacia sin decir por que. Comprobarlo en
+    // el parser es lo unico que evita las dos cosas a la vez.
+    final esNumero = numero.length >= 4 &&
+        (numero[0] == 'G' || numero[0] == 'H') &&
+        RegExp(r'^[GH][0-9]{3,}$').hasMatch(numero);
+    if (modulo.isEmpty || !esNumero) return RutaDesconocida(ruta);
+
+    return RutaIndice(modulo, numero);
+  }
+
   /// La direccion de una ruta.
   ///
   /// Sin el prefijo del despliegue: ese lo pone el `base href` al compilar, y
@@ -311,6 +374,8 @@ class Rutas {
   /// `Router` esperan.
   static String escribir(Ruta ruta) => switch (ruta) {
         RutaBiblioteca() => biblioteca,
+        RutaIndice(:final modulo, :final numero) =>
+          '$prefijoDeIndice${Uri.encodeComponent(modulo)}/${Uri.encodeComponent(numero)}',
         RutaBusqueda(:final modulo, :final palabra) =>
           '$prefijoDeBusqueda${Uri.encodeComponent(modulo)}/${Uri.encodeComponent(palabra)}',
         RutaLectura(:final modulo, :final referencia, :final comentario) =>

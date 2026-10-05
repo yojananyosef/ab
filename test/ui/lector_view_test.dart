@@ -23,7 +23,7 @@ import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/ui/core/tema.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
 import 'package:ab/ui/features/lector/views/lector_view.dart';
-import 'package:ab/ui/features/lector/widgets/columna_de_texto.dart';
+import 'package:ab/ui/features/busqueda/widgets/columna_de_texto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -100,6 +100,7 @@ Future<LectorViewModel> montarLector(
       viewModel: vm,
       alPulsarPasaje: (r) => (alPulsarPasaje ?? (_, ref) => vm.leer(ref))(vm, r),
       alPedirComentario: () {},
+      alVerIndice: (_) {},
       alCambiarDeVersion: alCambiarDeVersion ?? (_) {},
       alVolver: alVolver ?? () {},
     ),

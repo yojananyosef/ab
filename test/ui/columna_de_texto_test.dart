@@ -38,7 +38,7 @@
 // comprobacion daria verde sin medir. Ver `support/fuente.dart`.
 
 import 'package:ab/ui/core/tema.dart';
-import 'package:ab/ui/features/lector/widgets/columna_de_texto.dart';
+import 'package:ab/ui/features/busqueda/widgets/columna_de_texto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

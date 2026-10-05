@@ -20,6 +20,7 @@
 
 import 'package:ab/data/services/sqlite_service.dart';
 import 'package:ab/data/services/analizador_usfm.dart';
+import 'package:ab/domain/models/indice_de_strong.dart';
 import 'package:ab/domain/models/nota.dart';
 import 'package:ab/domain/models/pasaje.dart';
 import 'package:ab/domain/models/resultado_de_busqueda.dart';
@@ -438,6 +439,105 @@ class ModuloAbierto {
   int totalDeNotas() => tieneNotas
       ? _sqlite.valor('SELECT count(*) FROM $_tabla') as int? ?? 0
       : 0;
+
+  /// Cuantos versiculos de este modulo tienen el numero [numero].
+  ///
+  /// Y SON **VERSI...CULOS**, y no ocurrencias: Juan 3:16 tiene `Dios` una vez y Mateo 1:23
+  /// tres, y la lista que se pinta es de versiculos. Medido el 5 de octubre de 2026 sobre el
+  /// KJV real: `G2316` sale en 1.171 versiculos y 1.359 veces en total, y son dos numeros
+  /// distintos. Confundirlos haria que el indice prometiese una lista mas corta de lo que
+  /// es.
+  ///
+  /// Y LA CONSULTA ES UN `LIKE` Y NO UN INDICE, y no hace falta indice. Medido: 15 ms en
+  /// el KJV entero y 15 ms en el CLARKE. Montar un indice FTS5 para esto seria mas lento
+  /// que el indice.
+  int versiculosConStrong(String numero) {
+    final limpio = _numeroDeStrong(numero);
+    if (limpio == null) return 0;
+    return _sqlite.valor(
+          'SELECT count(*) FROM $_tabla WHERE raw LIKE ?',
+          <Object?>['%strong="$limpio"%'],
+        ) as int? ??
+        0;
+  }
+
+  /// Los versiculos que tienen el numero [numero], con las palabras que lo llevan.
+  ///
+  /// Y SE ANALIZA CADA UNO CON [anotarTexto] Y NO CON UNA REGEX SUELTA, y es lo unico que
+  /// garantiza que lo que dice el indice es **la misma palabra** que la que se ve al
+  /// pulsar. Con una expresion regular por dentro seria mas rapido, y la palabra del indice
+  /// seria la del final del marcador en vez de la primera, que es la que muestra la
+  /// pantalla: dos sitios que dicen cosas distintas de lo mismo.
+  List<IndiceDeStrong> indiceDeStrong(String numero, {int limite = limiteDeResultados}) {
+    final limpio = _numeroDeStrong(numero);
+    if (limpio == null) return const <IndiceDeStrong>[];
+
+    final filas = _sqlite.consultar(
+      'SELECT book, chapter, verse, text, raw FROM $_tabla WHERE raw LIKE ? '
+      'ORDER BY book, chapter, verse LIMIT ?',
+      <Object?>['%strong="$limpio"%', limite],
+    );
+
+    return <IndiceDeStrong>[
+      for (final f in filas)
+        () {
+          final anotado = anotarTexto(f['text'] as String, f['raw'] as String?);
+          final palabras = anotado.palabras;
+          final dondeVaElNumero = <int>[
+            for (var i = 0; i < anotado.anotaciones.length; i++)
+              if (anotado.anotaciones[i].strong == limpio) i,
+          ];
+          // Y SI NO SE ENCUENTRA LA PALBRA, LA ENTRADA **NO SE INVENTA**: se queda solo
+          // el versiculo, sin palabra. Pasa cuando el marcado y el texto no casan, que es
+          // el 2,4% de los versiculos del KJV. Con la palabra inventada seria peor que
+          // sin entrada.
+          return IndiceDeStrong(
+            referencia: Referencia(
+              f['book'] as String,
+              f['chapter'] as int,
+              f['verse'] as int,
+            ),
+            palabras: <String>[
+              for (final i in dondeVaElNumero)
+                if (i < palabras.length) _sinPuntuacion(palabras[i]),
+            ],
+          );
+        }(),
+    ];
+  }
+
+  /// Las formas distintas de la palabra, y cuantas veces sale cada una en lo indeksado.
+  ///
+  /// Y SE CUENTA SOBRE LO QUE SE ENSENA Y NO SOBRE TODO EL MODULO, porque es lo que se
+  /// puede ver: si el indice trae 200 de 1.171, decir "y 971 mas" es verdad y decir
+  /// "`God` sale 248 veces" contaria sobre los 1.171, que no se ven.
+  Map<String, int> formasDeStrong(String numero, {int limite = limiteDeResultados}) {
+    final cuenta = <String, int>{};
+    for (final entrada in indiceDeStrong(numero, limite: limite)) {
+      for (final palabra in entrada.palabras) {
+        cuenta[palabra] = (cuenta[palabra] ?? 0) + 1;
+      }
+    }
+    return cuenta;
+  }
+
+  /// El numero del lexicon tal cual lo usa el modulo, o null si no lo es.
+  ///
+  /// Y `G` O `H` Y CUATRO O MAS DIGITOS. `G1` no es una entrada del lexicon, y aceptarlo
+  /// seria poner un numero inventado al lado de una palabra.
+  String? _numeroDeStrong(String numero) {
+    final limpio = numero.trim().toUpperCase();
+    if (limpio.length < 4) return null;
+    if (limpio[0] != 'G' && limpio[0] != 'H') return null;
+    for (var i = 1; i < limpio.length; i++) {
+      final u = limpio.codeUnitAt(i);
+      if (u < 0x30 || u > 0x39) return null;
+    }
+    return limpio;
+  }
+
+  /// La palabra del indice sin la puntuacion que en el texto va pegada.
+  String _sinPuntuacion(String palabra) => palabra.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
 
   /// Busca una palabra en todo el modulo y devuelve los resultados con su extracto.
   ///

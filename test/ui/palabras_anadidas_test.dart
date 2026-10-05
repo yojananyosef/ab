@@ -122,6 +122,7 @@ void main() {
             alVolver: () {},
             alPulsarPasaje: vm.leer,
             alPedirComentario: () {},
+      alVerIndice: (_) {},
             alCambiarDeVersion: (_) {},
           ),
         ),

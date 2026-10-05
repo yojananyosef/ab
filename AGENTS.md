@@ -598,6 +598,48 @@ Lo que si sale del `raw`, y sale de verdad: el **numero del lexicon** de cada pa
 es `G2316` en Juan 3:16) y **que palabras puso el traductor** (Juan 3:16 no tiene ni una:
 es texto que el KJV no toco).
 
+### EL LEXICON NO ESTA EN EL `.amod`, Y POR ESO NO HAY DICCIONARIO
+
+Medido el 5 de octubre de 2026 sobre el KJV publicado. Las tablas son dos:
+
+    info, verses
+
+Y las trece claves de `info`:
+
+    id, name, language, license, license_evidence, copyright, attribution,
+    origin, source, schema_version, type, versification, defects, defects_count
+
+**Ninguna de lexicon.** El significado de `G2316` esta en un diccionario del griego, y ese
+diccionario no lo trae este catalogo ni el otro.
+
+Lo que si trae es el **numero**: 14.047 numeros distintos y 348.884 ocurrencias en el KJV.
+Con eso se puede hacer un indice del texto --"donde mas sale esta palabra en ESTA
+traduccion"—, y **no** un diccionario.
+
+Escribir los significados a mano seria poner en pantalla la opinion de quien los escribio, en
+una aplicacion cuyo primer requisito es no alterar lo que lee. Y quien busca el significado
+de una palabra es que tiene un diccionario, y entonces no lo necesita en la app.
+
+Asi que el indice **dice que no es un diccionario**, arriba, antes de la lista. Con 200
+lineas en medio, un aviso al final no se ve nunca.
+
+Y EL RECUENTO ES DE **VERSI...CULOS**, no de ocurrencias:
+
+    G2316   1.171 versiculos     1.359 veces
+
+Juan 3:16 tiene la palabra una vez y Mateo 1:23 tres, y la lista que se pinta es de
+versiculos. Confundir los dos numeros haria que el indice prometiese una lista mas corta de
+lo que es.
+
+### UN NUMERO SIN VALIDAR BUSCA EN EL TEXTO ENTERO
+
+`buscar('%')` y `buscar('_')` ya devolvian **los 31.102 versiculos** del KJV, porque el
+comodin se quita y el patron se queda en `%%` o `__`, y una cadena vacia casa con todo. El
+mismo fallo con el indice: `indiceDeStrong('Dios')` sin validar daria los 31.102.
+
+Por eso se comprueba **antes de consultar**: `G` o `H` y cuatro digitos o mas. `G1` no es una
+entrada del lexicon, y `X1234` tampoco es un idioma.
+
 ### EL TEXTO NO SE RECONSTRUYE DESDE EL `raw`
 
 Las dos columnas dicen lo mismo y dan la misma Biblia, pero **no con los mismos
