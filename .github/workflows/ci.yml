@@ -1,33 +1,56 @@
-# Analisis, pruebas y publicacion de la version web.
+# Analisis, pruebas y compilacion de la version web.
 #
-# Un solo workflow a proposito. Las tres cosas van juntas porque un despliegue
-# que no pasa las pruebas no debe llegar a existir, y porque separarlas
-# significaria que alguien puede publicar saltandose las comprobaciones.
+# ============================================================================
+# Y POR QUE AQUI **NO** SE PUBLICA, Y QUE SE PUBLICA EN SU LUGAR
+# ============================================================================
 #
-# La compilacion lleva `--base-href=/ab/` porque GitHub Pages sirve el sitio en
-# `https://<usuario>.github.io/ab/` y sin ese prefijo la app busca sus recursos
-# en la raiz y no arranca.
+# Medido el 5 de octubre de 2026: `ab` estaba desplegado desde este workflow, y con GitHub
+# Actions en `major_outage` el **sitio entero** dejo de poder actualizarse:
+#
+#     The job was not acquired by Runner of type hosted even after multiple attempts
+#
+# Que la publicacion dependiera de que Actions tuviera corredores de sobra no es una
+# decision, es lo que pasa cuando el unico sitio donde compilar Flutter es una maquina de
+# GitHub. Y aqui **si** hay Flutter: esta maquina compila, pasa las pruebas, levanta el
+# servidor y saca capturas.
+#
+# Asi que el reparto queda asi, y cada parte va donde puede dar de si:
+#
+# | | |
+# | --- | --- |
+# | **este workflow** | `analyze`, pruebas y `build web` en una maquina que **no** es la nuestra |
+# | **`scripts/publicar.sh`** | las mismas comprobaciones y la publicacion, en local |
+#
+# Lo que se le quita a este workflow es **solo** el paso de desplegar. Lo que hacia el --
+# comprobar el motor SQLite, dejar `404.html`, verificar que la app arranca-- se queda,
+# porque es lo que hace falta para saber que **el paquete** sirve, y el paquete es lo que
+# se publica.
+#
+# Y NO SE SUSTITUYE UNO POR OTRO. Los dos hacen las mismas comprobaciones antes de subir: si
+# el CI pasara con un fallo, el script de local tambien, porque corre el mismo
+# `flutter analyze` y el mismo `flutter test` antes de tocar nada.
 
-name: ci
+name: verificar
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
+# Y SIN `pages: write` NI `id-token: write`, porque aqui **no** se despliega. Un permiso que
+# no se usa es un permiso de mas: lo unico que hacen es ampliar lo que un workflow comprometido
+# puede hacer. Quedan en `contents: read`.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # Que una pusgada nueva cancele la anterior: si alguien empuja cinco veces
-# seguidas, no tiene sentido desplegar las cinco builds.
+# seguidas, no tiene sentido verificar las cinco builds.
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  verificar-y-publicar:
+  verificar:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -119,9 +142,13 @@ jobs:
           test -f build/web/404.html
           test -f build/web/index.html
 
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: build/web
-
-      - id: desplegar
-        uses: actions/deploy-pages@v4
+      # ============================================================================
+      # Y AQUI ESTABA EL DESPLEGUE, Y NO ESTA.
+      #
+      # Se quitan `upload-pages-artifact` y `deploy-pages`. Lo que se va es el sitio, no la
+      # comprobacion: las tres que hay justo encima --`sqlite3.wasm` presente, `404.html`
+      # presente, `index.html` presente-- son las que dicen si **el paquete** sirve, y el
+      # paquete es lo que publica `scripts/publicar.sh`.
+      #
+      # Y DEJAR EL PASO, APUNTANDO A UN SITIO QUE ESTA CAIDO, ES PEOR QUE NO TENERLO: el
+      # run acaba en verde y alguien cree que el sitio esta actualizado.
