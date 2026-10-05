@@ -37,6 +37,7 @@
 
 import 'package:flutter/material.dart';
 
+import 'package:ab/domain/models/modulo.dart';
 import 'package:ab/domain/models/nota.dart';
 import 'package:ab/domain/models/pasaje.dart';
 import 'package:ab/domain/models/referencia.dart';
@@ -54,6 +55,9 @@ class LectorView extends StatefulWidget {
     required this.alPulsarPasaje,
     required this.alCambiarDeVersion,
     required this.alVolver,
+    required this.alPedirComentario,
+    this.alDescargarComentario,
+    this.modulosDelCatalogo = const <Modulo>[],
   });
 
   final LectorViewModel viewModel;
@@ -66,6 +70,31 @@ class LectorView extends StatefulWidget {
 
   /// Volver a la biblioteca. Es `pushState`.
   final VoidCallback alVolver;
+
+  /// Pedir un comentario para ponerlo al lado, o quitar el que hay.
+  ///
+  /// Y NO PINTA NADA Y NO SABE QUE HAY DESCARGADO, y por eso es un boton y no una hoja
+  /// aqui dentro. La lista de comentarios sale del manifiesto y de lo que hay en el
+  /// almacenamiento, y eso lo sabe quien tiene la biblioteca, no esta pantalla. Esta
+  /// solo tiene un boton y el nombre del que hay abierto.
+  final VoidCallback alPedirComentario;
+
+  /// Bajar el comentario pedido, o null si no se puede.
+  ///
+  /// Y ES **OPCIONAL** Y NO UN BOLEANO, porque no es lo mismo "no se puede bajar" que
+  /// "bajar y no avisar". Con un `bool descargar` habria que decidir en la vista **por
+  /// que** no se puede --que no este en el catalogo, o que esta bajando ya-- y esa
+  /// informacion no la tiene. Un `null` es lo que dice "no hay nada que ofrecer", y la
+  /// pantalla no pinta boton y ya esta.
+  final VoidCallback? alDescargarComentario;
+
+  /// Los modulos que dice el catalogo, para poner el tamano en el boton de descargar.
+  ///
+  /// Y **SOLO** para eso. La pantalla de lectura no busca, no filtra y no download: pide
+  /// un tamano para un boton. Lo que se pasa es el catalogo entero porque es lo que hay
+  /// a mano, y separar un `Map<String, String>` de tamanos seria una copia de los
+  /// identificadores en otro sitio, que es justo la lista que este proyecto no quiere.
+  final List<Modulo> modulosDelCatalogo;
 
   @override
   State<LectorView> createState() => _LectorViewState();
@@ -116,6 +145,13 @@ class _LectorViewState extends State<LectorView> {
           icon: const Icon(Icons.arrow_back),
           onPressed: widget.alVolver,
         ),
+        actions: <Widget>[
+          _BotonDeComentario(
+            id: vm.idDelComentario,
+            alPulsar: widget.alPedirComentario,
+          ),
+          SizedBox(width: Medidas.margenEstrecho / 2),
+        ],
       ),
       body: SafeArea(child: _cuerpo(vm)),
     );
@@ -153,6 +189,26 @@ class _LectorViewState extends State<LectorView> {
                       final r = vm.irAlUltimoValido();
                       if (r != null) widget.alPulsarPasaje(r);
                     },
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                // Y EL AVISO DEL COMENTARIO VA **DESPUES** DEL AVISO DEL PASAJE, y no es
+                // por orden de importancia sino por cercania: los dos son de la misma
+                // lectura y el de arriba es el del texto, que es lo que se esta
+                // leyendo. Poner el del comentario primero haria que abrir Juan 3:1 --que
+                // no tiene nota en el CLARKE, medido-- dijera dos veces que no hay
+                // nada, y dos avisos que dicen lo mismo confunden mas que uno.
+                if (vm.motivoDelComentario != null) ...<Widget>[
+                  _AvisoDelComentario(
+                    texto: vm.motivoDelComentario!,
+                    hayComentario: vm.tieneComentario,
+                    alQuitar: widget.viewModel.cerrarComentario,
+                    // Y BAJAR SOLO CUANDO NO HAY UNO ABIERTO, que es el unico caso en el
+                    // que tiene sentido: si ya hay un comentario al lado y sale un aviso,
+                    // el aviso es por otro, y un boton de "bajar" ahi consuela de lo
+                    // contrario.
+                    alDescargar: vm.tieneComentario ? null : widget.alDescargarComentario,
+                    tamano: _tamanioDeDescarga(vm.comentarioPedido),
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -281,14 +337,58 @@ class _LectorViewState extends State<LectorView> {
           return _ColumnaDeNotas(pasaje: p, estilo: estilo);
         }
 
+        // Y CADA VERSICULO CON SUS NOTAS DEBAJO, y no todas las notas al final del
+        // capitulo. Treinta y dos notas al final son un anexo: hay que ir y volver del
+        // versiculo a la nota y de la nota al versiculo, y lo que se acaba leyendo es
+        // el capitulo entero dos veces.
+        //
+        // Y SI NO HAY NOTAS DE ESE VERSICULO, NO SE PINTA NADA. Ni una linea de
+        // separacion, ni un hueco, ni un "sin comentario": en el CLARKE hay 32
+        // versiculos con nota de cada 36 de Juan 3, y cuatro separaciones vacias seguidas
+        // parecen un fallo de maquetado.
+        final conNotas = vm.tieneComentario;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            for (final v in p.versiculos)
+            for (final v in p.versiculos) ...<Widget>[
               _Versiculo(numero: v.numero, texto: v.texto, estilo: estilo),
+              if (conNotas) ..._notasDe(vm, v.numero, estilo),
+            ],
           ],
         );
     }
+  }
+
+  /// El tamano del comentario pedido, como lo dice el manifiesto, o cadena vacia.
+  ///
+  /// Y SE LE PIDE AL **MANIFIESTO** Y NO A LA BIBLIOTECA, porque la pantalla de lectura
+  /// no la tiene y no deberia: la unica razon por la que se despinta un boton de
+  /// "Descargar" es que hay algo en el catalogo.
+  String _tamanioDeDescarga(String? id) {
+    if (id == null) return '';
+    final modulo = _modulosPorId[id];
+    if (modulo == null) return '';
+    return modulo.megabytes;
+  }
+
+  /// Los modulos del manifiesto que se han pedido descargar, por identificador.
+  ///
+  /// Y SE LLENA CUANDO SE PINTA LA BARRA Y NO SE PASA COMO PARAMETRO, y la razon es que
+  /// `LectorView` ya recibe siete cosas y una octava de "datos" es como se acaba
+  /// pasando el manifiesto entero a una pantalla que solo necesita un tamano.
+  Map<String, Modulo> get _modulosPorId => <String, Modulo>{
+        for (final m in widget.modulosDelCatalogo) m.id: m,
+      };
+
+  /// Las notas de un versiculo, o nada si no las hay.
+  List<Widget> _notasDe(LectorViewModel vm, int versiculo, TextStyle estilo) {
+    final notas = vm.notasDe(versiculo);
+    if (notas.isEmpty) return const <Widget>[];
+    return <Widget>[
+      const SizedBox(height: 10),
+      _EncabezadoDeNota(versiculo: versiculo, total: notas.length),
+      for (final nota in notas) _Nota(nota: nota, estilo: estilo),
+    ];
   }
 
   Widget _nadaPintado(String texto, String ayuda) => Padding(
@@ -452,6 +552,132 @@ class _Nota extends StatelessWidget {
       ),
     );
   }
+}
+
+/// El boton de la barra para poner un comentario al lado, o quitar el que hay.
+///
+/// Y DICE EL NOMBRE DEL COMENTARIO Y NO SOLO UN ICONO. Un icono de bocadillo en una
+/// barra dice "aqui hay comentarios" y no dice cuales, y quien esta leyendo Juan 3:16 con
+/// el CLARKE al lado necesita poder confirmar en un vistazo que lo que tiene al lado es lo
+/// que pidio y no el que habia de antes.
+///
+/// Y CUANDO NO HAY NINGUNO DICE "COMENTARIO", que es lo que hay que hacer, y no un icono
+/// apagado sin texto: un control sin etiqueta en una barra es un control que no se ve.
+class _BotonDeComentario extends StatelessWidget {
+  const _BotonDeComentario({required this.id, required this.alPulsar});
+
+  final String? id;
+  final VoidCallback alPulsar;
+
+  @override
+  Widget build(BuildContext context) {
+    final hay = id != null;
+
+    return Tooltip(
+      message: hay
+          ? 'El comentario es $id. Púlsalo para cambiarlo o quitarlo.'
+          : 'Poner un comentario al lado del texto',
+      child: TextButton.icon(
+        onPressed: alPulsar,
+        icon: Icon(
+          hay ? Icons.comment : Icons.comment_outlined,
+          size: 20,
+          // Y EL ICONO TAMBIEN DICE SI HAY ALGO, y no solo el texto: el color del boton
+          // cambia con el, de modo que se distingue de un vistazo sin leer.
+          color: hay ? Colores.acento : Colores.textoSuave,
+        ),
+        label: Text(
+          hay ? id! : 'Comentario',
+          style: TextStyle(
+            color: hay ? Colores.acento : Colores.textoSuave,
+            fontWeight: hay ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
+        // Y `VisualDensity.compact` PORQUE LA BARRA ES ALTA Y EL TEXTO ES DE 16. Con la
+        // densidad normal el boton empuja la barra a 56 de alto y el titulo --"Juan 3:16"--
+        // sube con el, y el titulo no tiene por que moverse porque se haya abierto una
+        // hoja.
+        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+      ),
+    );
+  }
+}
+
+/// "El comentario X no esta descargado en este dispositivo."
+///
+/// Y CON UN BOTON DE "QUITAR" SOLO SI HAY UNO ABIERTO. Un aviso sin boton deja a quien lo
+/// ve sin salida: puede volver a la biblioteca y buscar el comentario otra vez, que es
+/// un rodeo de tres toques para deshacer algo que cabe en uno.
+class _AvisoDelComentario extends StatelessWidget {
+  const _AvisoDelComentario({
+    required this.texto,
+    required this.hayComentario,
+    required this.alQuitar,
+    required this.alDescargar,
+    required this.tamano,
+  });
+
+  final String texto;
+  final bool hayComentario;
+  final VoidCallback alQuitar;
+
+  /// Null cuando no hay nada que bajar.
+  final VoidCallback? alDescargar;
+
+  /// "57,5 MB", o cadena vacia si no se sabe el tamano.
+  ///
+  /// Y EL TAMANO EN EL BOTON Y NO EN EL TEXTO DEL AVISO, porque el boton es lo que se
+  /// pulsa y es donde se decide si se bajan 57 MiB o 300. Y **solo si se sabe**: el
+  /// manifiesto lo dice y sin el no se inventa.
+  final String tamano;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: Colores.acento.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colores.linea),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Icon(Icons.info_outline, size: 20, color: Colores.textoSuave),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(texto, style: t.textTheme.bodyMedium),
+          ),
+          // Y EL BOTON SE ENCOGE EN UNA LINEA Y SE DEJA VER ENTERO. Con el nombre
+          // completo del texto --"KJV2006 es un texto de Biblia, no un comentario"-- el
+          // aviso necesita su ancho, y si el boton no cede lo que se acorta es el texto,
+          // que es justo lo que no debe pasar.
+          if (hayComentario)
+            TextButton(
+              onPressed: alQuitar,
+              style: _estiloDeBoton,
+              child: const Text('Quitar'),
+            )
+          else if (alDescargar != null)
+            TextButton(
+              onPressed: alDescargar,
+              style: _estiloDeBoton,
+              // Y CON EL TAMANO EN EL MISMO BOTON, no en una linea aparte. Un "Descargar"
+              // sin tamano es un boton cuyo coste no se sabe, y ante un boton cuyo coste
+              // no se sabe lo que hace la gente es no pulsarlo.
+              child: Text(tamano.isEmpty ? 'Descargar' : 'Descargar, $tamano'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static final ButtonStyle _estiloDeBoton = TextButton.styleFrom(
+    visualDensity: VisualDensity.compact,
+    padding: const EdgeInsets.symmetric(horizontal: 8),
+  );
 }
 
 /// Un versiculo: el numero en su columna y el texto al lado.

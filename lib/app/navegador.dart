@@ -79,11 +79,14 @@
 // es codigo de este proyecto, no del framework, asi que va aqui y con
 // [Navigator.maybePop] no hay nada que decidir.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import 'package:ab/data/repositories/modulo_repository.dart';
 import 'package:ab/domain/models/referencia.dart';
+import 'package:ab/domain/models/tipo_de_contenido.dart';
 import 'package:ab/ui/core/rutas.dart';
 import 'sonda_nativa.dart'
     if (dart.library.js_interop) 'sonda_web.dart' as plataforma;
@@ -91,6 +94,7 @@ import 'package:ab/ui/features/biblioteca/view_models/biblioteca_view_model.dart
 import 'package:ab/ui/features/biblioteca/views/biblioteca_view.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
 import 'package:ab/ui/features/lector/views/lector_view.dart';
+import 'package:ab/ui/features/lector/widgets/hoja_de_comentarios.dart';
 
 /// Como se reporta un cambio de ruta, y que significa en el historial del navegador.
 ///
@@ -134,7 +138,12 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
     this.descargar,
     this.abrirFicheroLocal,
     this.reintentarCatalogo,
-  });
+  }) {
+    // Y SE ESCUCHA DESDE EL CONSTRUCTOR Y NO CUANDO TOCA LEER, porque la descarga puede
+    // terminar con la biblioteca delante --el caso normal-- y con el lector delante --el
+    // caso del enlace compartido, que es el que hace falta--.
+    biblioteca.addListener(_alCambiarLaBiblioteca);
+  }
 
   final BibliotecaViewModel biblioteca;
   final LectorViewModel lector;
@@ -156,6 +165,29 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   /// La ruta de ahora. Es todo el estado del enrutador: no hay una pantalla
   /// "anterior" guardada en ningun sitio.
   Ruta _ruta = const RutaBiblioteca();
+
+  /// Abre solo, en cuanto esten, los modulos que la ruta pide y todavia faltaban.
+  ///
+  /// Y ESTA ESCUCHA A LA BIBLIOTECA Y NO HAY NADA MAS, y es la unica parte de este
+  /// fichero que mira una pantalla ajena. Hace falta por una cadena que si no esta rota:
+  /// alguien pide el comentario, no esta, se ofrece bajarlo, se baja 57 MiB, y hasta
+  /// aqui no habria forma de volver a abrirlo --porque quien pide una descarga es la
+  /// biblioteca, y quien aplica una ruta es este enrutador--, asi que quien lo pidio se
+  /// queda con el texto y el comentario a medio bajar.
+  ///
+  /// Y SOLO MIRA UNA COSA: que el identificador pedido este ahora entre los descargados.
+  /// La biblioteca avisa de los progresos, de los errores y de los filtros, y con
+  /// cualquier otro aviso esta comprobacion se cumple igual y se abriria el comentario
+  /// otra vez en cada barra de progreso.
+  void _alCambiarLaBiblioteca() {
+    final ruta = _ruta;
+    if (ruta is! RutaLectura) return;
+    final comentario = ruta.comentario;
+    if (comentario == null) return;
+    if (lector.idDelComentario == comentario) return;
+    if (!biblioteca.idsLocales.contains(comentario)) return;
+    unawaited(_aplicarComentario(comentario));
+  }
 
   @override
   Ruta get currentConfiguration => _ruta;
@@ -194,9 +226,19 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
         ahora.referencia.capitulo == 1 ? 2 : ahora.referencia.capitulo - 1;
 
     // Un cambio de capitulo: `navigate`, o sea `pushState`.
-    await irA(RutaLectura(ahora.modulo, Referencia(ahora.referencia.libro, otroCapitulo)));
+    await irA(RutaLectura(
+      ahora.modulo,
+      Referencia(ahora.referencia.libro, otroCapitulo),
+      ahora.comentario,
+    ));
     final trasCapitulo = await _longitudDelHistorialEstable();
 
+    // Y `ajustarA(ahora)` lleva el comentario porque `ahora` lo lleva. Sin eso, medir el
+    // historial **quitaria** el comentario y lo que se mediria despues ya no es la ruta
+    // que se esta leyendo: en la comprobacion en navegador se veía un resultado final con
+    // `ruta: .../John.3.16` y `comentario: null` despues de haberlo abierto todo, y
+    // ningun fallo visible: la propia comprobacion se habia deshecho a si misma.
+    //
     // Un ajuste: `neglect`, o sea `replaceState`. Es el mismo `ajustarA` que usaria un
     // cambio de letra o de version, con una ruta que no lleva a otra pagina.
     await ajustarA(ahora);
@@ -316,7 +358,7 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
         // esta en la biblioteca no esta leyendo.
         lector.sinModulo();
 
-      case RutaLectura(:final modulo, :final referencia):
+      case RutaLectura(:final modulo, :final referencia, :final comentario):
         // Y SI YA ESTA ABIERTO ESE MISMO TEXTO, NO SE VUELVE A ABRIR. Y no es una
         // optimizacion: es que pasar de Juan 3 a Juan 4 no necesita volver a leer 22 MiB
         // del almacenamiento ni volver a pasarles `PRAGMA quick_check`.
@@ -334,8 +376,9 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
         // aplicacion esta abierta es un caso que no se contempla, y se dice aqui en vez de
         // dejarlo para que alguien lo descubra.
         if (lector.idDelModulo == modulo && lector.modulo != null) {
-          _ruta = RutaLectura(modulo, referencia);
+          _ruta = RutaLectura(modulo, referencia, comentario);
           lector.leer(referencia);
+          await _aplicarComentario(comentario);
           break;
         }
 
@@ -354,12 +397,18 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
         // fallara, `build` veria una ruta de lectura con `lector.sinModulo` y
         // entraria por la rama de la biblioteca --correcto--, pero la ruta y la
         // pantalla estarian fuera de paso durante ese frame.
-        _ruta = RutaLectura(modulo, referencia);
+        _ruta = RutaLectura(modulo, referencia, comentario);
         lector.abrir(
           abierto,
           licenciaDelManifiesto: biblioteca.manifiesto.porId(modulo)?.licencia,
         );
         lector.leer(referencia);
+        // Y EL COMENTARIO SE ABRE **DESPUES** DE LEER EL PASAJE, y no antes. Al reves,
+        // `abrirComentario` leeria unas notas de un pasaje que todavia no se ha pedido,
+        // y al pedir el pasaje despues se pisarian. Es un orden de dos lineas que no se
+        // ve y que solo falla cuando se abre un texto con comentario desde un enlace --
+        // o sea, lo primero que hace quien recibe el enlace.
+        await _aplicarComentario(comentario);
 
       case RutaDesconocida():
         // Una ruta que no se entiende **no** se aplica. Se queda donde se estaba y se
@@ -370,6 +419,132 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
         _ruta = _ruta;
     }
     notifyListeners();
+  }
+
+  /// Abre, quita o deja como estaba el comentario que pide la ruta.
+  ///
+  /// Y LAS TRES COSAS EN UN SOLO METODO, porque es lo que hace una ruta: decir como se
+  /// lee. Y **NO ES UN `if` POR CASO** sino una comparacion con lo que hay, porque lo
+  /// habitual es que no haya cambiado: pasar de Juan 3 a Juan 4 con el CLARKE al lado
+  /// vuelve a pasar por aqui, y reabrir 57 MiB en cada capitulo seria lo que hace que
+  /// nadie lea con comentario abierto.
+  ///
+  /// Y CUANDO EL COMENTARIO NO ESTA DESCARGADO NO ES UN ERROR, y esta es la parte que
+  /// importa. El enlace `/leer/KJV2006/John.3.16/con/CLARKE` puede llegar a un
+  /// dispositivo donde el CLARKE --57 MiB-- no esta y no va a estar. Lo que hay ahi es
+  /// Juan 3:16 del KJV, entero, y un aviso de que al lado no hay nada. Un enrutador que
+  /// en ese caso volviera a la biblioteca habria roto la lectura por un comentario que
+  /// es un extra.
+  Future<void> _aplicarComentario(String? comentario) async {
+    if (comentario == null) {
+      if (lector.tieneComentario) lector.cerrarComentario();
+      return;
+    }
+
+    // Y SI YA ESTA ESE MISMO, NO SE VUELVE A ABRIR PERO **SI SE VUELVEN A LEER LAS
+    // NOTAS**. Son dos cosas y se separan aqui a proposito: reabrir son 57 MiB y un
+    // `PRAGMA quick_check` que no hacen falta, y en cambio las notas **son** de otro
+    // pasaje.
+    //
+    // Sin esta segunda parte, ir de Juan 3 a Juan 5 con el comentario abierto dejaba las
+    // notas de Juan 3 encima de Juan 5. Medido, y era justo lo que ensefaba.
+    if (lector.idDelComentario == comentario) {
+      lector.refrescarNotas();
+      return;
+    }
+
+    if (!biblioteca.idsLocales.contains(comentario)) {
+      // Y NO SOLO SE AVISA: SE OFRECE BAJARLO, y con el boton, no con un "se puede bajar
+      // en la biblioteca" que obliga a dar la vuelta, buscarlo y volver.
+      //
+      // MEDIDO el 4 de octubre de 2026 en la comprobacion en navegador, con
+      // `/leer/KJV2006/John.3.16/con/CLARKE`: el comentario no se abria, 0 bytes bajados
+      // y Juan 3:16 entero sin nada al lado. O sea, exactamente el fallo que hace que un
+      // enlace con un comentario no sirva de nada: quien lo recibe no tiene forma de
+      // CONSEguir el comentario sin dejar de estar leyendo.
+      lector.comentarioNoDisponible(
+        comentario,
+        'El comentario $comentario no esta descargado en este dispositivo.',
+      );
+      return;
+    }
+
+    final abierto = await abrir(comentario, lector.leyendo ?? const Referencia('John', 1));
+    if (abierto == null) {
+      lector.comentarioNoDisponible(
+        comentario,
+        'El comentario $comentario esta en el dispositivo pero no se ha podido abrir.',
+      );
+      return;
+    }
+    lector.abrirComentario(
+      abierto,
+      licenciaDelManifiesto: biblioteca.manifiesto.porId(comentario)?.licencia,
+    );
+  }
+
+  // --- elegir comentario ---
+
+  /// Abre la hoja con los comentarios que hay, y quita el que haya si se pide.
+  ///
+  /// Y LA LISTA SALE DEL MANIFIESTO CRUZADO CON LO DESCARGADO, y no de una lista escrita
+  /// aqui. Un "CLARKE" en el codigo seria el mismo fallo que una tabla de libros: la app
+  /// sabria lo que hay antes de que lo haya, y en cuanto el catalogo publicase un
+  /// segundo comentario --que es lo que va a pasar-- este sitio no sabria de el.
+  Future<void> elegirComentario(BuildContext context) async {
+    final ruta = _ruta;
+    if (ruta is! RutaLectura) return;
+
+    final actuales = _comentariosDisponibles();
+    final elegido = await mostrarHojaDeComentarios(
+      context: context,
+      actuales: actuales,
+      abierto: lector.idDelComentario,
+    );
+    if (elegido == null) return;
+
+    // Y ES `replaceState` Y NO `pushState`. Poner un comentario es un **ajuste** de lo
+    // que se esta leyendo, igual que cambiar de traduccion: quien lo pone quiere seguir
+    // en Juan 3:16, no volver atras a como estaba antes de pulsarlo. Y con `pushState`,
+    // el gesto de atras devolveria el texto sin comentario, que es lo que ya se tiene.
+    await ajustarA(RutaLectura(ruta.modulo, ruta.referencia, elegido));
+  }
+
+  /// Si el comentario que pide la ruta esta en el catalogo y todavia no esta aqui.
+  bool _sePuedeDescargar(Ruta ruta) {
+    if (ruta is! RutaLectura) return false;
+    final comentario = ruta.comentario;
+    if (comentario == null) return false;
+    if (descargar == null) return false;
+    if (biblioteca.idsLocales.contains(comentario)) return false;
+    return biblioteca.manifiesto.porId(comentario) != null;
+  }
+
+  /// Baja el comentario pedido y no dice nada mas: cuando termine, la biblioteca avisa y
+  /// [_alCambiarLaBiblioteca] lo abre.
+  ///
+  /// Y ES **PUBLICO** Y NO PRIVADO, y por eso esta aqui y no metido en el widget. Lo que
+  /// hace el boton de la pantalla es exactamente esto, y la comprobacion en navegador --
+  /// que no puede pulsar un boton-- necesita hacer lo mismo que la persona que abre el
+  /// enlace. Si estuviera en otro sitio habria dos caminos para bajar el comentario, y el
+  /// que se comprobaria no seria el que se usa.
+  void descargarComentarioPedido() {
+    final ruta = _ruta;
+    if (ruta is! RutaLectura) return;
+    final comentario = ruta.comentario;
+    if (comentario == null) return;
+    descargar?.call(comentario);
+  }
+
+  /// Los comentarios descargados, con su nombre. De donde sale: el manifiesto.
+  List<ComentarioDisponible> _comentariosDisponibles() {
+    final ids = biblioteca.idsLocales;
+    return <ComentarioDisponible>[
+      for (final m in biblioteca.manifiesto.modulos)
+        if (ids.contains(m.id) &&
+            TipoDeContenido.fromModulo(m.tipo.enElCatalogo) == TipoDeContenido.comentario)
+          ComentarioDisponible(id: m.id, nombre: m.nombre),
+    ];
   }
 
   // --- atras ---
@@ -452,7 +627,11 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   /// deshaciera, el gesto se perderia en cuanto se pulsara la flecha para seguir
   /// leyendo, que es la forma mas facil de perder un ajuste.
   Future<void> cambiarDeVersion(String id) async {
-    await ajustarA(RutaLectura(id, lector.leyendo ?? const Referencia('John', 1)));
+    await ajustarA(RutaLectura(
+      id,
+      lector.leyendo ?? const Referencia('John', 1),
+      lector.idDelComentario,
+    ));
   }
 
   // --- la pantalla ---
@@ -468,7 +647,27 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
     final pantalla = leyendo
         ? LectorView(
             viewModel: lector,
-            alPulsarPasaje: (r) => irA(RutaLectura(lector.idDelModulo ?? '', r)),
+            // Y LA RUTA NUEVA **SE LLEVA EL COMENTARIO DELANTERO**. Sin esto, pasar de
+            // Juan 3 a Juan 4 lo quita y hay que volver a pulsarlo en cada capitulo, y un
+            // comentario que hay que volver a pedir cada capitulo no se usa. Y no es
+            // que se pierda: la ruta lleva el identificador, asi que la URL de Juan 3:17
+            // con el CLARKE al lado se puede copiar y dice lo que es.
+            alPulsarPasaje: (r) => irA(RutaLectura(
+              lector.idDelModulo ?? '',
+              r,
+              lector.idDelComentario,
+            )),
+            // Y LA HOJA SE ABRE CON EL CONTEXTO QUE DA ESTE `build`, que es el unico que
+            // esta vivo mientras hay una pantalla. Guardarlo en un campo del delegado
+            // seria guardar un `BuildContext` mas alla de la vida de su widget, que es
+            // justo lo que `use_build_context_synchronously` avisa de y por lo que
+            // existe.
+            alPedirComentario: () => elegirComentario(context),
+            // Y SOLO HAY BOTON DE BAJAR SI HAY ALGO QUE BAJAR. Si el comentario pedido
+            // no esta en el catalogo --porque el enlace es de otro despliegue-- no hay
+            // nada que ofrecer, y un boton que no hace nada es peor que no tenerlo.
+            alDescargarComentario: _sePuedeDescargar(_ruta) ? descargarComentarioPedido : null,
+            modulosDelCatalogo: biblioteca.manifiesto.modulos,
             alCambiarDeVersion: cambiarDeVersion,
             alVolver: irAHome,
           )
@@ -516,6 +715,7 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   // almacenamiento, selector de archivos-- y el enrutador no debe saber de ellos.
   @override
   void dispose() {
+    biblioteca.removeListener(_alCambiarLaBiblioteca);
     lector.dispose();
     super.dispose();
   }

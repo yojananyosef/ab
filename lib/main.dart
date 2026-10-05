@@ -190,6 +190,18 @@ class _AbAppState extends State<AbApp> {
       _ => const Referencia('John', 3, 16),
     };
 
+    // Y EL COMENTARIO QUE LA RUTA PIDE, O NULL SI NO PIDE NINGUNO.
+    //
+    // Y NO SE USA COMO "ALGO MAS QUE COMPROBAR" SINO COMO **CONDICION PARA DAR EL
+    // RESULTADO POR BUENO**. Con una ruta `/leer/KJV2006/John.3.16/con/CLARKE` en un
+    // perfil donde el CLARKE no esta, Juan 3:16 se lee a los dos segundos: la comprobacion
+    // tendria su "ok" con el comentario sin abrir, 0 bytes bajados, y todo pareceria
+    // bien. Medido el 4 de octubre de 2026, y fue exactamente eso lo que paso.
+    final comentarioEsperado = switch (ruta) {
+      RutaLectura(:final comentario?) => comentario,
+      _ => null,
+    };
+
     // Y BAJA EL TEXTO SI NO ESTA, antes de mirarlo.
     //
     // La sonda pide un enlace profundo --`/leer/KJV2006/John.3.16`-- y en una ejecucion
@@ -225,7 +237,15 @@ class _AbAppState extends State<AbApp> {
     // se ha quedado, y en un fallo de este tipo la unica pista es el registro del
     // navegador, que no dice nada.
     try {
-      await _navegador.irA(RutaLectura(_moduloDeLaSonda, esperado));
+      // Y **CON** EL COMENTARIO DE LA RUTA, y no a secas. MEDIDO el 5 de octubre de
+      // 2026: con `RutaLectura(_moduloDeLaSonda, esperado)` esta navegacion se come el
+      // `/con/`, el enrutador quita el comentario --`cerrarComentario`--, y a partir de
+      // ahi el paso 0 ya no ve `comentarioPedido` y no ofrece bajar nada. 0 bytes y un
+      // "ok" final, otra vez.
+      //
+      // Y QUE SE LLEVE EL `comentario` DE LA RUTA Y NO UN ID PUESTO A MANO, porque la
+      // sonda no sabe que comentario hay: solo sabe que la ruta pide uno.
+      await _navegador.irA(RutaLectura(_moduloDeLaSonda, esperado, comentarioEsperado));
     } catch (e, traza) {
       _sonda.escribir(<String, Object?>{
         'resultado': 'excepcion',
@@ -260,6 +280,59 @@ class _AbAppState extends State<AbApp> {
       'avisos': <String>[for (final a in _biblioteca.avisos) a.texto],
     });
 
+    // 0. Si la ruta pide un comentario que no esta, se acepta la descarga.
+    //
+    // Y ESTO ES LO QUE HACE UNA PERSONA, y la comprobacion en navegador no puede hacer
+    // otra cosa: abrir un enlace a `/leer/KJV2006/John.3.16/con/CLARKE` en un movil donde
+    // el CLARKE no esta **ofrece** bajarlo, y lo unico que se puede comprobar sin una
+    // mano es aceptar la oferta y ver si funciona.
+    //
+    // Y NO PIDE NADA: si no hay nada que bajar, no hace falta. La primera version de esta
+    // comprobacion no lo hacia y se quedaba 900 s esperando con Juan 3:16 entero y
+    // **0 bytes** bajados, que es exactamente el fallo que esta comprobacion existe para
+    // encontrar.
+    //
+    // Y SE ESPERA A QUE **HAYA PASAGE** ANTES DE OFRECER LA DESCARGA. La primera version
+    // miraba solo si faltaba el comentario, y al empezar la sonda todavia no se ha
+    // aplicado la ruta --eso pasa despues--, asi que `comentarioPedido` era null, la
+    // espera se daba por buena y no se bajaba **nada**. Medido el 4 de octubre de 2026:
+    // Juan 3:16 entero, 0 bytes, y un "ok" al final porque lo que se miraba era el texto.
+    var offeredDownload = false;
+    await _sonda.esperarAQue(
+      () {
+        if (_lector.pasaje == null) return false;
+        if (_lector.tieneComentario) return true;
+        if (_lector.comentarioPedido == null) return true;
+        // Y SOLO UNA VEZ. `esperarAQue` pregunta cada 200 ms, y sin esta bandera se
+        // pediria la misma descarga mientras la anterior esta en marcha.
+        if (!offeredDownload) {
+          offeredDownload = true;
+          _navegador.descargarComentarioPedido();
+        }
+        return false;
+      },
+      // Y 420 s Y NO 150. Es el unico sitio de la sonda que espera a algo de verdad --
+      // una descarga de 57 MiB-- y el limite de 150 s esta puesto para que la sonda
+      // escriba su motivo antes de que el navegador se vaya al minuto 240 de reloj
+      // virtual. Aqui el navegador sigue vivo hasta el minuto 660, asi que 420 s de
+      // espera dejan margen de sobra para el paso siguiente.
+      esperaMaxima: const Duration(seconds: 420),
+    );
+
+    _sonda.escribir(<String, Object?>{
+      'paso': '0',
+      'resultado': 'ruta aplicada, viendo que comentario falta',
+      'comentarioEsperado': comentarioEsperado,
+      'comentarioPedido': _lector.comentarioPedido,
+      'tieneComentario': _lector.tieneComentario,
+      'ofrecioLaDescarga': offeredDownload,
+      'catalogoLoTiene': comentarioEsperado == null
+          ? false
+          : _catalogo.manifiesto.porId(comentarioEsperado) != null,
+      'bytesDescargados': _sonda.bytesDescargados,
+      'avisos': <String>[for (final a in _biblioteca.avisos) a.texto],
+    });
+
     // 1. El pasaje. Es lo que comprueban 8.2 y 8.4.
     await _sonda.esperarYEscribir(
       motivoDeEspera: 'no se ha podido leer $esperado en el navegador',
@@ -271,6 +344,7 @@ class _AbAppState extends State<AbApp> {
         lector: _lector,
         esperado: esperado,
         estado: res.estadoDelCatalogo,
+        comentarioEsperado: comentarioEsperado,
       ),
     );
 

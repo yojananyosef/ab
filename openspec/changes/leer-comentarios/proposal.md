@@ -53,3 +53,9 @@ Dos cosas encontradas midiendo, no leyendo:
   la vez es otro change, porque son dos modulos abiertos y la ruta tiene que decirlo.
 - **No repara la fila repetida**, que esta en el repositorio hermano y es cosa de `aa`.
   Aqui solo se quitan al leer, y se dice por que en `AGENTS.md`.
+
+## Y el siguiente: al lado del texto
+
+Esto deja el comentario **suelto**, que es un diccionario con huesos. Ponerlo al lado del
+versiculo es el change `leer-el-comentario-junto`, que es donde esto se vuelve util de
+verdad.

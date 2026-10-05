@@ -209,6 +209,61 @@ def comprobar_pasaje(c: Comprobacion, d: dict, juan316: str) -> None:
     )
 
 
+def comprobar_pareja(c: Comprobacion, d: dict, juan316: str) -> None:
+    """El versiculo con el comentario al lado.
+
+    Y SON DOS COMPROBACIONES Y NO UNA, porque son dos modulos y cada uno puede fallar por
+    su cuenta. Lo que se mira aqui es que esten **los dos**: el versiculo entero del
+    KJV2006 y una nota del CLARKE debajo.
+    """
+    c.exigir(
+        d.get("resultado") == "ok",
+        f"resultado: {d.get('resultado')!r} / motivo: {d.get('motivo')!r}",
+    )
+    # Y EL TEXTO DE LA BIBLIA SIGUE SIENDO EL DE JUAN 3:16. Es la parte que se puede
+    # romper por ir a por el comentario: abrir un segundo `.amod` de 57 MiB y volver a
+    # pintar puede tragarse el texto que ya estaba.
+    c.exigir(
+        d.get("texto") == juan316,
+        "el versiculo no se lee entero al poner el comentario al lado:\n"
+        f"      esperado: {juan316!r}\n"
+        f"      obtenido: {d.get('texto')!r}",
+    )
+    c.exigir(
+        d.get("modulo") == "KJV2006",
+        f"el texto abierto es {d.get('modulo')!r}, no KJV2006",
+    )
+    c.exigir(
+        d.get("comentario") == "CLARKE",
+        f"el comentario abierto es {d.get('comentario')!r}, no CLARKE",
+    )
+    # Y LA NOTA DE JUAN 3:16 EMPIEZA POR LO QUE EMPIEZA. Medido sobre el fichero real:
+    # "For God so loved the world - Such a love as that which induced God to give his
+    # only begotten son to die for the world could not be described".
+    nota = d.get("notasAlLadoTexto") or ""
+    c.exigir(
+        nota.startswith("For God so loved the world - Such a love as that"),
+        f"la nota de Juan 3:16 no empieza como deberia: {nota[:80]!r}",
+    )
+    # Y EL NUMERO: Juan 3:16 tiene **una** nota en el CLARKE, no tres. Esto se escribio
+    # mal una vez --midiendo la clave primaria en vez de contando filas-- y por eso el
+    # numero va comprobado aqui, en el navegador, contra el fichero real.
+    c.exigir(
+        d.get("notasAlLadoDelPasaje") == 1,
+        f"Juan 3:16 trae {d.get('notasAlLadoDelPasaje')} notas al lado y trae una",
+    )
+    # Y JUAN 3 TIENE 32 CON NOTA DE 36 QUE TIENE TEXTO, medido.
+    c.exigir(
+        d.get("versiculosConNotaAlLadoEnElCapitulo") == 32,
+        f"Juan 3 sale con {d.get('versiculosConNotaAlLadoEnElCapitulo')} versiculos con "
+        f"nota en el comentario, y son 32 de 36",
+    )
+    c.exigir(
+        not d.get("motivoDelComentario"),
+        f"hay un aviso del comentario que no deberia: {d.get('motivoDelComentario')!r}",
+    )
+
+
 def comprobar_historial(c: Comprobacion, d: dict) -> None:
     """7.5 en el navegador: `history.length`."""
     h = d.get("historial") or {}
@@ -274,6 +329,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--primera", default="")
     ap.add_argument("--segunda", default="")
+    ap.add_argument("--pareja", default="")
     ap.add_argument("--juan316", required=True)
     ap.add_argument("--etiqueta", required=True)
     ap.add_argument("--bytes-kjv", type=int, required=True)
@@ -281,7 +337,7 @@ def main() -> int:
     ap.add_argument("--perfil-limpio", action="store_true")
     args = ap.parse_args()
 
-    c = Comprobacion("primera" if args.primera else "segunda")
+    c = Comprobacion("pareja" if args.pareja else ("primera" if args.primera else "segunda"))
     c.etiqueta_esperada = args.etiqueta
     c.bytes_kjv = args.bytes_kjv
     c.bytes_clarke = args.bytes_clarke
@@ -299,6 +355,25 @@ def main() -> int:
         # segunda aporta.
         comprobar_pasaje(c, d, args.juan316)
         comprobar_descarga(c, d, args.bytes_kjv, limpio=False)
+    if args.pareja:
+        d = leer(args.pareja)
+        # Y DEL KJV SOLO SE COMPRUEBA QUE **NO** SE VUELVE A BAJAR: la tercera ejecucion
+        # reutiliza el perfil de las dos primeras, asi que el texto sale del
+        # almacenamiento. Lo que tiene que bajar es el CLARKE, que es lo nuevo.
+        comprobar_pareja(c, d, args.juan316)
+        comprobar_historial(c, d)
+        # Y LA TERCERA EJECUCION BAJA **SOLO** EL CLARKE. Reutiliza el perfil de las dos
+        # primeras, asi que el KJV2006 sale del almacenamiento del navegador y lo unico
+        # que se baja son los 57 MiB del comentario. Y por eso la comprobacion es "son
+        # los del CLARKE" y no "son 0": son 0 solo si el comentario tambien estaba.
+        bajos = d.get("bytesDescargados")
+        c.exigir(
+            bajos == args.bytes_clarke,
+            f"en la tercera ejecucion se han bajado {bajos} bytes y deberian ser los "
+            f"{args.bytes_clarke} del comentario: el texto de {args.bytes_kjv} estaba "
+            f"en el perfil",
+        )
+        c.nota(f"bajados {bajos} bytes del comentario, y el texto venia del perfil")
 
     c.imprimir()
     return 0

@@ -65,9 +65,29 @@ class RutaBiblioteca extends Ruta {
   String toString() => 'biblioteca';
 }
 
-/// El lector, con un texto abierto y un pasaje en pantalla.
+/// El lector, con un texto abierto y un pasaje en pantalla, y con un comentario al lado.
+///
+/// Y LA RUTA ES UNA FRASE QUE SE PUEDE COPIAR Y MANDAR:
+///
+///     /leer/KJV2006/John.3.16                 el texto, a secas
+///     /leer/KJV2006/John.3.16/con/CLARKE      el texto, con el comentario al lado
+///
+/// Y EL COMENTARIO VA **DETRAS** DEL PASAJE, en un segmento `con`, y no antes. Va
+/// detras porque es lo que se **anade** a algo, y porque el pasaje es la parte que el
+///omodulo resuelve: si el comentario fuera lo que va primero, bastaria mover dos
+///_segmentos para que `/leer/CLARKE/KJV2006/John.3.16` dijera lo mismo y significara
+/// otra cosa.
+///
+/// Y EN UN SEGMENTO Y NO EN UN PARAMETRO DE CONSULTA, por dos motivos. Uno: la URL es lo
+/// que se copia y se manda, y con dos mecanismos --ruta y consulta-- hay que decidir
+/// cual gana cuando discrepan, y no hay regla que no haya que inventar. Dos: `Rutas` ya
+/// corta por barras porque el despliegue anade un prefijo que no se puede adivinar, y
+/// mirar tambien el `?` es mas codigo para una frase que ya cabe en la ruta.
+///
+/// Y PUEDE SER NULO, y entonces la ruta es la de antes, sin cambios: una direccion
+/// `/leer/KJV2006/John.3.16` de hace un mes sigue abriendo lo mismo que abria.
 class RutaLectura extends Ruta {
-  const RutaLectura(this.modulo, this.referencia);
+  const RutaLectura(this.modulo, this.referencia, [this.comentario]);
 
   /// El identificador del modulo, tal cual lo declara el manifiesto.
   final String modulo;
@@ -75,15 +95,26 @@ class RutaLectura extends Ruta {
   /// Que se esta leyendo. El versiculo es null cuando se lee el capitulo entero.
   final Referencia referencia;
 
+  /// El identificador del comentario que va al lado, o null si no hay ninguno.
+  ///
+  /// Es un **identificador**, no un `ModuloAbierto`. La ruta es un texto: no lleva
+  /// bases de datos dentro, y por eso mismo no puede asegurar que ese modulo siga
+  /// descargado. Eso lo comprueba quien la aplica.
+  final String? comentario;
+
   @override
   bool operator ==(Object other) =>
-      other is RutaLectura && other.modulo == modulo && other.referencia == referencia;
+      other is RutaLectura &&
+      other.modulo == modulo &&
+      other.referencia == referencia &&
+      other.comentario == comentario;
 
   @override
-  int get hashCode => Object.hash(modulo, referencia);
+  int get hashCode => Object.hash(modulo, referencia, comentario);
 
   @override
-  String toString() => 'leer $modulo ${referencia.paraUrl}';
+  String toString() =>
+      'leer $modulo ${referencia.paraUrl}${comentario == null ? '' : ' con $comentario'}';
 }
 
 /// Una ruta que no se entiende.
@@ -113,11 +144,12 @@ class RutaDesconocida extends Ruta {
 class Rutas {
   const Rutas._();
 
-  /// `/leer/{modulo}/{libro}.{capitulo}[.{versiculo}]`.
+  /// `/leer/{modulo}/{libro}.{capitulo}[.{versiculo}][/con/{comentario}]`.
   ///
   /// El separador es una barra entre el modulo y el pasaje, y un punto dentro del
   /// pasaje. Es la convencion que usa el propio modulo en su tabla de versiculos, y
-  /// no es inventada aqui: `John.3.16` es como se escribe dentro del `.amod`.
+  /// no es inventada aqui: `John.3.16` es como se escribe dentro del `.amod`. El
+  /// comentario, si lo hay, va en un segmento mas, detrás del pasaje.
   static const String prefijoDeLectura = '/leer/';
 
   /// La ruta de la biblioteca.
@@ -151,20 +183,43 @@ class Rutas {
     return RutaDesconocida(ruta);
   }
 
-  /// La parte que va despues de `/leer/`: `{modulo}/{libro}.{capitulo}[.{versiculo}]`.
+  /// La parte que va despues de `/leer/`:
+  ///
+  ///     {modulo}/{libro}.{capitulo}[.{versiculo}][/con/{comentario}]
+  ///
+  /// Y SE CORTA POR **TODAS** LAS BARRAS, Y NO POR LA PRIMERA. La primera version
+  /// tomaba `resto.indexOf('/')` y se llevaba todo lo demas como pasaje, asi que
+  /// `/leer/KJV2006/John.3.16/con/CLARKE` le preguntaba a `Referencia.tryParse` por
+  /// `John.3.16/con/CLARKE`, que no es un pasaje y devolvia null. El error era
+  /// silencioso --una ruta desconocida-- y por eso mismo es el que hay que evitar.
+  ///
+  /// Y CUATRO PARTES COMO MAXIMO. Una quinta no es una ruta de este proyecto, y
+  /// aceptarla seria inventarse una sintaxis que nadie ha escrito.
   static Ruta _leerPasaje(String ruta) {
     final resto = ruta.substring(prefijoDeLectura.length);
-    final corte = resto.indexOf('/');
-    if (corte <= 0 || corte == resto.length - 1) return RutaDesconocida(ruta);
+    final partes = resto.split('/');
+    if (partes.length < 2 || partes.length > 4) return RutaDesconocida(ruta);
 
-    final modulo = Uri.decodeComponent(resto.substring(0, corte));
-    final pasaje = Uri.decodeComponent(resto.substring(corte + 1));
-
-    final referencia = Referencia.tryParse(pasaje);
-    if (referencia == null) return RutaDesconocida(ruta);
+    final modulo = Uri.decodeComponent(partes[0]);
     if (modulo.isEmpty) return RutaDesconocida(ruta);
 
-    return RutaLectura(modulo, referencia);
+    final referencia = Referencia.tryParse(Uri.decodeComponent(partes[1]));
+    if (referencia == null) return RutaDesconocida(ruta);
+
+    // Y SIN COMENTARIO SI NO HAY MAS PARTES. Y si las hay, tienen que ser exactamente
+    // `con` y un identificador: `/leer/KJV2006/John.3.16/CLARKE` no es una ruta con
+    // comentario, es una ruta mal escrita, y tratarla como lo primero haria que un
+    // enlace con un segmento de mas abriera el texto **sin** comentario y sin decir
+    // nada, que es la forma de que un enlace mal escrito parezca un enlace bueno.
+    String? comentario;
+    if (partes.length >= 3) {
+      if (partes[2] != 'con') return RutaDesconocida(ruta);
+      if (partes.length < 4) return RutaDesconocida(ruta);
+      comentario = Uri.decodeComponent(partes[3]);
+      if (comentario.isEmpty) return RutaDesconocida(ruta);
+    }
+
+    return RutaLectura(modulo, referencia, comentario);
   }
 
   /// La direccion de una ruta.
@@ -175,8 +230,9 @@ class Rutas {
   /// `Router` esperan.
   static String escribir(Ruta ruta) => switch (ruta) {
         RutaBiblioteca() => biblioteca,
-        RutaLectura(:final modulo, :final referencia) =>
-          '$prefijoDeLectura${Uri.encodeComponent(modulo)}/${referencia.paraUrl}',
+        RutaLectura(:final modulo, :final referencia, :final comentario) =>
+          '$prefijoDeLectura${Uri.encodeComponent(modulo)}/${referencia.paraUrl}'
+          '${comentario == null ? '' : '/con/${Uri.encodeComponent(comentario)}'}',
         RutaDesconocida(:final texto) => texto,
       };
 }

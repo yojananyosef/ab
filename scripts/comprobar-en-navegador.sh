@@ -18,6 +18,11 @@
 #   8.2  La app abre un `.amod` real y muestra Juan 3:16, con el texto entero.
 #   8.3  Dos ejecuciones con el mismo perfil: la segunda baja 0 bytes.
 #   8.4  El manifiesto se lee del origen real y los modulos salen con su tamano.
+#   8.5  Una tercera, con el comentario al lado del versiculo: `/leer/KJV2006/John.3.16/con/CLARKE`.
+#        Reutiliza el perfil, asi que solo bajan los 57 MiB del comentario. Comprueba que
+#        el versiculo se lee entero **y** que hay una nota debajo, que es lo unico que no
+#        se puede comprobar en Dart: un `.amod` con tabla `commentary`, `WITHOUT ROWID` y
+#        clave de cuatro columnas, abierto en un SQLite de WASM con otro modulo abierto.
 #   7.5  `history.length` crece al cambiar de capitulo y NO al cambiar de version.
 #        No es una tarea del grupo 8, pero es lo unico comprobable aqui y no en Dart,
 #        asi que se comprueba aqui y en ningun otro sitio.
@@ -148,6 +153,21 @@ NAVEGADOR="${NAVEGADOR:-$(buscar_navegador || true)}"
 # --- configuracion -----------------------------------------------------------
 
 RUTA_SONDA="${AB_RUTA_SONDA:-/leer/KJV2006/John.3.16}"
+
+# La ruta de la TERCERA ejecucion: el mismo versiculo con el comentario al lado.
+#
+# Y ESTA VA EN SU PROPIA VARIABLE Y NO SE SACA DE LA DE ARRIBA. La primera version de la
+# tercera ejecucion la llamaba `ejecutar pareja` sin segundo argumento, asi que
+# `ejecutar` usaba `$RUTA_SONDA` --**la de la Biblia a secas**-- y el navegador recibio
+# `/leer/KJV2006/John.3.16`. La comprobacion dijo "el comentario abierto es None, no
+# CLARKE" y 0 bytes bajados, que es exactamente lo que habia que comprobar: que el
+# cambio no hacia nada. Y no hacia nada porque no se le habia pedido.
+#
+# Que ademas fallara **por larazon equivocada** es lo que lo hace digno de anotarse: un
+# "FALLO" aqui significa "el comentario no se abrio", y de verdad no se abrio, pero no
+# porque este roto sino porque nadie lo pidio. Un fallo que dice la verdad a medias es
+# peor que uno que no dice nada.
+RUTA_PAREJA="${AB_RUTA_PAREJA:-/leer/KJV2006/John.3.16/con/CLARKE}"
 PUERTO="${AB_PUERTO:-8099}"
 PUERTO_COLECTOR="${AB_PUERTO_COLECTOR:-8098}"
 VIRTUAL_MS="${AB_VIRTUAL_TIME_MS:-240000}"
@@ -167,10 +187,20 @@ rm -f "$TRABAJO"/primera.json "$TRABAJO"/segunda.json
 # --- los pasos ---------------------------------------------------------------
 
 compilar() {
+  # Y LA RUTA DE LA SONDA ES UN **PARAMETRO**, Y NO UNA VARIABLE FIJA.
+  #
+  # MEDIDO el 4 de octubre de 2026, y salio de la tercera ejecucion: la sonda arranca en
+  # `--dart-define=AB_SONDA=$RUTA_SONDA`, que va **compilado dentro**, asi que
+  # arrancarla en `/leer/KJV2006/John.3.16/con/CLARKE` sin recompilar no abre ese
+  # enlace: la aplicacion arranca en la ruta de la primera y **reescribe la del
+  # navegador**. Lo que se veia era un "ok" con `ruta: .../John.3.16` y el comentario
+  # nulo, o sea, una comprobacion que pasaba sin haber comprobado el comentario.
+  local ruta_sonda="${1:-$RUTA_SONDA}"
+
   echo "==> flutter analyze"
   flutter analyze
 
-  echo "==> flutter build web con la sonda"
+  echo "==> flutter build web con la sonda en $ruta_sonda"
   # `--base-href=/` a proposito: aqui se sirve en la raiz. El `404.html` que hace el CI
   # para GitHub Pages se copia tambien, para que recargar en `/leer/...` no de un 404 de
   # verdad sin aplicacion dentro.
@@ -189,7 +219,7 @@ compilar() {
   # mismo origen. El servidor local reenvia `/aa` a github.io, de modo que aqui tambien
   # son del mismo origen. Ver la cabecera de `scripts/servir.py`.
   flutter build web --release --base-href=/ \
-    --dart-define=AB_SONDA="$RUTA_SONDA" \
+    --dart-define=AB_SONDA="$ruta_sonda" \
     --dart-define=AB_COLECTOR="$URL_COLECTOR" \
     --dart-define=AB_ORIGEN_CATALOGO="http://127.0.0.1:$PUERTO/aa" \
     --no-wasm-dry-run
@@ -204,6 +234,25 @@ compilar() {
 # Una ejecucion del navegador: arranca el colector, lanza, y espera el resultado.
 ejecutar() {
   local etiqueta="$1"
+  # Y LA RUTA ES UN PARAMETRO Y NO UNA VARIABLE FIJA, porque ahora hay una tercera
+  # ejecucion que va a otra sitio: al mismo versiculo **con el comentario al lado**.
+  # Es la unica forma de comprobar en un navegador de verdad lo que hace el change, y
+  # lo unico que puede hacer es:\n
+  #\n
+  #     /leer/KJV2006/John.3.16/con/CLARKE\n
+  #\n
+  # Con la ruta fija, comprobarlo seria arrancar el navegador con una variable cambiada
+  # de fuera, y entonces la primera y la segunda ejecucion medirian una ruta que no es
+  # la que dice el principio del script.
+  #
+  # Y ANTES DE ESTO LLAMABAN CON **DOS** ARGUMENTOS: la etiqueta y el nombre de una
+  # captura. Ese segundo argumento era un resto de cuando se hacia `--screenshot`, que se
+  # quitio porque en este entorno se colgaba. Al añadir la ruta como segundo parametro, se
+  # llevo por delante el nombre de la captura: el navegador abria
+  # `http://127.0.0.1:8099lector-360-1.png`, el servidor caia en su `404.html`, y la
+  # sonda no escribia nada en 900 s. Un argumento muerto que nadie lee es un sitio donde
+  # se rompe lo nuevo sin que se note.
+  local ruta="${2:-$RUTA_SONDA}"
 
   echo "    arranque del colector"
   python3 scripts/colector.py \
@@ -248,7 +297,7 @@ $(tail -5 "$TRABAJO/$etiqueta.colector.log")"
     --user-data-dir="$PERFILO" \
     --window-size=360,760 \
     --virtual-time-budget="$VIRTUAL_MS" \
-    "http://127.0.0.1:$PUERTO$RUTA_SONDA" \
+    "http://127.0.0.1:$PUERTO$ruta" \
     >"$TRABAJO/$etiqueta.navegador.log" 2>&1 || true
 
   if ! wait "$colector"; then
@@ -265,6 +314,7 @@ antes de que terminara la descarga"
 
 echo "==> navegador: $NAVEGADOR ($("$NAVEGADOR" --version 2>/dev/null | head -1 | tr -d '\n' || echo 'version desconocida'))"
 echo "==> ruta de la sonda: $RUTA_SONDA"
+echo "==> ruta de la tercera: $RUTA_PAREJA"
 echo "==> reloj virtual: ${VIRTUAL_MS} ms"
 echo "==> limite del colector: ${LIMITE_COLECTOR} s"
 
@@ -320,7 +370,7 @@ echo
 echo "===================== PRIMERA EJECUCION ====================="
 echo "Perfil limpio: el modulo no esta y hay que bajarlo entero."
 rm -rf "$PERFILO"
-ejecutar primera lector-360.png
+ejecutar primera
 
 echo "--- resultado de la primera ejecucion ---"
 cat "$TRABAJO/primera.json"
@@ -337,7 +387,7 @@ python3 scripts/comprobar-resultado.py \
 echo
 echo "===================== SEGUNDA EJECUCION ====================="
 echo "Mismo perfil: el modulo esta guardado y no se debe bajar otra vez."
-ejecutar segunda lector-360-2.png
+ejecutar segunda
 
 echo "--- resultado de la segunda ejecucion ---"
 cat "$TRABAJO/segunda.json"
@@ -345,6 +395,32 @@ cat "$TRABAJO/segunda.json"
 python3 scripts/comprobar-resultado.py \
   --primera "" \
   --segunda "$TRABAJO/segunda.json" \
+  --juan316 "$JUAN316" \
+  --etiqueta "$CATALOGO_ETIQUETA" \
+  --bytes-kjv "$CATALOGO_KJV_BYTES" \
+  --bytes-clarke "$CATALOGO_CLARKE_BYTES" \
+  --perfil-limpio
+
+echo
+echo "==================== TERCERA EJECUCION ====================="
+echo "Mismo perfil: el texto esta guardado y solo se baja el comentario."
+echo "Y SE RECOMPILA, porque la ruta de la sonda va compilada dentro."
+compilar "$RUTA_PAREJA"
+# Y REUTILIZA EL PERFIL A PROPOSITO. Con un perfil limpio esta ejecucion bajaria los
+# 22 MiB del KJV2006 otra vez para no comprobar nada que no se haya comprobado en la
+# primera, y el script tardaria mas sin decir una cosa mas. Aqui lo que se baja son los
+# 57 MiB del CLARKE, y eso si es lo que hay que comprobar: que un `.amod` con tabla
+# `commentary` --y `WITHOUT ROWID` con clave de cuatro columnas-- se abre en un SQLite
+# de WASM con el texto al lado.
+ejecutar pareja "$RUTA_PAREJA"
+
+echo "--- resultado de la tercera ejecucion ---"
+cat "$TRABAJO/pareja.json"
+
+python3 scripts/comprobar-resultado.py \
+  --primera "" \
+  --segunda "" \
+  --pareja "$TRABAJO/pareja.json" \
   --juan316 "$JUAN316" \
   --etiqueta "$CATALOGO_ETIQUETA" \
   --bytes-kjv "$CATALOGO_KJV_BYTES" \

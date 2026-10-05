@@ -143,6 +143,42 @@ class Sonda {
   /// Y SI NUNCA DEVUELVE NADA, se escribe el motivo al cabo de [esperaMaxima]. Una
   /// comprobacion que se queda esperando para siempre en un fallo es indistinguible de
   /// una que se cuelga.
+  /// Espera a que [cuando] diga que ya esta, sin escribir nada.
+  ///
+  /// Y ES DISTINTO DE [esperarYEscribir] porque aqui no hay un resultado que escribir:
+  /// lo que se espera es una **accion** --que se acepte una descarga y se abra lo
+  /// descargado-- y lo que se escribe despues lo escribe quien espera.
+  ///
+  /// Y `esperaMaxima` es MENOR que el reloj virtual del navegador, por el mismo motivo que
+  /// en [esperarYEscribir], y con el mismo motivo. Con 150 s de espera contra 240 s de
+  /// reloj virtual siempre queda margen para escribir el motivo.
+  ///
+  /// Y EL `try` NO ES DEFENSIVA SIN MOTIVO: una excepcion que sale de aqui llega a un
+  /// `addPostFrameCallback`, donde nadie la ve, y entonces la sonda se queda esperando
+  /// hasta que la matan sin haber escrito nada. Un error que no se escribe es
+  /// indistinguible de una espera que no termina.
+  Future<void> esperarAQue(
+    bool Function() cuando, {
+    Duration esperaMaxima = const Duration(seconds: 150),
+  }) async {
+    if (!kSondaActiva) return;
+
+    final limite = DateTime.now().add(esperaMaxima);
+    while (DateTime.now().isBefore(limite)) {
+      // Y EL `try` ENCIMA DEL BUCLE Y NO DENTRO, porque aqui lo que se traga una
+      // excepcion es la espera, y la espera agotada **tampoco** dice nada: el paso
+      // siguiente escribe su propio resultado y por eso no se pierde del todo. Lo que no
+      // puede ser es que la excepcion salga de aqui y tumbe la aplicacion.
+      try {
+        if (cuando()) return;
+      } catch (_) {
+        // Se traga y sigue esperando. Si [cuando] no puede ni preguntar, no hay nada que
+        // comprobar, y no es motivo para apagar el resto de la comprobacion.
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+  }
+
   Future<void> esperarYEscribir({
     required Map<String, Object?>? Function() cuando,
     required String motivoDeEspera,
@@ -308,6 +344,29 @@ class Sonda {
 /// Y CUENTA LO QUE HAYA, QUE EN UN COMENTARIO SON LAS NOTAS DEL CAPITULO Y EN UNA BIBLIA
 /// SUS VERSICULOS. La cuenta sale del mismo modulo que las trae, asi que no hay forma de
 /// que uno y otro se separen.
+/// Cuantos versiculos del capitulo tienen nota en el comentario abierto.
+///
+/// Y VA POR SU CONSULTA Y NO POR [LectorViewModel.versiculosConNota], que son los del
+/// **pasaje**: con una ruta a un versiculo, esos son uno. Medido: Juan 3 tiene 32
+/// versiculos con nota de 36 que tienen texto, y la comprobacion del navegador va contra
+/// los 32.
+int _versiculosConNotaEnElCapitulo(LectorViewModel lector, Referencia esperado) {
+  final modulo = lector.moduloDeComentario;
+  if (modulo == null) return -1;
+  return modulo.leer(Referencia(esperado.libro, esperado.capitulo)).versiculosConNota.length;
+}
+
+/// El texto de la primera nota que hay al lado, o cadena vacia.
+///
+/// Y LA PRIMERA Y NO LA CONCATENACION de todas: Juan 5 tiene 43 notas y unas 20.000
+/// caracteres, y mandarlos enteros haria el registro ilegible y el POST enorme. Lo que
+/// se comprueba es que hay **una** nota y que empieza por la palabra que tiene que
+/// empezar.
+String _primeraNotaAlLado(LectorViewModel lector, Referencia esperado) {
+  final notas = lector.notasDe(esperado.versiculo ?? 1);
+  return notas.isEmpty ? '' : notas.first.texto;
+}
+
 int _cuentaDeCapitulo(LectorViewModel lector, Referencia esperado) {
   final modulo = lector.modulo;
   if (modulo == null) return -1;
@@ -334,10 +393,21 @@ Map<String, Object?>? mirarLaAplicacion({
   required LectorViewModel lector,
   required Referencia esperado,
   required EstadoLectura estado,
+  String? comentarioEsperado,
 }) {
   final pasaje = lector.pasaje;
   if (pasaje == null || pasaje.vacio) return null;
   if (lector.estado != EstadoLecturaTexto.leyendo) return null;
+
+  // Y SI LA RUTA PIDE COMENTARIO, **HAY QUE TENERLO** antes de dar el resultado por bueno.
+  //
+  // Sin esta comprobacion, `/leer/KJV2006/John.3.16/con/CLARKE` en un perfil donde el
+  // CLARKE no esta daria "ok" a los dos segundos: Juan 3:16 se lee, que es lo unico que
+  // se estaba mirando, y el comentario --lo que hace especial a esta ruta-- puede no
+  // haberse descargado nunca. Medido el 4 de octubre de 2026: 0 bytes y un "ok".
+  if (comentarioEsperado != null && lector.idDelComentario != comentarioEsperado) {
+    return null;
+  }
 
   // Y SE COMPRUEBA QUE SEA **EL PEDIDO**, Y NO SOLO QUE HAYA ALGO. Una sonda que leyera
   // cualquier pasaje y diera el texto de ese no comprobaria nada: se pide Juan 3:16, y lo
@@ -374,6 +444,21 @@ Map<String, Object?>? mirarLaAplicacion({
     'tipoDeContenido': lector.modulo?.tipo.name,
     'notas': pasaje.notas.length,
     'esComentario': esComentario,
+
+    // --- y el comentario que va AL LADO, que es otra cosa ---
+    //
+    // Y NO SE MEZCLA CON `notas`, que es el caso en que el modulo abierto **es** un
+    // comentario. Son dos preguntas distintas: "estas leyendo un comentario" y "tienes un
+    // comentario al lado de un texto". Con un solo campo, un valor de 1 seria las dos
+    // cosas a la vez y la comprobacion no podria distinguirlas.
+    'comentario': lector.idDelComentario,
+    'notasAlLadoDelPasaje': lector.totalDeNotas,
+    // Y EL **CAPITULO ENTERO**, no el pasaje. `versiculosConNota` son los del pasaje, y el
+    // pasaje aqui es un versiculo --por eso salen 1 y no 32--, asi que la comprobacion
+    // del capitulo va con su propia consulta.
+    'versiculosConNotaAlLadoEnElCapitulo': _versiculosConNotaEnElCapitulo(lector, esperado),
+    'notasAlLadoTexto': _primeraNotaAlLado(lector, esperado),
+    'motivoDelComentario': lector.motivoDelComentario,
     'capituloEntero': <String, Object?>{
       'libro': esperado.libro,
       'capitulo': esperado.capitulo,

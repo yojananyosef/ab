@@ -28,6 +28,7 @@ import 'package:flutter/foundation.dart';
 import 'package:ab/data/repositories/modulo_repository.dart';
 import 'package:ab/domain/models/libro.dart';
 import 'package:ab/domain/models/libros.dart';
+import 'package:ab/domain/models/nota.dart';
 import 'package:ab/domain/models/pasaje.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/domain/models/terminos.dart';
@@ -71,6 +72,24 @@ class LectorViewModel extends ChangeNotifier {
 
   ModuloAbierto? _abierto;
 
+  // --- el comentario que va al lado ---
+  //
+  // Y SON TRES CAMPOS Y NO UNO, Y POR QUE. El modulo abierto es una base de datos que
+  // hay que cerrar; el pasaje es lo que se esta pintando, y no tiene por que estar --se
+  // pide al abrir el comentario y se queda si luego se pide otro pasaje--; y el motivo
+  // del fallo es lo que dice la pantalla cuando el comentario no se pudo abrir. Meterlo
+  // todo en un solo `ModuloAbierto?` obligaria a consultar `!= null` para saber tres
+  // cosas distintas, y en dos de ellas la respuesta es "si" y en la otra "no".
+  ModuloAbierto? _comentario;
+  Pasaje? _notas;
+  String? _motivoDelComentario;
+
+  // Y EL **PEDIDO**, QUE NO ES LO MISMO QUE EL ABIERTO. Es lo que la pantalla necesita
+  // para poder decir "Descargar el CLARKE, 57 MiB": con el identificador del que se
+  // pidio, no hace falta saber de donde salio para ofrecer bajarlo, y sin el no hay
+  // forma de poner ese boton --el aviso solo lleva texto.
+  String? _comentarioPedido;
+
   EstadoLecturaTexto _estado = EstadoLecturaTexto.sinModulo;
   Pasaje? _pasaje;
   Terminos? _terminos;
@@ -106,6 +125,59 @@ class LectorViewModel extends ChangeNotifier {
   /// El identificador del modulo abierto.
   String? get idDelModulo => _abierto?.id;
 
+  // --- el comentario que va al lado ---
+
+  /// El identificador del comentario abierto, o null si no hay ninguno.
+  String? get idDelComentario => _comentario?.id;
+
+  /// El identificador del comentario que se pidio, haya abierto o no.
+  ///
+  /// Y ES DISTINTO DE [idDelComentario] PORQUE EL CASO INTERESANTE ES EL DE PEDIRLO Y
+  /// NO PODER: sin este identificador, quien recibe un enlace con un comentario que no
+  /// tiene ve un texto que dice "no esta descargado" y **nada mas**, y 57 MiB no se
+  /// bajan solos. Con el, la pantalla puede ofrecer bajarlo.
+  String? get comentarioPedido => _comentarioPedido;
+
+  /// Si hay un comentario abierto al lado del texto.
+  bool get tieneComentario => _comentario != null;
+
+  /// El modulo del comentario abierto, o null.
+  ///
+  /// Y ES PARA LO QUE **NO** ESTA EN LAS NOTAS. [notasDe] da las de un versiculo y
+  /// [versiculosConNota] las del pasaje que se esta leyendo; para contar las del capitulo
+  /// entero hay que preguntar al modulo, y quien lo tiene abierto es este.
+  ModuloAbierto? get moduloDeComentario => _comentario;
+
+  /// Por que no se pudo abrir el comentario pedido, o null si no ha pasado nada.
+  ///
+  /// Y ESTO **NO ES UN FALLO DE LECTURA**, y por eso es un aviso aparte y no el
+  /// `_aviso` del texto. Leer Juan 3:16 del KJV con el CLARKE pedido y no descargado es
+  /// Juan 3:16 del KJV, entero y legible, con un aviso de que al lado no hay nada. Si
+  /// esto fuera el estado de lectura, quien sharea un enlace desde su movil --donde si
+  /// esta el comentario-- y lo abre en otro --donde no-- veria un error por algo que
+  /// funciona.
+  String? get motivoDelComentario => _motivoDelComentario;
+
+  /// Las notas del versiculo [versiculo], en orden.
+  ///
+  /// Y SALEN DEL COMENTARIO, NO DEL PASAJE. Un `Pasaje` es de un modulo, y el versiculo
+  /// con su nota no viene del mismo sitio que el versiculo con su texto: por eso hay
+  /// dos y por eso esto no es `pasaje.notasDe`.
+  ///
+  /// Y SI NO HAY COMENTARIO, UNA LISTA VACIA Y NADA MAS. No una excepcion: sin comentario
+  /// es el caso normal, el de `/leer/KJV2006/John.3.16` a secas, y el de quien todavia
+  /// no ha elegido ninguno.
+  List<Nota> notasDe(int versiculo) => _notas?.notasDe(versiculo) ?? const <Nota>[];
+
+  /// Si ese versiculo tiene alguna nota.
+  bool tieneNotasDe(int versiculo) => notasDe(versiculo).isNotEmpty;
+
+  /// Los versiculos de este pasaje que tienen nota en el comentario abierto.
+  List<int> get versiculosConNota => _notas?.versiculosConNota ?? const <int>[];
+
+  /// Cuantas notas hay en el pasaje que se esta leyendo.
+  int get totalDeNotas => _notas?.notas.length ?? 0;
+
   /// Los libros que tiene el modulo abierto, ya **ordenados en orden canonico**.
   ///
   /// El modulo los devuelve en orden alfabetico --los guarda como texto sin indice-- y
@@ -132,6 +204,11 @@ class LectorViewModel extends ChangeNotifier {
   /// KJV de 22 MiB y el CLARKE de 57 MiB abiertos a la vez son 79 MiB, y en un movil
   /// de gama baja eso es la diferencia entre que funcione y que no.
   void abrir(ModuloAbierto modulo, {required String? licenciaDelManifiesto}) {
+    // Y ABRIR UN TEXTO CIERRA EL COMENTARIO. No es que se le olvide: cambiar de
+    // traduccion es cambiar de lectura entera, y dejar el comentario del anterior al
+    // lado del nuevo haria que las notas de Juan 3:16 de una traduccion anadida
+    // al Juan 3:16 de otra, que es el peor sitio donde puede estar un comentario.
+    _cerrarComentario();
     _cerrarSiHabia();
     _abierto = modulo;
     _terminos = Terminos.desdeModulo(modulo.info, modulo.infoEntero);
@@ -152,6 +229,7 @@ class LectorViewModel extends ChangeNotifier {
   /// Marca que no hay ningun modulo. Se usa cuando se elige uno que no esta
   /// descargado.
   void sinModulo([String? aviso]) {
+    _cerrarComentario();
     _cerrarSiHabia();
     _estado = EstadoLecturaTexto.sinModulo;
     _pasaje = null;
@@ -216,7 +294,126 @@ class LectorViewModel extends ChangeNotifier {
       _pasaje = null;
       _motivoDelFallo = 'No se ha podido leer el texto: $e';
       notifyListeners();
+      return;
     }
+
+    // Y LAS NOTAS SE PIDEN AL FINAL Y EN SU PROPIA FUNCION, y es lo unico que se hace
+    // fuera de la del texto. La razon es la regla de este cambio: **que el comentario
+    // no tenga nota para este pasaje no puede cambiar como se lee el texto**. Juan 3:1
+    // no tiene nota en el CLARKE --medido--, y leer Juan 3:1 del KJV con el CLARKE al
+    // lado tiene que ensefiar el versiculo, no decir que no existe.
+    //
+    // Y por eso `_leerNotas` no toca `_estado`, ni `_aviso`, ni `_pasaje`, ni `_ultimoValido`,
+    // y ni siquiera avisa a los oyentes: si no hay comentario, no hay nada que contar y
+    // un `notifyListeners` de mas es un frame rebuilding la pantalla sin motivo.
+    _leerNotas(referencia);
+  }
+
+  /// Las notas del pasaje pedido, del comentario abierto. No toca nada mas.
+  ///
+  /// Y SE PREGUNTA SI EL COMENTARIO TIENE EL PASAJE, y no se espera una lista vacia para
+  /// deducirlo. `existe` es una consulta de `count(*)` y esta es la unica forma de saber
+  /// si el comentario tiene Juan 3:1 o si simplemente no comenta eso; las dos cosas dan
+  /// una lista vacia y solo una de las dos es una coincidencia.
+  void _leerNotas(Referencia referencia) {
+    final c = _comentario;
+    if (c == null) return;
+    // Y UN `try` AQUI Y NO AL LLAMANTE. Un comentario que revienta al consultarse --
+    // una tabla que no esta donde decia, un `.amod` cambiado por fuera-- no puede
+    // llevarse por delante el texto que se estaba leyendo: lo que esta leyendo quien
+    // tiene abierto Juan 3:16 del KJV es el KJV, y las notas son un extra. Sin este
+    // `try`, la excepcion sale de `leer` y tumba la pantalla entera.
+    try {
+      _notas = c.existe(referencia) ? c.leer(referencia) : null;
+    } catch (_) {
+      _notas = null;
+    }
+  }
+
+  /// Vuelve a pedir las notas de lo que se esta leyendo.
+  ///
+  /// Y ESTE METODO EXISTE POR UN FALLO MEDIDO. Al ir de Juan 3 a Juan 5 con el CLARKE
+  /// al lado, las notas seguian siendo las de Juan 3: 32 notas donde --
+  /// medido-- hay 43. Juan 5 ensenaba el comentario de otro pasaje sin decir nada, que
+  /// es peor que no ensenar ninguno.
+  ///
+  /// La causa era que quien.apply el comentario compara con lo que ya hay abierto y, si
+  /// es el mismo, no hace nada. Y para **abrir** eso es lo correcto --reabrir 57 MiB
+  /// para volver a traer las mismas notas no tiene sentido--, pero **leerlas** es otra
+  /// cosa: el pasaje ha cambiado.
+  ///
+  /// Y NO SE VUELVE A PEDIR SI SON LAS MISMAS, que es lo que evita que `leer` y esto se
+  /// turnen y hagan un bucle de consultas.
+  void refrescarNotas() {
+    final ref = _pasaje?.referencia;
+    if (ref == null || _comentario == null) return;
+    if (_notas?.referencia == ref) return;
+    _leerNotas(ref);
+    notifyListeners();
+  }
+
+  /// Abre un comentario al lado del texto y pide las notas de lo que se esta leyendo.
+  ///
+  /// Y **NO SE TOCA EL ESTADO DE LECTURA**, ni el pasaje ni el titulo. Abrir un
+  /// comentario anade algo al lado de lo que ya se estaba leyendo; si se tocara el
+  /// estado, la pantalla pasaria por `cargando` y el texto que se estaba leyendo
+  //// desapareceria un instante para volver a aparecer, y eso en un texto de 1832 que se
+  /// esta leyendo es desconcertante.
+  ///
+  /// Y SE COMPRUEBA QUE SEA UN COMENTARIO. Un modulo que no trae notas se acepta --el
+  /// que sea traera lo que traiga y no hay nada que suponER-- pero se avisa, porque abrir
+  /// `/leer/KJV2006/John.3.16/con/KJV2006` tiene que decir algo en vez de ensenar el
+  /// texto y dejar pensar que se ha equivocado la ruta.
+  void abrirComentario(
+    ModuloAbierto modulo, {
+    required String? licenciaDelManifiesto,
+  }) {
+    _cerrarComentario();
+    _comentario = modulo;
+    _comentarioPedido = modulo.id;
+
+    if (modulo.tieneTextosDeBiblia) {
+      _motivoDelComentario =
+          '${modulo.id} es un texto de Biblia, no un comentario: al lado no hay nada '
+          'que ensenar.';
+    } else {
+      _motivoDelComentario = null;
+    }
+
+    final ref = _pasaje?.referencia;
+    if (ref != null) _leerNotas(ref);
+    notifyListeners();
+  }
+
+  /// Quita el comentario de al lado y deja el texto como estaba, y avisa a quien mira.
+  void cerrarComentario() {
+    _cerrarComentario();
+    notifyListeners();
+  }
+
+  /// Lo mismo, pero sin avisar. Para cuando quien llama avisa **por su cuenta** porque
+  /// esta cambiando de algo mas --el texto entero, o el final de la vida de la pantalla--,
+  /// y dos `notifyListeners` seguidos reconstruyen lo mismo dos veces.
+  void _cerrarComentario() {
+    _comentario?.cerrar();
+    _comentario = null;
+    _notas = null;
+    _motivoDelComentario = null;
+    _comentarioPedido = null;
+  }
+
+  /// Un comentario que no se pudo abrir. El texto **sigue leido**.
+  ///
+  /// Y ES UN METODO Y NO UN PARAMETRO PORQUE ES LO MAS FRECUENTE. Alguien que recibe
+  /// `/leer/KJV2006/John.3.16/con/CLARKE` en un movil donde el CLARKE no esta
+  /// descargado --y no lo va a tener nunca si pesa 57 MiB-- tiene Juan 3:16 entero y
+  /// un aviso de que al lado no hay nada. Lo raro es que **no** haya nada, no que haya
+  /// algo a medias.
+  void comentarioNoDisponible(String id, String motivo) {
+    _cerrarComentario();
+    _comentarioPedido = id;
+    _motivoDelComentario = motivo;
+    notifyListeners();
   }
 
   /// El ultimo versiculo existente antes de [desde], o null.
@@ -290,6 +487,7 @@ class LectorViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _cerrarComentario();
     _cerrarSiHabia();
     super.dispose();
   }

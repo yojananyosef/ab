@@ -544,6 +544,111 @@ Dos reglas, y hacen falta las dos:
 - **`escribir` no lanza nunca.** Si aun asi falla, escribe un informe que diga que ha
   fallado y por que. Un `try` que devuelve un informe vacio sigue mintiendo.
 
+### La comprobacion en navegador se puede COMER lo que tiene que comprobar
+
+Cuatro veces seguidas, el 4 y el 5 de octubre de 2026, la tercera ejecucion de
+`scripts/comprobar-en-navegador.sh` dio "FALLO" y en las cuatro el motivo era el mismo y
+no era la app:
+
+1. La sonda arranca en `--dart-define=AB_SONDA=$RUTA_SONDA`, que va **compilado dentro**.
+   Arrancarla en `/leer/KJV2006/John.3.16/con/CLARKE` sin recompilar no abre ese enlace:
+   la aplicacion arranca en la ruta de la primera y **reescribe la del navegador**. El
+   informe decia `ruta: .../John.3.16`, que es la prueba del fallo.
+2. `ejecutar pareja` se llamaba **sin** el argumento de la ruta, asi que `ejecutar` uso
+   `$RUTA_SONDA`. Un argumento muerto --el nombre de una captura que se habia quitado-- se
+   llevo por delante el nuevo.
+3. El paso 0 ofrecia bajar el comentario **antes** de que la ruta estuviera aplicada:
+   `comentarioPedido` era null, la espera se daba por buena y no se bajaba nada.
+4. La propia sonda navegaba con `RutaLectura(_moduloDeLaSonda, esperado)`, **sin** el
+   comentario, y se comia el `/con/`.
+
+Y EL QUE MAS ENSEÑA ES EL 3, Y NO ES UN ERROR DE LA SONDA. `comentarioPedido == null` se
+lee igual que "no hay nada pendiente", asi que la espera se acababa y el paso 1 se
+encontraba Juan 3:16 entero a los dos segundos y devolvia `ok`. La comprobacion decia que
+si con **0 bytes** bajados, porque lo unico que miraba era el texto, y el texto es lo que
+funcionaba.
+
+La leccion, y es la misma de siempre: **una comprobacion que puede pasar sin comprobar lo
+nuevo es peor que no comprobar**, porque da verde. Por eso ahora `mirarLaAplicacion` no
+devuelve nada mientras la ruta pida un comentario y no este abierto, y por eso el paso 0
+espera a que haya pasaje antes de ofrecer la descarga.
+
+Y CADA UNO DE ESTOS CUATRO SALIO EN UN "FALLO" QUE DECIA LA VERDAD A MEDIAS. Un fallo que
+dice la verdad a medias es peor que uno que no dice nada: hace perder el rato mirando la
+app en vez de mirar el fallo.
+
+### Un enlace con un comentario tiene que poder bajarlo
+
+Medido el 4 de octubre de 2026 en la comprobacion en navegador, con
+`/leer/KJV2006/John.3.16/con/CLARKE` en un perfil donde el CLARKE no estaba:
+
+    Juan 3:16           se lee entero
+    comentario abierto  ninguno
+    bytes bajados       0
+
+Y ninguna de las 414 pruebas de Dart lo ve, porque el fallo **no esta en el modelo**: esta
+en que la app decia "el comentario CLARKE no esta descargado en este dispositivo" y se
+paraba ahi. Quien recibe el enlace no tenia forma de conseguir el comentario sin dejar de
+estar leyendo, y un enlace con un comentario que no se puede seguir no es un enlace: es
+una frase.
+
+La cadena que faltaba tiene tres saltos y ninguno de ellos es del modelo:
+
+1. **El aviso ofrece bajarlo**, con el boton al lado y el tamano en el boton. Un
+   "Descargar" sin coste conocido no se pulsa; uno que dice 54,9 MB se decide.
+2. **Quien baja es la biblioteca** y quien aplica una ruta es el enrutador. No hay nadie
+   en medio, asi que el enrutador **escucha** a la biblioteca.
+3. **Al terminar la descarga**, el enrutador vuelve a aplicar el comentario de la ruta, y
+   se abre solo.
+
+Y el paso 2 es el que no se ve: si el enrutador no escucha, el boton baja 57 MiB, termina,
+y quien lo pidio se queda con el texto y el comentario a medio bajar. Sin dar ningun error.
+
+Y LA ESCUCHA MIRA **UNA** COSA: que el identificador pedido este entre los descargados. La
+biblioteca avisa de los progresos de la descarga, de los errores y de los filtros, y con
+cualquier otro aviso la comprobacion se cumple igual y se reabre el comentario en cada
+barra de progreso.
+
+### Abrir un modulo NO es leer sus notas
+
+Medido el 4 de octubre de 2026 con el CLARKE abierto y una ruta que pide Juan 5:
+
+    Juan 3, que es de donde venian las notas   32 notas
+    Juan 5, que es de donde se iban a leer     32 notas   <- las mismas
+
+Juan 5 tiene **43** versiculos con nota. Ir de Juan 3 a Juan 5 con el comentario abierto
+dejaba las notas de Juan 3 encima de Juan 5, y la pantalla no decia nada: 32 notas
+correctas de otro pasaje, escritas donde iba la de Juan 5.
+
+La causa fue tratar "abrir el comentario" y "leer sus notas" como la misma cosa. En
+`NavegadorAb._aplicarComentario` se compara con lo que ya hay abierto y, si es el mismo,
+no se hace nada. Para **abrir** eso es lo correcto --reabrir 57 MiB y volver a pasarle
+`PRAGMA quick_check` para traer las mismas notas no tiene sentido--, pero el pasaje ha
+cambiado y las notas son de otro.
+
+La forma correcta es separarlas: si el comentario ya es el que toca, **no se reabre y se
+vuelven a leer**. Y se vuelve a leer solo si el pasaje es otro, o `leer` y esto se turban
+en un bucle de consultas.
+
+### Dos modulos abiertos: lo caro no es el tiempo
+
+Medido el 4 de octubre de 2026 sobre los ficheros reales:
+
+    PRAGMA quick_check, KJV2006    (22.544.384 bytes)     8,3 ms
+    PRAGMA quick_check, CLARKE     (57.536.512 bytes)    11,5 ms
+
+Doce milisegundos para comprobar 57 MiB. La sorpresa es util: al disenar el comentario al
+lado del texto, lo que se calculaba era el tiempo de abrir un segundo `.amod`, y se iba a
+saltar la comprobacion de integridad en el secundario por ser "un modulo secundario". No
+hace falta: son 11,5 ms y el sha256 ya se comprobo al descargar.
+
+Lo que si es caro es la **memoria**: 22 + 57 = 79 MiB de paginas SQLite abiertas a la vez.
+Y eso no se mide en el navegador, se nota en un movil de gama baja. Por eso:
+
+- El comentario se cierra al cambiar de texto, no solo al volver a la biblioteca.
+- Se cierra al cambiar de version del texto.
+- No se abre en ningun caso si la ruta no lo pide.
+
 ### `count(DISTINCT verse)` NO cuenta versiculos
 
 Medido el 4 de octubre de 2026 sobre el KJV real:
