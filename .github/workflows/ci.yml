@@ -28,26 +28,7 @@ concurrency:
 
 jobs:
   verificar-y-publicar:
-    # Y **`ubuntu-24.04` FIJADO**, Y NO `ubuntu-latest`.
-    #
-    # Medido el 5 de octubre de 2026: con `ubuntu-latest` el job se queda en `queued` sin
-    # ejecutar un paso y GitHub lo termina con
-    #
-    #     The job was not acquired by Runner of type hosted even after multiple attempts
-    #
-    # sin una linea de log. No es un fallo del codigo ni de la configuracion: no hay
-    # corredor. Y el aviso que trae el propio run es la causa --
-    #
-    #     The ubuntu-latest label will migrate to Ubuntu 26 beginning October 19, 2026.
-    #
-    # `ubuntu-latest` esta en plena reasignacion de imagen, y mientras dura no hay corredores
-    # que sirvan para esa etiqueta. Fijar la version **no** evita la migracion -- eso lo
-    # decide GitHub-- pero si evita depender de la etiqueta que se esta moviendo: el job pide
-    # una imagen concreta que existe y hay corredores para ella.
-    #
-    # Y NO SE QUITA EL TRABAJO AL FINAL POR ESTO. El job tambien despliega a GitHub Pages, y
-    # eso sigue haciendo falta: sin el, `ab` no esta en ningun sitio.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.desplegar.outputs.page_url }}

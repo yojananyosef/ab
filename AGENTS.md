@@ -1175,6 +1175,53 @@ abrir Juan 3. El 3 de mas era el **numero de capitulo**, que ahora va antes de l
 versiculos. Tres pruebas contaban 37 versiculos visibles. Se resolvio con una clave publica
 en el numero del versiculo, no con un filtro mas estrecho.
 
+### UN CI ROJO SIN UNA LINEA DE LOG ES QUE NO HAY CORREDOR, Y SE CONFIRMA EN EL ESTADO DE GITHUB
+
+Medido el 5 de octubre de 2026. El run del marco de estudio fallo asi:
+
+    The job was not acquired by Runner of type hosted even after multiple attempts
+    Internal server error. Correlation ID: 4f78c28c-30d9-4058-aced-52fc943f16fc
+
+**Sin una linea de log.** El job quedo `cancelado` sin ejecutar **un solo paso**: no
+instalo Flutter, no mire el codigo y no fallo ninguna prueba. Con el run anterior --la
+pantalla de lectura-- todo en verde en 3 min 38 s con el mismo workflow.
+
+Y EL DIAGNOSTICO MAL HECHO, que es la parte que importa. El aviso que trae el propio run es
+
+    The ubuntu-latest label will migrate to Ubuntu 26 beginning October 19, 2026
+
+y de ahi se concluyo que la etiqueta era la causa y se fijo `runs-on: ubuntu-24.04`. **No lo
+era.** Con la imagen fijada el run se quedo igual, y el estado de GitHub dice, tres veces
+seguidas con un minuto de separacion:
+
+    https://www.githubstatus.com/api/v2/components.json
+    Actions            major_outage
+    indicator: major   Partial System Outage
+
+O sea que **la conclusion era correcta y la prueba estaba incompleta**: "no hay corredor" es
+una causa de "el job no arranca", y "la etiqueta se esta moviendo" es una causa **posible**
+de "no hay corredor". Se dio por buena la posible sin mirar si habia corredores, que es una
+cosa distinta y se mira en un sitio.
+
+Y ASI SE ESCRIBE EL ERROR, que es lo que hay que mirar la proxima vez:
+
+- **Un commit que dice "arreglado" y no arregla es peor que no haber tocado nada**, porque
+  el siguiente que vea el commit asume que la causa era la etiqueta y pierde el rato
+  cambiando etiquetas de imagen.
+- **Cambiar la configuracion a ciegas y mirar el resultado no es diagnosticar**: hay que
+  tener el estado del servicio delante, porque es una comprobacion de treinta segundos.
+- Y **el aviso de la migracion estaba ahi para informar, no para culpar**. Es un aviso de
+  octubre, y el fallo era de hoy.
+
+Asi que `runs-on: ubuntu-latest` se queda, y cuando llegue la migracion se fija la imagen
+entonces, con el motivo de entonces. Lo que **no** se hace es dejar un cambio puesto que
+dice arreglar algo que no arregla.
+
+Y LO QUE SI SIRVE, para la proxima vez: `gh run view <id> --json jobs` da `conclusion:
+cancelled` **sin pasos**, y eso ya dice que no llego a ejecutar nada. Un job con pasos en
+`completed` y alguno en `failure` es un fallo de codigo; un job **sin pasos** no es un fallo
+de codigo y no hay que_debugarlo.
+
 ### LO QUE MIDIO Y NO SE PEDIA
 
 **Juan 3, que son 36 versiculos, ocupa 16.848 pixeles a 360 px de ancho.** La columna de
