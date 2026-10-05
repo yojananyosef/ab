@@ -41,6 +41,7 @@ import 'package:ab/domain/models/modulo.dart';
 import 'package:ab/domain/models/nota.dart';
 import 'package:ab/domain/models/pasaje.dart';
 import 'package:ab/domain/models/referencia.dart';
+import 'package:ab/domain/models/versiculo.dart';
 import 'package:ab/ui/core/tema.dart';
 
 import '../view_models/lector_view_model.dart';
@@ -364,7 +365,7 @@ class _LectorViewState extends State<LectorView> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             for (final v in p.versiculos) ...<Widget>[
-              _Versiculo(numero: v.numero, texto: v.texto, estilo: estilo),
+              _Versiculo(versiculo: v, estilo: estilo),
               if (conNotas) ..._notasDe(vm, v.numero, estilo),
             ],
           ],
@@ -693,6 +694,76 @@ class _AvisoDelComentario extends StatelessWidget {
   );
 }
 
+/// El texto de un versiculo, con lo que el modulo marco de cada palabra.
+///
+/// Y SON DOS CAMINOS Y SE ESCOGE UNO, y no por gusto sino por lo que se pueda comprobar:
+///
+///   - Sin anotaciones --el comentario, y el 2,4% de los versiculos del KJV-- se pinta
+///     con un `Text` de toda la vida. Es el camino viejo y no se toca.
+///
+///   - Con anotaciones se pinta con `Text.rich`, y **el texto sale del mismo sitio**: las
+///     palabras se parten por el espacio y se vuelven a juntar con el espacio. Es lo que
+///     hace que `texto.split(' ').join(' ') == texto` para cualquier texto, y esa
+///     identidad es la que asegura que lo que se lee es lo que el modulo tiene.
+///
+/// Y LO QUE SE PINTA DE OTRA MANERA SON LAS PALABRAS QUE PUSO EL TRADUCTOR, y solo eso.
+/// Las del CLARKE son 41.692 marcas `\add` sobre 31.102 versiculos, y Juan 3:16 no tiene
+/// ni una.
+///
+/// Y LO QUE **NO** SE PINTA ES LA PALABRA DE DIOS EN ROJO, y hay que decirlo aqui porque es
+/// lo que se espera de un cambio como este. **No se puede**: medido el 5 de octubre de
+/// 2026 sobre el KJV entero, no hay ni una marca de habla divina en 31.102 versiculos. Lo
+/// que hay son los numeros del lexicon y los `\add`. Pintar de rojo lo que uno no sabe
+/// que es la Palabra es inventarse el dato, y este dato es la Escritura.
+class _TextoDelVersiculo extends StatelessWidget {
+  const _TextoDelVersiculo({required this.versiculo, required this.estilo});
+
+  final Versiculo versiculo;
+  final TextStyle estilo;
+
+  @override
+  Widget build(BuildContext context) {
+    final anotaciones = versiculo.anotaciones;
+    if (anotaciones.isEmpty) {
+      return Text(
+        versiculo.texto,
+        style: estilo,
+        // Sin esto, una palabra muy larga --un nombre propio largo en otra escritura, una
+        // URL en un texto-- sale del borde. Flutter ya parte por el ancho, pero no
+        // siempre, y un texto que sale del borde es texto que no se puede seleccionar.
+        softWrap: true,
+      );
+    }
+
+    final palabras = versiculo.palabras;
+    return Text.rich(
+      TextSpan(
+        style: estilo,
+        children: <InlineSpan>[
+          for (var i = 0; i < palabras.length; i++) ...<InlineSpan>[
+            if (i > 0) const TextSpan(text: ' '),
+            TextSpan(
+              text: palabras[i],
+              style: (anotaciones[i].esAnadido)
+                  // Y UN SUBRAYADO Y NO UN COLOR. Un color pondria algo en el sitio del
+                  // texto que no es texto --"esto es distinto"-- y un subrayado dice lo
+                  // mismo sin escribir nada donde el versiculo esta. Y el color de la
+                  // palabra de Dios en rojo esta libre para cuando se pueda saber cual es.
+                  ? estilo.copyWith(
+                      decoration: TextDecoration.underline,
+                      decorationColor: Colores.textoSuave,
+                      decorationThickness: 1,
+                    )
+                  : null,
+            ),
+          ],
+        ],
+      ),
+      softWrap: true,
+    );
+  }
+}
+
 /// Un versiculo: el numero en su columna y el texto al lado.
 ///
 /// Y EL NUMERO NO SE PONE EN UNA CAJA NI EN UN CIRCULO. Un numero dentro de una
@@ -707,10 +778,9 @@ class _AvisoDelComentario extends StatelessWidget {
 /// empiece siempre en el mismo sitio es lo que hace que una columna de versiculos se
 /// pueda leer como una columna.
 class _Versiculo extends StatelessWidget {
-  const _Versiculo({required this.numero, required this.texto, required this.estilo});
+  const _Versiculo({required this.versiculo, required this.estilo});
 
-  final int numero;
-  final String texto;
+  final Versiculo versiculo;
   final TextStyle estilo;
 
   @override
@@ -723,7 +793,7 @@ class _Versiculo extends StatelessWidget {
           SizedBox(
             width: 34,
             child: Text(
-              '$numero',
+              '${versiculo.numero}',
               textAlign: TextAlign.right,
               style: estilo.copyWith(
                 fontSize: 13,
@@ -734,15 +804,7 @@ class _Versiculo extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              texto,
-              style: estilo,
-              // Sin esto, una palabra muy larga --un nombre propio largo en otra
-              // escritura, una URL en un texto-- sale del borde. Flutter ya parte
-              // por el ancho, pero no siempre, y un texto que sale del borde es
-              // texto que no se puede seleccionar.
-              softWrap: true,
-            ),
+            child: _TextoDelVersiculo(versiculo: versiculo, estilo: estilo),
           ),
         ],
       ),

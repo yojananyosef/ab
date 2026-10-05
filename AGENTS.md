@@ -577,6 +577,47 @@ Y CADA UNO DE ESTOS CUATRO SALIO EN UN "FALLO" QUE DECIA LA VERDAD A MEDIAS. Un 
 dice la verdad a medias es peor que uno que no dice nada: hace perder el rato mirando la
 app en vez de mirar el fallo.
 
+### LA PALABRA DE DIOS EN ROJO NO ESTA EN ESTOS MODULOS
+
+Medido el 5 de octubre de 2026 sobre el KJV entero: 31.102 versiculos, y **ni una marca de
+habla divina**. Lo que hay son diez marcas distintas, y son estas:
+
+    \w    630.866    una palabra con su numero del lexicon
+    \+w    72.386    lo mismo, dentro de un parrafo
+    \add   41.692    texto que puso el traductor
+    \f     13.918    nota al pie
+    \nd    13.740    sin divisor
+    \p, \q1, \b, \s1, \tl   estructura
+
+No hay `\divine`, no hay `dd` que marque el hablar de Dios, no hay convencion ninguna. La
+palabra de Dios en rojo viene de otra parte --de una lista de versiculos, de una marca que
+este catalogo no trae-- y **sin ella no se puede**, porque pintar de rojo lo que uno no
+sabe que es la Palabra es inventarse el dato.
+
+Lo que si sale del `raw`, y sale de verdad: el **numero del lexicon** de cada palabra (`Dios`
+es `G2316` en Juan 3:16) y **que palabras puso el traductor** (Juan 3:16 no tiene ni una:
+es texto que el KJV no toco).
+
+### EL TEXTO NO SE RECONSTRUYE DESDE EL `raw`
+
+Las dos columnas dicen lo mismo y dan la misma Biblia, pero **no con los mismos
+caracteres**. Medido:
+
+    5.844 versiculos cuyo `raw` tiene un `+` que `text` no tiene
+    13.740 marcas `\nd` de "sin divisor"
+    notas al pie cuyo numero va en una columna y no en la otra
+    1.201 versiculos con el numero de seccion `\s1` en el `raw` y no en el texto
+
+Reconstruir `text` desde `raw` obliga a aprender una regla por caso, y se intento: tres
+versiones, y la tercera se rindio con el aparato de variantes de las cronicas, que necesita
+cuatro reglas distintas segun el versiculo. Una regla por caso es escribir el texto del
+modulo sin saber que se esta escribiendo.
+
+**Asi que el texto se pinta desde `text`, siempre, y del `raw` solo salen anotaciones** --
+el numero del lexicon y la marca de `dd`--, que se descartan si las palabras no cuadran.
+Medido: **97,60 %** de los versiculos del KJV reciben anotaciones. Preferimos un versiculo
+sin lexicon a uno con el numero de la palabra de al lado.
+
 ### `LIKE` NO es buscar palabras
 
 Medido el 5 de octubre de 2026 sobre el KJV real:

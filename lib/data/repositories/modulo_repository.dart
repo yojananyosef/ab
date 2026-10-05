@@ -19,11 +19,13 @@
 // de este proyecto en vez de con la del modulo.
 
 import 'package:ab/data/services/sqlite_service.dart';
+import 'package:ab/data/services/analizador_usfm.dart';
 import 'package:ab/domain/models/nota.dart';
 import 'package:ab/domain/models/pasaje.dart';
 import 'package:ab/domain/models/resultado_de_busqueda.dart';
 import 'package:ab/domain/models/tipo_de_contenido.dart';
 import 'package:ab/domain/models/referencia.dart';
+import 'package:ab/domain/models/token_de_texto.dart';
 import 'package:ab/domain/models/versiculo.dart';
 
 /// Un modulo abierto y listo para leer.
@@ -289,7 +291,16 @@ class ModuloAbierto {
     // El fallo es instructivo porque **parecia** funcionar: en `_exigirVersiculos` el
     // `tieneNotas` era siempre falso, asi que la rama del comentario no se ejecutaba
     // nunca y no habia forma de verlo.
-    final seleccion = tieneNotas ? 'SELECT verse, seq, text FROM $_tabla' : 'SELECT verse, text FROM $_tabla';
+    // Y LA COLUMNA `raw` TAMBIEN, y solo cuando el modulo tiene las dos. Traerla siempre
+    // seria el doble de bytes de la lectura por unas marcas que el comentario no tiene
+    // --medido: sus 19.742 notas tienen `raw == text`, sin una barra-- y el comentario no
+    // se pinta palabra a palabra porque son suyas, no del texto.
+    final conRaw = tieneTextosDeBiblia;
+    final seleccion = tieneNotas
+        ? 'SELECT verse, seq, text FROM $_tabla'
+        : conRaw
+            ? 'SELECT verse, text, raw FROM $_tabla'
+            : 'SELECT verse, text FROM $_tabla';
     final orden = tieneNotas ? ' ORDER BY verse, seq' : ' ORDER BY verse';
     final filas = referencia.versiculo == null
         ? _sqlite.consultar(
@@ -307,7 +318,17 @@ class ModuloAbierto {
       versiculos: tieneNotas
           ? const <Versiculo>[]
           : <Versiculo>[
-              for (final f in filas) Versiculo(f['verse'] as int, f['text'] as String),
+              for (final f in filas)
+                Versiculo(
+                  f['verse'] as int,
+                  f['text'] as String,
+                  anotaciones: conRaw
+                      ? anotarTexto(
+                          f['text'] as String,
+                          f['raw'] as String?,
+                        ).anotaciones
+                      : const <AnotacionDePalabra>[],
+                ),
             ],
       // Y LAS NOTAS IDENTICAS SE QUITAN, Y ESTO ES UNA EXCEPCION MEDIDA.
       //

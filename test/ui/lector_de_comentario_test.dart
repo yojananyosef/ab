@@ -188,8 +188,24 @@ void main() {
       // Y LA COMPROBACION ES LA DIFERENCIA DE TAMANO, que es lo que el ojo ve. Una
       // diferencia de color o de un icono es mas sutil de lo que parece cuando ya se ha
       // visto la pantalla cien veces.
-      final conVersiculos = await _tamanoDelCuerpo(tester, comentario: false);
-      final conNotas = await _tamanoDelCuerpo(tester, comentario: true);
+      // Y SE BUSCA POR LO QUE **EMPIEZA** CADA COSA, y no "el texto mas largo de la
+      // pantalla". La version anterior cogia el mas largo y ganaba el copyright del pie --
+      // 14 px y doscientas caracteres-- por ser mas largo que Juan 3:16, de modo que la
+      // comparacion daba 15 contra 14 y hacia fallar algo que estaba bien.
+      //
+      // Y ESO NO ES UN DETALLE DE LA PRUEBA: si el heuristico es "el mas largo", anadir
+      // cualquier texto largo al pie --una nota de licencia mas larga, un aviso-- cambia el
+      // resultado de una comprobacion que va de los 15 a los 16 del cuerpo del texto.
+      final conVersiculos = await _tamanoDelCuerpo(
+        tester,
+        comentario: false,
+        empiezaCon: 'For God so loved the world,',
+      );
+      final conNotas = await _tamanoDelCuerpo(
+        tester,
+        comentario: true,
+        empiezaCon: 'For God so loved the world - Such a love',
+      );
 
       expect(conNotas, isNotNull, reason: 'la nota de Juan 3:16 tiene 405 caracteres');
       expect(conVersiculos, isNotNull);
@@ -231,7 +247,11 @@ void main() {
 /// Y ES UNA FUNCION Y NO UN `expect` CON `find`, porque hace falta **comparar dos
 /// medidas**: la del versiculo y la de la nota. Medir las dos por separado con dos
 /// `expect` no dice cual es cual.
-Future<double?> _tamanoDelCuerpo(WidgetTester tester, {required bool comentario}) async {
+Future<double?> _tamanoDelCuerpo(
+  WidgetTester tester, {
+  required bool comentario,
+  required String empiezaCon,
+}) async {
   final abiertoComentario = ModuloAbierto.abrir(rutaComentarioReal, id: 'CLARKE');
   final abiertaBiblia = ModuloAbierto.abrir(rutaBibliaReal, id: 'KJV2006');
   if (abiertoComentario is! Abierto || abiertaBiblia is! Abierto) {
@@ -264,14 +284,25 @@ Future<double?> _tamanoDelCuerpo(WidgetTester tester, {required bool comentario}
   );
   await tester.pumpAndSettle();
 
-  final textos = tester.widgetList<Text>(find.byType(Text));
-  for (final texto in textos) {
+  // Y SE MIRA DE LOS DOS TIPOS DE TEXTO, y no solo de `Text`. Un versiculo con
+  // anotaciones se pinta con `Text.rich`, que **no** es un `Text`: dentro hay
+  // `TextSpan`, y su texto se saca con `toPlainText()`.
+  //
+  // La primera version de esta comprobacion solo miraba `Text` y devolvia null en el
+  // versiculo con lexicon, o sea que la comparacion "la nota es mas pequena que el
+  // versiculo" se quedaba sin mitad y daba verde sin comprobar.
+  for (final texto in tester.widgetList<Text>(find.byType(Text))) {
     final estilo = texto.style;
-    if (estilo == null) continue;
-    // Y SE COGE EL TEXTO **MAS LARGO** DE LA PANTALLA, que es el cuerpo principal. El
-    // mas largo de una nota de comentario es el unico largo; el mas largo de un versiculo
-    // es el versiculo. Comparar "el primero" seria comparar el titulo con el cuerpo.
-    if (texto.data != null && texto.data!.length > 80) return estilo.fontSize;
+    if (estilo == null || texto.data == null) continue;
+    if (texto.data!.startsWith(empiezaCon)) return estilo.fontSize;
   }
-  return null;
+
+  for (final rico in tester.widgetList<RichText>(find.byType(RichText))) {
+    // Y `text` NO PUEDE SER NULL aqui, segun el tipo, asi que la comprobacion sobraria y el
+    // analizador avisa. `TextSpan.style` si puede ser null, y ese es el que se mira.
+    if (!rico.text.toPlainText().startsWith(empiezaCon)) continue;
+    return rico.text.style?.fontSize;
+  }
+
+  fail('no hay ningun texto que empiece por "\$empiezaCon"');
 }
