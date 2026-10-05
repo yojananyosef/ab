@@ -121,14 +121,43 @@ test -f build/web/404.html
 # --que es lo correcto para servir en local-- sube un paquete que en GitHub Pages busca sus
 # recursos en la raiz de `github.io`, que es otro sitio. La app arranca y falla al abrir el
 # primer texto, y desde fuera parece que el despliegue salio bien porque devuelve 200.
-PREFIJO=$(grep -o 'base href="[^"]*"' build/web/index.html | head -1)
-case "$PREFIJO" in
-  *href="/ab/"*) echo "          prefijo: $PREFIJO, correcto para /ab/" ;;
-  *) echo "AVISO: el paquete declara $PREFIJO y deberia declarar /ab/."
-     echo "        En GitHub Pages los recursos se buscarian en la raiz de github.io,"
-     echo "        que no es este repositorio. No se publica."
-     exit 1 ;;
-esac
+# Y LA COMPROBACION ES UN **`grep -q`** Y NO UN `case`, y hay un motivo que cuesta una
+# tarde si no se sabe.
+#
+# La primera version hacia:
+#
+#     PREFIJO=$(grep -o 'base href="[^"]*"' build/web/index.html | head -1)
+#     case "$PREFIJO" in
+#       *href="/ab/"*) ... ;;
+#       *) AVISO ;;
+#     esac
+#
+# Y **fallaba con un paquete correcto**: decia "el paquete declara base href="/ab/" y
+# deberia declarar /ab/" sobre un paquete que si lo declaraba.
+#
+# La razon es que **las comillas dentro del patron de un `case` son caracteres de comilla**,
+# no comillas literales. El shell se las come al leer el patron, y lo que queda por
+# comprobar es `*href=/ab/*` --sin comillas-- contra la cadena `base href="/ab/"`, que si
+# las tiene. Y falla.
+#
+# Lo que mas engaña es que el patron **parece** el correcto y el valor **parece** el
+# correcto, y el mensaje de error imprime los dos. Con `case *href=/ab/*` --sin comillas-- la
+# comprobacion da NO con `href="/ab/"` y SI con `href=/ab/`, que es el otro fallo posible del
+# mismo patron.
+#
+# Asi que se comprueba con `grep -q` sobre el fichero entero, con las comillas dentro de una
+# cadena de comillas simples, donde si son literales.
+if grep -q '<base href="/ab/">' build/web/index.html; then
+  echo "          prefijo: /ab/, correcto para este repositorio"
+else
+  echo "AVISO: el paquete no declara <base href=\"/ab/\">."
+  echo "        Lo declara:"
+  grep -o '<base href="[^"]*"' build/web/index.html | head -1 | sed 's/^/          /'
+  echo "        En GitHub Pages los recursos se buscarian en la raiz de github.io, que no"
+  echo "        es este repositorio, y la app arrancaria sin encontrar sqlite3.wasm."
+  echo "        No se publica."
+  exit 1
+fi
 echo "          sqlite3.wasm: $(stat -c%s build/web/sqlite3.wasm) bytes"
 echo "          ficheros: $(find build/web -type f | wc -l)"
 
