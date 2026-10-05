@@ -108,6 +108,23 @@ test -f build/web/404.html
 echo "          sqlite3.wasm: $(stat -c%s build/web/sqlite3.wasm) bytes"
 echo "          ficheros: $(find build/web -type f | wc -l)"
 
+echo "==> 6/7  subir a la rama $RAMA"
+# Y CON UN INDICE QUE **NO** ES EL DE `main`. La rama `gh-pages` sale de cero con este
+# indice, para que el directorio de trabajo quede limpio y el diff de lo publicado sea
+# legible.
+#
+# Y `STAGE` SE DECLARA **ANTES** DE USARLO. La primera version de esta parte escribia la
+# marca de publicacion antes de crear el directorio, y con `set -u` --que esta puesto-- el
+# script se para aqui:
+#
+#     scripts/publicar.sh: linea 112: STAGE: variable sin asignar
+#
+# El fallo es de orden de lineas y no de logica, y sale tarde: despues de cuatro minutos de
+# pruebas y de compilar. Por eso el mensaje de la linea 112 es util y no es ruido.
+STAGE=$(mktemp -d)
+trap 'rm -rf "$STAGE"' EXIT
+cp -r build/web/. "$STAGE/"
+
 # Y LA MARCA DE PUBLICACION, que es lo que el paso 7 comprueba.
 cat > "$STAGE/publicado.txt" <<FIN
 publicado desde local
@@ -118,13 +135,6 @@ rama    $RAMA
 FIN
 cat "$STAGE/publicado.txt"
 
-echo "==> 6/7  subir a la rama $RAMA"
-# Y CON UN INDICE QUE **NO** ES EL DE `main`. La rama `gh-pages` sale de cero con este
-# indice, para que el directorio de trabajo quede limpio y el diff de lo publicado sea
-# legible.
-STAGE=$(mktemp -d)
-trap 'rm -rf "$STAGE"' EXIT
-cp -r build/web/. "$STAGE/"
 cat > "$STAGE/.nojekyll" <<'FIN'
 GitHub Pages sirve este directorio con Jekyll si encuentra un `_config.yml` o cualquier
 fichero que empiece por `_`. Los ficheros de Flutter --`assets/`, `main.dart.js`,
