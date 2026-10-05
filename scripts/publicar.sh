@@ -31,12 +31,29 @@
 #     3. `flutter build web --release`
 #     4. `404.html`                            copia de `index.html`, para las rutas profundas
 #     5. `sqlite3.wasm` presente               sin el, la app arranca y falla al abrir
-#     6. subir `build/web` a la rama `gh-pages`
-#     7. comprobar que el sitio sirve el `index.html` **nuevo**
+#     6. subir `build/web` a la rama `gh-pages`, con una marca de publicacion
+#     7. comprobar que el sitio sirve **esa** marca
 #
 # EL PUNTO 7 ES EL QUE HACE VALER EL 6. Publicar y dar por hecho que ha ido es como se
-# publica una build rota: `git push` no falla nunca, y el sitio puede estar sirviendo otra
-# cosa. Se mira el hash del `index.html` que seSirve y se compara con el que se ha subido.
+# publica una build rota: `git push` no falla nunca y el sitio puede estar sirviendo otra
+# cosa. Se lee del sitio un fichero que **solo existe si se ha publicado esto**.
+#
+# Y POR QUE NO BASTA COMPARAR EL SHA DEL `main.dart.js`, QUE ES LO QUE SE HIZO PRIMERO.
+#
+# La primera version comparaba el sha256 del `main.dart.js` local con el que servia el
+# sitio. Dio **coincidir en el primer intento** -- y era mentira: el despliegue anterior era
+# del commit `d09d162` y desde entonces lo unico que habia cambiado eran el workflow y un
+# script, que **no entran en el paquete Dart**. El compilador produce el mismo
+# `main.dart.js` byte a byte, los sha son iguales y la comprobacion no ha mirado el sitio.
+#
+# Es el mismo fallo que ya esta escrito en `AGENTS.md`: **una comprobacion que puede pasar
+# sin comprobar lo nuevo es peor que no comprobar**, porque da verde. Y aqui era peor: la
+# comprobacion de la publicacion, que es la que dice si el sitio esta al dia, era la que
+# podia dar verde sin publicar.
+#
+# Asi que ahora se escribe `publicado.txt` con el commit y la hora, y **eso** es lo que se
+# lee del sitio. Si el sitio no lo tiene, no se ha publicado, aunque el `git push` haya
+# dicho que si.
 #
 # ============================================================================
 # Y QUE PASA CON EL CI
@@ -91,6 +108,16 @@ test -f build/web/404.html
 echo "          sqlite3.wasm: $(stat -c%s build/web/sqlite3.wasm) bytes"
 echo "          ficheros: $(find build/web -type f | wc -l)"
 
+# Y LA MARCA DE PUBLICACION, que es lo que el paso 7 comprueba.
+cat > "$STAGE/publicado.txt" <<FIN
+publicado desde local
+commit  $(git rev-parse HEAD)
+corto   $(git rev-parse --short HEAD)
+cuando  $(date -u '+%Y-%m-%dT%H:%M:%SZ')
+rama    $RAMA
+FIN
+cat "$STAGE/publicado.txt"
+
 echo "==> 6/7  subir a la rama $RAMA"
 # Y CON UN INDICE QUE **NO** ES EL DE `main`. La rama `gh-pages` sale de cero con este
 # indice, para que el directorio de trabajo quede limpio y el diff de lo publicado sea
@@ -117,9 +144,9 @@ echo "==> 7/7  comprobar que el sitio sirve ESTE build"
 # de error de GitHub --que tambien es 200-- no dice nada. Se compara el **sha256** del
 # `main.dart.js` servido con el del que se ha subido, que solo pueden ser iguales si lo que
 # esta en el sitio es esta build.
-ESPERADO=$(sha256sum build/web/main.dart.js | cut -d' ' -f1)
-URL=https://yojananyosef.github.io/ab/main.dart.js
-echo "          sha256 local:  $ESPERADO"
+MARCA=$(git rev-parse HEAD)
+URL=https://yojananyosef.github.io/ab/publicado.txt
+echo "          commit local: $MARCA"
 echo "          en el sitio:  $URL"
 
 # Y CON REINTENTOS, porque Pages tarda unos segundos en servir lo recien subido. Sin espera
@@ -128,20 +155,28 @@ echo "          en el sitio:  $URL"
 OK=no
 for i in $(seq 1 12); do
   sleep 10
-  REMOTO=$(curl -fsS --max-time 25 "$URL" 2>/dev/null | sha256sum | cut -d' ' -f1 || true)
-  if [ -n "$REMOTO" ] && [ "$REMOTO" = "$ESPERADO" ]; then
-    echo "          intento $i: coincide"
+  REMOTO=$(curl -fsS --max-time 25 "$URL" 2>/dev/null | tr -d '\r' || true)
+  # Y SE COMPARA EL **COMMIT** Y NO EL FICHERO ENTERO. La marca lleva la hora, asi que el
+  # fichero entero seria distinto en cada publicacion aunque el commit fuera el mismo, y
+  # entonces compararlo entero solo diria "hay algo ahi".
+  if echo "$REMOTO" | grep -q "commit  $MARCA"; then
+    echo "          intento $i: el sitio sirve ESTA publicacion"
     OK=si
     break
   fi
-  echo "          intento $i: aun no ($(echo "$REMOTO" | cut -c1-12))"
+  echo "          intento $i: aun no ($(echo "$REMOTO" | grep -m1 commit || echo 'sin marca'))"
 done
 
 if [ "$OK" = si ]; then
   echo "==> publicado  https://yojananyosef.github.io/ab/"
 else
-  echo "          AVISO: el sitio no sirve todavia esta build."
-  echo "          Se ha subido el contenido; lo unico que falla es la confirmacion."
-  echo "          No se da por publicado sin que las dos cosas digan lo mismo."
+  echo "          AVISO: el sitio NO sirve esta publicacion."
+  echo "          Se ha subido el contenido a la rama $RAMA; lo que falla es la"
+  echo "          confirmacion. Y eso significa una de dos cosas:"
+  echo "            - Pages aun no lo ha servido, y hay que esperar;"
+  echo "            - la fuente de Pages **no** es la rama $RAMA, y hay que fijarla:"
+  echo "                gh api -X PUT repos/yojananyosef/ab/pages \\"
+  echo "                  -f source[branch]=$RAMA -f source[path]=/"
+  echo "          En los dos casos el sitio **no** esta actualizado. No se da por publicado."
   exit 1
 fi
