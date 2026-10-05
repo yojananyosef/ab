@@ -200,7 +200,38 @@ git -C "$STAGE" init -q
 git -C "$STAGE" add -A
 git -C "$STAGE" -c user.email=yojananyosef@users.noreply.github.com \
   -c user.name=yojananyosef commit -q -m "publicado desde local: $(git rev-parse --short HEAD)"
-git push --force "$ORIGEN" "HEAD:refs/heads/$RAMA"
+
+# Y ANTES DE SUBIR, QUE LO QUE HAY EN EL DIRECTORIO **SEA EL PAQUETE**.
+#
+# No es una comprobacion de estilo: el fallo de al lado fue exactamente que se subio `main`
+# en vez del build, y esta es la comprobacion que lo habria parado.
+echo "          indice: $(ls -A "$STAGE" | tr '\n' ' ')"
+test -f "$STAGE/index.html"
+test -f "$STAGE/main.dart.js"
+test -f "$STAGE/sqlite3.wasm"
+test -f "$STAGE/publicado.txt"
+test -f "$STAGE/404.html"
+
+# Y EL `git -C` EN EL `push`, Y ESTE ES EL FALLO.
+#
+# La primera version hacia:
+#
+#     git push --force "$ORIGEN" "HEAD:refs/heads/$RAMA"
+#
+# **Sin `-C "$STAGE"`.** Y `HEAD`, sin repositorio al que aplicarse, se resuelve en el
+# directorio de trabajo --`/home/j/ab`--, o sea que subio **`main` a la rama `gh-pages`**:
+# el codigo fuente del proyecto, no la web. Y el repositorio es publico, asi que la rama
+# `gh-pages` era una copia publica de `main` sin ninguna relacion con el sitio.
+#
+# Los tres comandos anteriores si llevaban `-C "$STAGE"`, asi que el `add` y el `commit`
+# hacian lo correcto y el contenido estaba ahi. Solo el `push` se|Referia a otro sitio, y por
+# eso `git ls-tree origin/gh-pages` teachingeba `AGENTS.md`, `lib/`, `android/`.
+#
+# Y POR QUE NO LO VIO EL PASO 7: la primera vez dio "coincide" por el fallo del sha igual,
+# y las siguientes died "sin marca" -- porque `publicado.txt` no existia en la rama, que era
+# otra cosa. **Las dos respuestas eran la verdad**: la primera por casualidad y la segunda
+# por el motivo correcto.
+git -C "$STAGE" push --force "$ORIGEN" "HEAD:refs/heads/$RAMA"
 
 echo "==> 7/7  comprobar que el sitio sirve ESTE build"
 # Y LA COMPROBACION ES DE CONTENIDO Y NO DE CODIGO. Un `curl` que devuelve 200 con la pagina
