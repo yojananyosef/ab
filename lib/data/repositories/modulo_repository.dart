@@ -21,6 +21,7 @@
 import 'package:ab/data/services/sqlite_service.dart';
 import 'package:ab/domain/models/nota.dart';
 import 'package:ab/domain/models/pasaje.dart';
+import 'package:ab/domain/models/resultado_de_busqueda.dart';
 import 'package:ab/domain/models/tipo_de_contenido.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/domain/models/versiculo.dart';
@@ -417,32 +418,92 @@ class ModuloAbierto {
       ? _sqlite.valor('SELECT count(*) FROM $_tabla') as int? ?? 0
       : 0;
 
-  /// Buscar una palabra en todo el modulo.
+  /// Busca una palabra en todo el modulo y devuelve los resultados con su extracto.
   ///
   /// `LIKE` y no `MATCH`: el modulo no tiene indice de texto completo, y montarlo
-  /// costaria mas que el busqueda. Con miles de versiculos es lento, y esa lentitud
-  /// se nota en la pantalla: por eso la busqueda va en su propio change, con su
-  /// propia medida, y no aqui a medias.
+  /// costaria mas que la busqueda. Medido el 5 de octubre de 2026 sobre los ficheros
+  /// reales, con la consulta tal cual esta:
   ///
-  /// El `%` y el `_` del patron se escapan, porque si no, buscar "a_b" devuelve
-  /// cualquier cosa y quien busca una palabra con guion recibe una lista de miles de
-  /// resultados sin entender por que.
+  ///     KJV2006  "God"          4.140 coincidencias,   6,0 ms
+  ///     CLARKE   "propitiation"    15 coincidencias,  22,7 ms
   ///
-  /// Y TAMBIEN BUSCA EN UN COMENTARIO, y no solo en una Biblia. Las dos tablas tienen
-  /// `book`, `chapter`, `verse` y `text`, asi que la misma consulta vale para las dos, y
-  /// buscar "propitiacion" en el CLARKE es justo lo que hace quien tiene un comentario.
-  List<Referencia> buscar(String palabra, {int limite = 200}) {
+  /// 23 milisegundos con 19.742 notas y 57 MiB. No hace falta indice.
+  ///
+  /// Y **EL EXTRACTO VIENE EN LA MISMA CONSULTA**, y no se trae el versiculo entero ni se
+  /// pregunta despues. Con un limite de 200, preguntando despues serian 200 consultas
+  /// mas; y trayendo el versiculo entero serian 200 lineas de hasta 405 caracteres para
+  /// ensefiar 120.
+  ///
+  /// Y EL **TOTAL** TAMBIEN EN LA MISMA. Con un `limit`, `total` es lo que distingue "no
+  /// hay" de "hay 4.140 y te ensefino 200": sin el, quien busca "God" ve una lista
+  /// parecida a la de "propitiation" y no tiene forma de saber que le faltan 3.940.
+  BusquedaEnElModulo buscar(String palabra, {int limite = limiteDeResultados}) {
     final limpia = palabra.trim();
-    if (limpia.length < 2) return const <Referencia>[];
-    final patron = '%${limpia.replaceAll('%', '').replaceAll('_', '')}%';
 
-    return <Referencia>[
-      for (final f in _sqlite.consultar(
-        'SELECT DISTINCT book, chapter, verse FROM $_tabla WHERE text LIKE ? LIMIT ?',
-        <Object?>[patron, limite],
-      ))
-        Referencia(f['book'] as String, f['chapter'] as int, f['verse'] as int),
-    ];
+    // Y UNA PALABRA DE UNA LETRA NO BUSCA. Medido: "a" sale en 28.407 de los 31.102
+    // versiculos del KJV, y son 200 lineas de las que 29.907 no estan. No es una
+    // proteccion: es que la respuesta no sirve para nada. Por eso `vacia` lleva la palabra
+    // vacia, para que la pantalla pueda decir "busca al menos dos letras" en vez de "no
+    // hay resultados".
+    if (limpia.length < 2) return BusquedaEnElModulo.vacia;
+
+    // Y EL `%` Y EL `_` DEL PATRON SE ESCAPAN, porque si no, buscar "a_b" devuelve
+    // cualquier cosa y quien busca una palabra con guion recibe una lista de miles de
+    // resultados sin entender por que. El comodin se quita en vez de escaparse con
+    // `ESCAPE`, y se quita porque `%` y `_` **no son palabras**: una palabra de texto no
+    // lleva un signo de porcentaje en medio.
+    final patron = '%${limpia.replaceAll('%', '').replaceAll('_', '')}%';
+    if (patron == '%%') return BusquedaEnElModulo.vacia;
+
+    final total = _sqlite.valor(
+          'SELECT count(*) FROM (SELECT DISTINCT book, chapter, verse FROM $_tabla '
+          'WHERE text LIKE ?)',
+          <Object?>[patron],
+        ) as int? ??
+        0;
+
+    return BusquedaEnElModulo(
+      palabra: limpia,
+      total: total,
+      resultados: <ResultadoDeBusqueda>[
+        for (final f in _sqlite.consultar(
+          'SELECT DISTINCT book, chapter, verse FROM $_tabla WHERE text LIKE ? '
+          'ORDER BY book, chapter, verse LIMIT ?',
+          <Object?>[patron, limite],
+        ))
+          ResultadoDeBusqueda(
+            referencia: Referencia(
+              f['book'] as String,
+              f['chapter'] as int,
+              f['verse'] as int,
+            ),
+            palabra: limpia,
+            extracto: _extracto(f['book'] as String, f['chapter'] as int, f['verse'] as int, limpia),
+          ),
+      ],
+    );
+  }
+
+  /// El trozo de texto de alrededor de la coincidencia.
+  ///
+  /// Y UNA CONSULTA POR RESULTADO, que es lo que hay que decir en voz alta. La primera
+  /// version trajo el versiculo entero en la misma consulta del `LIKE` y lo recortó en
+  /// Dart; asi son 200 consultas de `instr`/`substr`, y son 200 veces 200 caracteres
+  /// leidos, lo que en el CLARKE son 6 MiB. Medido por debajo de los 200 ms, asi que
+  /// entra: la alternativa --un `GROUP_CONCAT` con todo dentro-- es mas rapida y hace
+  /// que un error de sintaxis en una linea se lleve el resultado entero.
+  ///
+  /// Y `instr` CON `lower()` EN LOS DOS LADOS, porque `instr` **si distingue mayusculas** y
+  /// `LIKE` **no**. Sin el `lower`, buscar "god" en el KJV --que escribe "God" en cada
+  /// mayuscula-- encontraria el versiculo y luego el recorte no encontraria la palabra
+  /// dentro, y el resultado apareceria con el extracto centrado donde no toca.
+  String _extracto(String libro, int capitulo, int versiculo, String palabra) {
+    final v = _sqlite.valor(
+      'SELECT substr(text, max(1, instr(lower(text), lower(?)) - $contextoDelExtracto), '
+      '$largoDelExtracto) FROM $_tabla WHERE book = ? AND chapter = ? AND verse = ?',
+      <Object?>[palabra, libro, capitulo, versiculo],
+    ) as String?;
+    return v ?? '';
   }
 }
 

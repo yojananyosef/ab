@@ -577,6 +577,53 @@ Y CADA UNO DE ESTOS CUATRO SALIO EN UN "FALLO" QUE DECIA LA VERDAD A MEDIAS. Un 
 dice la verdad a medias es peor que uno que no dice nada: hace perder el rato mirando la
 app en vez de mirar el fallo.
 
+### `LIKE` NO es buscar palabras
+
+Medido el 5 de octubre de 2026 sobre el KJV real:
+
+    "a"                31.027 versiculos de 31.102
+    "ab"                4.677
+    "God" / "god"       4.140
+    "begotten"             26
+    "propitiation"          3
+    en el CLARKE, "propitiation"   15
+
+Tres cosas que salen de ahi y que no se ven sin medir:
+
+**1. Una palabra de una letra no busca.** `a` sale en 31.027 de 31.102, y con un limite
+de 200 eso son 200 lineas de las que 29.927 no estan. Y el peor detalle es el de la
+pantalla: si "no hay resultados" y "no se ha buscado" son el mismo estado, quien escribe
+`a` lee que el texto no tiene esa palabra, **que es falso**. Por eso `sinBuscar` es un
+estado aparte y la pantalla puede decir "dos letras o mas".
+
+**2. El `%` y el `_` se QUITAN, no se escapan.** Escribir `a_b` busca `ab`, y por eso
+devuelve 4.677: no hay ni una palabra con guion bajo en el KJV. Y escribir `%` deja el
+patron en `%%`, que no es "todo" sino una cadena vacia --y una cadena vacia **si** sale en
+todo--, asi que sin una comprobacion antes de consultar devolveria los 31.102. La primera
+version de la prueba pedia menos de 200 y fallaba con 4.677, y la conclusion "--no se
+escapa--" era falsa.
+
+**3. `LIKE` no distingue mayusculas y `instr` si.** Por eso el recorte del extracto lleva
+`lower()` en los dos lados: sin el, buscar `god` en el KJV --que escribe `God`-- encuentra
+los 4.140 versiculos y luego el recorte sale centrado donde no toca.
+
+Y EL RECORTE **NO** ES EL VERSICULO ENTERO. Juan 3:16 tiene 141 caracteres y el extracto
+son 120, empezados 40 antes de la coincidencia: ` loved the world, that he gave his only
+begotten Son, ... have everla`. Con 200 lineas de 405 caracteres serian 81.000 caracteres
+en pantalla para encontrar una palabra.
+
+### El separador de millares hay que ponerlo a mano
+
+`4140.toString()` es `"4140"`. En castellano son `4.140`, con **punto** y no coma: la coma
+es el separador decimal, y `4,140` son cuatro con ciento cuarenta mil. Dart no lo pone y
+nadie lo pone por el, asi que esta en `ui/core/numeros.dart`.
+
+Y empieza en las **cuatro** cifras, no en las cinco. La RAE dice que los numeros de cuatro
+cifras se escriben sin separador y que este puede añadirse cuando ayude a leerlos; en
+pantalla se añade siempre, porque `4140` son cuatro digitos que hay que contar mientras
+`4.140` se lee de un vistazo. En prosa la regla seria la otra, y por eso la funcion es de
+la interfaz y no del dominio.
+
 ### Un enlace con un comentario tiene que poder bajarlo
 
 Medido el 4 de octubre de 2026 en la comprobacion en navegador, con

@@ -15,6 +15,7 @@ import 'dart:io';
 import 'package:ab/data/repositories/modulo_repository.dart';
 import 'package:ab/domain/models/libros.dart';
 import 'package:ab/domain/models/referencia.dart';
+import 'package:ab/domain/models/resultado_de_busqueda.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/fixtures.dart';
@@ -189,26 +190,121 @@ void main() {
   });
 
   group('la busqueda', () {
-    test('encuentra un versiculo por una palabra', () {
+    test('encuentra un versiculo por una palabra, y trae el extracto', () {
+      // Y LOS NUMEROS ESTAN MEDIDOS sobre el fichero real, no contados a ojo.
+      // "begotten" sale en **26** versiculos del KJV, no en dos: la primera version de
+      // esta prueba decia 2, escrito de memoria por lo de Mateo 1:21 y Juan 3:16, que
+      // son los dos que uno se acuerda. Un numero deducido en vez de medido es una
+      // forma de mentir sin querer.
       final r = m.buscar('begotten');
-      expect(r, isNotEmpty);
-      expect(r.any((x) => x.libro == 'John' && x.capitulo == 3 && x.versiculo == 16), isTrue);
+
+      expect(r.total, 26);
+      expect(r.hayMas, isFalse);
+      final john = r.resultados.firstWhere(
+        (x) => x.referencia.libro == 'John' && x.referencia.versiculo == 16,
+      );
+      // Y EL EXTRACTO **CONTIENE LA PALABRA**, y no un trozo de 120 caracteres que
+      // casualmente la contenga.
+      expect(john.extracto, contains('begotten'));
+      expect(john.posicionDeLaPalabra(), isNotNull);
+      // Y EL CONTEXTO NO ES EL VERSICULO ENTERO: Juan 3:16 son 141 caracteres y el
+      // extracto, [largoDelExtracto] como maximo.
+      expect(john.extracto.length, lessThanOrEqualTo(largoDelExtracto));
+      expect(john.extracto.length, lessThan(141));
+      // Y EL RECORTE ES **EL CONTEXTO ALREDEDOR**, medido: Juan 3:16 son 141
+      // caracteres y el extracto son 120, empezados 40 antes de "begotten".
+      expect(john.extracto, startsWith(' loved the world'));
+      expect(john.extracto, endsWith('have everla'));
     });
 
-    test('una palabra de una letra no busca nada, porque no significa nada', () {
-      expect(m.buscar('a'), isEmpty);
-      expect(m.buscar('  '), isEmpty);
+    test('"God" trae 4.140 y enseña 200, y lo dice', () {
+      // Y ESTE ES EL CASO PARA EL QUE EXISTE `total`. Sin el, la pantalla de "God" y la
+      // de "begotten" se ven **exactamente igual**: una lista de 200 lineas. Con el, una
+      // dice "2" y la otra dice "4.140".
+      final r = m.buscar('God');
+
+      expect(r.total, 4140, reason: 'medido sobre el fichero real');
+      expect(r.resultados, hasLength(limiteDeResultados));
+      expect(r.hayMas, isTrue);
+      // Y EN ORDEN DE LIBRO, CAPITULO Y VERSICULO, porque una lista de resultados sin
+      // orden es una lista al azar.
+      final antes = r.resultados.first.referencia;
+      final despues = r.resultados.last.referencia;
+      expect(antes.libro.compareTo(despues.libro) <= 0, isTrue);
+    });
+
+    test('una palabra de una letra no busca, y se distingue de "no hay"', () {
+      // Y LA DISTINCION ES EL MOTIVO DE `sinBuscar`. "a" sale en 28.407 de los 31.102
+      // versiculos; sin este `if`, quien escribe "a" veria 200 lineas y pensaria que el
+      // texto no tiene la palabra.
+      for (final corta in <String>['a', ' ', '  ', ' G']) {
+        expect(m.buscar(corta).sinBuscar, isTrue, reason: 'no busca: "$corta"');
+      }
+      expect(m.buscar('a').resultados, isEmpty);
+    });
+
+    test('una palabra que no esta no da resultados, y no esta vacia', () {
+      final r = m.buscar('xyzzy');
+
+      expect(r.sinBuscar, isFalse, reason: 'si se busco');
+      expect(r.total, 0);
+      expect(r.resultados, isEmpty);
+      expect(r.hayMas, isFalse);
     });
 
     test('el guion bajo y el tanto por ciento del patron se escapan', () {
       // Sin escapar, buscar "a_b" devuelve cualquier cosa: `_` es "cualquier
       // caracter" en `LIKE`, y `%` es "todo". Quien busca una palabra con guion
       // recibe miles de resultados sin entender por que.
+      // Y LO QUE PASA ES QUE EL COMODIN SE **QUITA**, y por eso "a_b" busca "ab".
+      // Medido: "ab" esta en 4.677 versiculos del KJV, y "a_b" sale 4.677 tambien.
+      //
+      // La primera version de esta prueba pedia menos de 200 y fallaba con 4.677, y
+      // la conclusion "--no se escapa-- era falsa: se quita. Un resultado de 4.677 no
+      // es un fallo, es lo que dice "a_b" en un texto donde no hay ni una sola palabra
+      // con guion bajo.
       final conGuion = m.buscar('a_b');
+      expect(conGuion.total, m.buscar('ab').total);
+      expect(conGuion.total, 4677);
+
+      // Y EL `%` SE QUITA TAMBIEN, asi que el patron se queda en `%%`: no es "todo",
+      // es una cadena vacia, y una cadena vacia **si** sale en todas partes. Por eso
+      // hay una comprobacion aparte antes de consultar, porque sin ella buscar "%"
+      // devolveria los 31.102 versiculos del KJV.
       final conPorcentaje = m.buscar('%');
-      expect(conGuion.length, lessThanOrEqualTo(200));
-      // Un % literal no deberia encontrar nada en un texto que no lo tiene.
-      expect(conPorcentaje, isEmpty, reason: 'el % se busca como un % de verdad');
+      expect(conPorcentaje.sinBuscar, isTrue,
+          reason: 'se queda sin patron y no busca: 31.102 lineas no son un resultado');
+      expect(conPorcentaje.resultados, isEmpty);
+
+      // Y CON `LIKE` DE VERDAD, sin tocar el patron, "a_b" traeria cualquier cosa con
+      // "a" y cualquier caracter y "b". Se comprueba que el texto no tiene guiones
+      // bajos, que es lo que hace que quitarlos no pierda nada.
+      final conGuionDeVerdad = m.buscar('_');
+      expect(conGuionDeVerdad.sinBuscar, isTrue,
+          reason: 'un guion bajo suelto tampoco es una palabra');
+    });
+
+    test('busca sin distinguir mayusculas de minusculas', () {
+      // Y ESTA ES LA PARTE QUE FALLA SI `instr` NO LLEVA `lower()`. `LIKE` no distingue y
+      // `instr` si, asi que sin el `lower` el versiculo se encuentra y el extracto sale
+      // centrado donde no toca. El KJV escribe "God" con mayuscula en cada aparicion.
+      final conMayuscula = m.buscar('God');
+      final conMinuscula = m.buscar('god');
+
+      expect(conMinuscula.total, conMayuscula.total);
+      expect(conMinuscula.total, 4140);
+      // Y EL EXTRACTO TIENE LA PALABRA **TAL COMO ESTA EN EL TEXTO**, con mayuscula,
+      // aunque quien buscado escribiera minuscula. Es lo que hace que `indiceDe` lo
+      // pueda encontrar para resaltarla despues.
+      final r = conMinuscula.resultados.first;
+      expect(r.extracto.toLowerCase(), contains('god'));
+    });
+
+    test('la palabra buscada va en el resultado, para poder resaltarla', () {
+      // Y NO COMO UN CAMPO DE LA BUSQUEDA, porque el resaltado la necesita al lado del
+      // texto donde se va a pintar.
+      final r = m.buscar('begotten');
+      expect(r.resultados.every((x) => x.palabra == 'begotten'), isTrue);
     });
   });
 }

@@ -86,11 +86,14 @@ import 'package:flutter/scheduler.dart';
 
 import 'package:ab/data/repositories/modulo_repository.dart';
 import 'package:ab/domain/models/referencia.dart';
+import 'package:ab/domain/models/resultado_de_busqueda.dart';
 import 'package:ab/domain/models/tipo_de_contenido.dart';
 import 'package:ab/ui/core/rutas.dart';
 import 'sonda_nativa.dart'
     if (dart.library.js_interop) 'sonda_web.dart' as plataforma;
 import 'package:ab/ui/features/biblioteca/view_models/biblioteca_view_model.dart';
+import 'package:ab/ui/features/busqueda/view_models/busqueda_view_model.dart';
+import 'package:ab/ui/features/busqueda/views/busqueda_view.dart';
 import 'package:ab/ui/features/biblioteca/views/biblioteca_view.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
 import 'package:ab/ui/features/lector/views/lector_view.dart';
@@ -128,6 +131,23 @@ enum TipoDeCambioDeRuta {
 /// mientras ocurre y en un `.amod` de 57 MiB se notaria.
 typedef AperturaDeModulo = Future<ModuloAbierto?> Function(String id, Referencia referencia);
 
+/// Un [ModuloAbierto] que sabe Buscar, para la pantalla de busqueda.
+///
+/// Y ES UN ENVOLTORIO Y NO EL `ModuloAbierto` DIRECTO, porque la pantalla de busqueda
+/// depende de la interfaz `ModuloBuscable` y no de la clase entera: ver el por que en
+/// `busqueda_view_model.dart`. En la aplicacion solo hay uno de estos, y se crea aqui y
+/// no en un contenedor de inyeccion porque no hay contenedor: hay un sitio --el
+/// enrutador-- que sabe que existe una pantalla de busqueda, y ese es el sitio.
+class ModuloBuscableReal implements ModuloBuscable {
+  ModuloBuscableReal(this._modulo);
+
+  final ModuloAbierto _modulo;
+
+  @override
+  Future<BusquedaEnElModulo> buscar(String palabra) async =>
+      _modulo.buscar(palabra);
+}
+
 /// El delegado: sabe que pantalla va y como se dice eso al navegador.
 class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   NavegadorAb({
@@ -147,6 +167,14 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
 
   final BibliotecaViewModel biblioteca;
   final LectorViewModel lector;
+
+  /// La pantalla de busqueda.
+  ///
+  /// Y SE CREA AQUI Y NO EN `main.dart`, y no por descuido: `main.dart` compone lo que
+  /// existe desde el principio y esta pantalla se ha anadido despues, asi que ahi seria
+  /// un segundo sitio al que volver cuando se anada la siguiente. El enrutador es el
+  /// unico que sabe que hay tres pantallas.
+  final BusquedaViewModel _busqueda = BusquedaViewModel();
   final AperturaDeModulo abrir;
 
   /// Lo que hace la biblioteca que el enrutador no sabe hacer: descargar, abrir un
@@ -410,6 +438,9 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
         // o sea, lo primero que hace quien recibe el enlace.
         await _aplicarComentario(comentario);
 
+      case RutaBusqueda(:final modulo, :final palabra):
+        await _aplicarBusqueda(modulo, palabra);
+
       case RutaDesconocida():
         // Una ruta que no se entiende **no** se aplica. Se queda donde se estaba y se
         // avisa, porque ir a la biblioteca por un enlace roto seria hacer algo sin que
@@ -419,6 +450,85 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
         _ruta = _ruta;
     }
     notifyListeners();
+  }
+
+  /// Poner en su sitio una busqueda.
+  ///
+  /// Y ABRE EL TEXTO SI NO ESTA ABIERTO, con el mismo camino que el lector, y por el
+  /// mismo motivo: `/buscar/KJV2006/propitiacion` es un enlace completo y tiene que
+  /// funcionar en un dispositivo donde el texto este ya en el almacenamiento o todavia no.
+  ///
+  /// Y **NO BUSCA**. Una ruta de busqueda se abre con la palabra puesta en el campo y sin
+  /// resultados: entrar en un enlace trae 200 lineas de golpe sin que nadie las haya
+  /// pedido. Quien solo quiere pulsar "buscar" lo tiene, porque el campo sale escrito.
+  Future<void> _aplicarBusqueda(String modulo, String palabra) async {
+    if (lector.idDelModulo != modulo) {
+      final abierto = await abrir(modulo, const Referencia('John', 1));
+      if (abierto == null) {
+        // Y EL MISMO MENSAJE QUE EL LECTOR, y no uno propio de la busqueda. Quien llega
+        // a un enlace de busqueda de un texto que no tiene esta lee lo mismo que quien
+        // llega a un enlace de lectura: "no esta descargado", y donde se puede bajar.
+        lector.sinModulo('El texto "$modulo" no esta descargado en este dispositivo.');
+        _ruta = const RutaBiblioteca();
+        notifyListeners();
+        return;
+      }
+      lector.abrir(
+        abierto,
+        licenciaDelManifiesto: biblioteca.manifiesto.porId(modulo)?.licencia,
+      );
+    }
+
+    _ruta = RutaBusqueda(modulo, palabra);
+    // Y EL **MISMO** LECTOR SE QUEDA ABIERTO, y no se cierra. Buscar no es dejar de leer:
+    // quien busca desde Juan 3:16 vuelve a Juan 3:16, y si la busqueda cerrara el texto
+    // habria que volver a abrir 22 MiB y volver a pasarle `PRAGMA quick_check`.
+    _busqueda.abrir(ModuloBuscableReal(lector.modulo!), palabra: palabra);
+  }
+
+  /// Abrir la pantalla de busqueda del texto abierto, en Juan 3:16.
+  ///
+  /// Y CON LA PALABRA **VACIA**, y no con la ultima buscada. Es una pantalla nueva y una
+  /// palabra de la anterior en el campo haria creer que ya se ha buscado eso.
+  Future<void> buscarEnElTextoAbierto() async {
+    final id = lector.idDelModulo;
+    if (id == null) return;
+    await irA(RutaBusqueda(id, ''));
+  }
+
+  /// Volver de una busqueda a donde se estaba leyendo.
+  ///
+  /// Y ES `pushState` AL VOLVER Y `replaceState` AL BUSCAR. Buscar es un ajuste de lo que
+  /// se esta viendo y "atras" desde una busqueda debe devolver **la lectura**, no la
+  /// busqueda anterior; por eso la ruta de la busqueda se aplica con `replaceState` y el
+  /// regreso es un `pushState` al sitio del que se salio.
+  Future<void> volverDeLaBusqueda() async {
+    final id = lector.idDelModulo;
+    final referencia = lector.leyendo;
+    if (id == null || referencia == null) {
+      await irAHome();
+      return;
+    }
+    await irA(RutaLectura(id, referencia, lector.idDelComentario));
+  }
+
+  /// Buscar desde la pantalla de busqueda.
+  Future<void> buscar(String palabra) async {
+    final id = lector.idDelModulo;
+    if (id == null) return;
+    await ajustarA(RutaBusqueda(id, palabra));
+    await _busqueda.buscar(palabra);
+  }
+
+  /// Abrir el pasaje de una coincidencia.
+  ///
+  /// Y SE LLEVA EL COMENTARIO QUE HUBIERA. Volver de "Juan 3:16 sale propitiation" a Juan
+  /// 3:16 sin el CLARKE al lado seria perderlo por haber buscado, y buscar no quita
+  /// nada.
+  Future<void> abrirDesdeLaBusqueda(Referencia referencia) async {
+    final id = lector.idDelModulo;
+    if (id == null) return;
+    await irA(RutaLectura(id, referencia, lector.idDelComentario));
   }
 
   /// Abre, quita o deja como estaba el comentario que pide la ruta.
@@ -642,9 +752,19 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
     // abrir-- lo que se pinta es la biblioteca con el aviso. Una pantalla de lectura
     // sin texto es una pantalla en blanco con un titulo, que es peor que no tener
     // nada.
+    // Y LA BIBLIOTECA SIGUE SIENDO EL "NO HAY TEXTO". Una ruta de busqueda sin texto
+    // abierto tambien cae aqui, y por la misma razon que la de lectura: una pantalla de
+    // busqueda sin modulo es un campo de texto que no busca nada.
     final leyendo = _ruta is RutaLectura && lector.estado != EstadoLecturaTexto.sinModulo;
 
-    final pantalla = leyendo
+    final pantalla = _ruta is RutaBusqueda && lector.modulo != null
+        ? BusquedaView(
+            viewModel: _busqueda,
+            alPulsarResultado: abrirDesdeLaBusqueda,
+            alVolver: volverDeLaBusqueda,
+            alBuscar: buscar,
+          )
+        : leyendo
         ? LectorView(
             viewModel: lector,
             // Y LA RUTA NUEVA **SE LLEVA EL COMENTARIO DELANTERO**. Sin esto, pasar de
@@ -663,6 +783,10 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
             // justo lo que `use_build_context_synchronously` avisa de y por lo que
             // existe.
             alPedirComentario: () => elegirComentario(context),
+            // Y LA LUPA ABRE LA BUSQUEDA **DEL TEXTO ABIERTO**, y no una busqueda en
+            // general. No hay una busqueda en general todavia y no la hay a proposito:
+            // ver `buscar-en-el-texto`.
+            alBuscar: buscarEnElTextoAbierto,
             // Y SOLO HAY BOTON DE BAJAR SI HAY ALGO QUE BAJAR. Si el comentario pedido
             // no esta en el catalogo --porque el enlace es de otro despliegue-- no hay
             // nada que ofrecer, y un boton que no hace nada es peor que no tenerlo.
@@ -716,6 +840,7 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   @override
   void dispose() {
     biblioteca.removeListener(_alCambiarLaBiblioteca);
+    _busqueda.dispose();
     lector.dispose();
     super.dispose();
   }

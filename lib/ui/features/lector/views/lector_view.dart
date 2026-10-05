@@ -57,6 +57,7 @@ class LectorView extends StatefulWidget {
     required this.alVolver,
     required this.alPedirComentario,
     this.alDescargarComentario,
+    this.alBuscar,
     this.modulosDelCatalogo = const <Modulo>[],
   });
 
@@ -95,6 +96,12 @@ class LectorView extends StatefulWidget {
   /// a mano, y separar un `Map<String, String>` de tamanos seria una copia de los
   /// identificadores en otro sitio, que es justo la lista que este proyecto no quiere.
   final List<Modulo> modulosDelCatalogo;
+
+  /// Abrir la busqueda en este texto.
+  ///
+  /// Y OPCIONAL, porque hay una pantalla --la biblioteca-- donde no hay texto abierto y no
+  /// hay nada que buscar. Un boton que no hace nada es peor que no tenerlo.
+  final VoidCallback? alBuscar;
 
   @override
   State<LectorView> createState() => _LectorViewState();
@@ -146,6 +153,12 @@ class _LectorViewState extends State<LectorView> {
           onPressed: widget.alVolver,
         ),
         actions: <Widget>[
+          if (widget.alBuscar != null)
+            IconButton(
+              tooltip: 'Buscar en este texto',
+              icon: const Icon(Icons.search),
+              onPressed: widget.alBuscar,
+            ),
           _BotonDeComentario(
             id: vm.idDelComentario,
             alPulsar: widget.alPedirComentario,

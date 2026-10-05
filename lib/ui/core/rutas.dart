@@ -117,6 +117,43 @@ class RutaLectura extends Ruta {
       'leer $modulo ${referencia.paraUrl}${comentario == null ? '' : ' con $comentario'}';
 }
 
+/// Una busqueda en un texto abierto.
+///
+///     /buscar/KJV2006/propitiacion
+///
+/// Y LA PALABRA VA **CODIFICADA** EN LA RUTA, y no es un detalle. Sin codificar, buscar
+/// "in the world" --que es una frase con un espacio y con palabras corriente-- deja una
+/// ruta con espacios dentro, que el navegador codifica por su cuenta al escribirla en la
+/// barra y al volverla a leer llega distinta: la palabra buscada seria "in" o "in%20the".
+/// Con `Uri.encodeComponent` lo que sale y lo que vuelve es lo mismo, y se comprueba.
+///
+/// Y EL TEXTO **NO SE ABRE** CON ESTA RUTA. `/leer/...` abre un pasaje y ensena el texto;
+/// una busqueda ensena una lista de coincidencias, y quien elige una de ellas abre el
+/// pasaje. Son dos cosas distintas y por eso son dos rutas: `RutaLectura` no tiene que
+/// saber de busquedas, y la pantalla de busqueda no tiene que fingir que lee.
+class RutaBusqueda extends Ruta {
+  const RutaBusqueda(this.modulo, this.palabra);
+
+  /// El identificador del modulo en el que se busca, tal cual lo declara el manifiesto.
+  final String modulo;
+
+  /// La palabra buscada, ya sin espacios alrededor.
+  ///
+  /// Y VA CRUDA, NO codificada: la ruta la codifica y la decodifica, y guardar aqui una
+  /// cadena con `%20` seria el patron que hace que una ruta se Compare con si misma.
+  final String palabra;
+
+  @override
+  bool operator ==(Object other) =>
+      other is RutaBusqueda && other.modulo == modulo && other.palabra == palabra;
+
+  @override
+  int get hashCode => Object.hash(modulo, palabra);
+
+  @override
+  String toString() => 'buscar $modulo "$palabra"';
+}
+
 /// Una ruta que no se entiende.
 ///
 /// No es un error: es lo que llega al abrir una direccion escrita a mano con un
@@ -171,14 +208,24 @@ class Rutas {
     }
     // Con estrategia de barra y sin prefijo: `/leer/...`.
     if (ruta.startsWith(prefijoDeLectura)) return _leerPasaje(ruta);
+    if (ruta.startsWith(prefijoDeBusqueda)) return _buscar(ruta);
 
     // Con prefijo de despliegue: `/ab/leer/...`. Se toma la **ultima** aparicion
     // porque un pasaje no lleva barras, asi que la ultima es la buena.
     final corte = ruta.lastIndexOf(prefijoDeLectura);
     if (corte > 0) return _leerPasaje(ruta.substring(corte));
 
+    // Y LO MISMO PARA `/buscar/`, con el mismo "ultima aparicion" por el mismo motivo.
+    // Sin esta linea, `/ab/buscar/KJV2006/begotten` era una ruta que no se entiende, y en
+    // el sitio publicado **toda** busqueda compartida seria un enlace roto: es el fallo
+    // que no se ve en desarrollo, porque en desarrollo no hay prefijo, y que aparece solo
+    // en produccion.
+    final corteDeBusqueda = ruta.lastIndexOf(prefijoDeBusqueda);
+    if (corteDeBusqueda > 0) return _buscar(ruta.substring(corteDeBusqueda));
+
     // Sin barra inicial, por si llega como `leer/...`.
     if (ruta.startsWith('leer/')) return _leerPasaje('/$ruta');
+    if (ruta.startsWith('buscar/')) return _buscar('/$ruta');
 
     return RutaDesconocida(ruta);
   }
@@ -222,6 +269,40 @@ class Rutas {
     return RutaLectura(modulo, referencia, comentario);
   }
 
+  /// `/buscar/{modulo}/{palabra}`.
+  ///
+  /// Y EN SU PROPIO PREFIJO, y no dentro de `/leer/`, porque una busqueda **no** es un
+  /// pasaje. Si fuera `/leer/KJV2006/buscar/propitiacion`, entonces `RutaLectura` tendria
+  /// un caso mas que no es una lectura, y `Referencia.tryParse` tendria que saber que hay
+  /// una palabra de mas en el medio para decir que la ruta no se entiende.
+  static const String prefijoDeBusqueda = '/buscar/';
+
+  /// La parte que va despues de `/buscar/`: `{modulo}/{palabra}`.
+  ///
+  /// Y TRES PARTES COMO MAXIMO, como en el lector. Una palabra con una barra dentro es
+  /// una palabra con una barra: se codifica, se lee, y si aun asi sobran partes es que la
+  /// ruta esta mal escrita.
+  static Ruta _buscar(String ruta) {
+    final resto = ruta.substring(prefijoDeBusqueda.length);
+    final partes = resto.split('/');
+    if (partes.length != 2) return RutaDesconocida(ruta);
+
+    final modulo = Uri.decodeComponent(partes[0]);
+    final palabra = Uri.decodeComponent(partes[1]).trim();
+
+    // Y UNA PALABRA VACIA **ES** LA PANTALLA DE BUSQUEDA, y no una ruta que no se
+    // entiende. Es el caso de `/buscar/KJV2006/`, que es lo que escribe la propia app al
+    // pulsar la lupa: la pantalla con el campo puesto y sin buscar. Lo contrario --
+    // mandarlo a la biblioteca -- obliga a volver a abrirla y a buscar el texto otra vez.
+    //
+    // Y LO QUE NO SE ENTIENDE ES `/buscar/KJV2006`, SIN barra final. Esa no la escribe
+    // nadie y no dice que pantalla es: es una ruta a medio escribir. La diferencia entre
+    // las dos es una barra, y esa barra es la que dice " aqui no hay palabra todavia".
+    if (modulo.isEmpty) return RutaDesconocida(ruta);
+
+    return RutaBusqueda(modulo, palabra);
+  }
+
   /// La direccion de una ruta.
   ///
   /// Sin el prefijo del despliegue: ese lo pone el `base href` al compilar, y
@@ -230,6 +311,8 @@ class Rutas {
   /// `Router` esperan.
   static String escribir(Ruta ruta) => switch (ruta) {
         RutaBiblioteca() => biblioteca,
+        RutaBusqueda(:final modulo, :final palabra) =>
+          '$prefijoDeBusqueda${Uri.encodeComponent(modulo)}/${Uri.encodeComponent(palabra)}',
         RutaLectura(:final modulo, :final referencia, :final comentario) =>
           '$prefijoDeLectura${Uri.encodeComponent(modulo)}/${referencia.paraUrl}'
           '${comentario == null ? '' : '/con/${Uri.encodeComponent(comentario)}'}',
