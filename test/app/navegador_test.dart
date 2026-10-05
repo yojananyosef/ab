@@ -31,6 +31,7 @@ import 'package:ab/app/navegador.dart';
 import 'package:ab/data/repositories/modulo_repository.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/ui/core/rutas.dart';
+import 'package:ab/ui/features/lector/widgets/marco_de_estudio.dart';
 import 'package:ab/ui/core/tema.dart';
 import 'package:ab/ui/features/biblioteca/view_models/biblioteca_view_model.dart';
 import 'package:ab/ui/features/biblioteca/views/biblioteca_view.dart';
@@ -382,14 +383,136 @@ void main() {
       expect(find.byType(TextField), findsOneWidget);
     });
   });
+// ==========================================================================
+  // 7.5 EL MARCO ENVUELVE A TODAS LAS PANTALLAS, Y NO SOLO A LA LECTURA
+  // ==========================================================================
+  //
+  // Y ESTA SECCION ES LA QUE ATRAPA EL FALLO QUE SE VE EN UNA CAPTURA.
+  //
+  // El marco --el panel de herramientas lateral-- estaba **dentro de `LectorView`**, con lo
+  // que solo la pantalla de lectura lo tenia. Al pulsar "Biblioteca" en la barra lateral se
+  // salia de la barra lateral: la biblioteca se pintaba **desacoplada**, sin panel, sin
+  // saber donde estabas y sin poder cambiar de destino sin darle a "atras".
+  //
+  // Y NO LO CAZABA NINGUNA PRUEBA. Las de este fichero que montan el enrutador lo hacen a
+  // **360 px**, y por debajo de 1100 px **no hay panel lateral**: hay una barra de destinos
+  // abajo. A 360 px las cuatro pantallas se ven con barra de destinos y todo encaja. El
+  // fallo solo existe a partir de 1100 px, y ningun test llegaba ahi con el enrutador
+  // montado.
+  //
+  // Por eso estas pruebas van a **1440 px** a proposito, y por eso la tercera mira la marca
+  // en las dos pantallas y no solo que el panel exista.
+  group('7.5 el marco es de la aplicacion y no de una pantalla', () {
+    const tamanoAncho = Size(1440, 900);
+
+    // Y CON `?? -1`, porque `selectedIndex` es `int?`. Sin el, el analisis dice que la
+    // funcion devuelve `int?` en una que declara `int`, que es el tipo de error que sale
+    // antes de tiempo y no despues en pantalla.
+    int indiceMarcado(WidgetTester t) =>
+        t.widget<NavigationRail>(find.byType(NavigationRail)).selectedIndex ?? -1;
+
+    testWidgets('la biblioteca TIENE panel de herramientas', (t) async {
+      final n = montarNavegador();
+      addTearDown(n.dispose);
+      await n.setNewRoutePath(const RutaBiblioteca());
+      await _montar(n, t, tamano: tamanoAncho);
+      await t.pumpAndSettle();
+
+      // Y EL DESTINO MARCADO ES **BIBLIOTECA**, no Biblia. La pantalla de lectura cae a la
+      // biblioteca cuando no hay texto abierto, y si la marca se queda en "Biblia" lo que se
+      // ve y lo que la barra dice son dos cosas distintas.
+      expect(find.byType(NavigationRail), findsOneWidget,
+          reason: 'la biblioteca no puede verse sin el panel que la rodea');
+      expect(indiceMarcado(t), DestinoDeEstudio.biblioteca.index);
+    });
+
+    testWidgets('y la pantalla de lectura tambien', (t) async {
+      final n = montarNavegador();
+      addTearDown(n.dispose);
+      await n.setNewRoutePath(
+        const RutaLectura('KJV2006', Referencia('John', 3, 16)),
+      );
+      await _montar(n, t, tamano: tamanoAncho);
+      await t.pumpAndSettle();
+
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(indiceMarcado(t), DestinoDeEstudio.biblia.index);
+    });
+
+    testWidgets('y al pasar de una a otra la marca va con la pantalla', (t) async {
+      // Y ESTA ES LA QUE ATRAPA EL "DESACOPLADO". No basta con que las dos tengan panel: si
+      // la marca se queda en la primera pantalla que se pinto, el panel dice "Biblioteca"
+      // mientras se esta leyendo, y es un fallo que **no** se ve mirando una sola captura.
+      final n = montarNavegador();
+      addTearDown(n.dispose);
+      await n.setNewRoutePath(const RutaBiblioteca());
+      await _montar(n, t, tamano: tamanoAncho);
+      await t.pumpAndSettle();
+      expect(indiceMarcado(t), DestinoDeEstudio.biblioteca.index);
+
+      await n.setNewRoutePath(
+        const RutaLectura('KJV2006', Referencia('John', 3, 16)),
+      );
+      await t.pumpAndSettle();
+
+      expect(find.byType(NavigationRail), findsOneWidget,
+          reason: 'y el panel sigue ahi: no se sale del marco al cambiar de pantalla');
+      expect(indiceMarcado(t), DestinoDeEstudio.biblia.index);
+    });
+
+    testWidgets('con el panel puesto, pulsar Biblioteca deja el panel puesto', (t) async {
+      // Y LA INTERACCION COMPLETA, con el dedo: se pulsa el destino de la barra lateral y se
+      // comprueba que la pantalla a la que se llega **sigue dentro** del marco.
+      final n = montarNavegador();
+      addTearDown(n.dispose);
+      await n.setNewRoutePath(
+        const RutaLectura('KJV2006', Referencia('John', 3, 16)),
+      );
+      await _montar(n, t, tamano: tamanoAncho);
+      await t.pumpAndSettle();
+
+      await t.tap(find.descendant(
+        of: find.byType(NavigationRail),
+        matching: find.text('Biblioteca'),
+      ));
+      await t.pumpAndSettle();
+
+      expect(n.currentConfiguration, isA<RutaBiblioteca>());
+      expect(find.byType(NavigationRail), findsOneWidget,
+          reason: 'ir a la biblioteca no puede sacarte de la aplicacion');
+    });
+
+    testWidgets('a 360 px las cuatro pantallas tienen barra de destinos', (t) async {
+      // Y POR DEBAJO DE 1100 NO HAY PANEL LATERAL, HAY BARRA ABAJO. Que tambien tiene que
+      // estar en las cuatro, y que por eso el fallo anterior **no se cazaba**: a 360 px todo
+      // funcionaba.
+      final n = montarNavegador();
+      addTearDown(n.dispose);
+      await n.setNewRoutePath(const RutaBiblioteca());
+      await _montar(n, t, tamano: const Size(360, 760));
+      await t.pumpAndSettle();
+
+      expect(find.byType(NavigationRail), findsNothing);
+      for (final d in DestinoDeEstudio.values) {
+        expect(find.byTooltip(d.rotulo), findsOneWidget, reason: d.rotulo);
+      }
+    });
+  });
 }
 
 /// Monta la pantalla que construye el enrutador.
 ///
 /// Va con el tema de verdad, porque las pantallas leen `Theme.of(context)` al
 /// construirse y con el tema por defecto darian error.
-Future<void> _montar(NavegadorAb n, WidgetTester t) async {
-  t.view.physicalSize = const Size(360, 640);
+Future<void> _montar(NavegadorAb n, WidgetTester t, {Size tamano = const Size(360, 640)}) async {
+  // Y EL TAMANO ES UN PARAMETRO, Y NO SIEMPRE 360.
+  //
+  // Todas las pruebas de este fichero se montaban a 360 px porque es el ancho que mas
+  // importa, y con el marco **dentro del lector** eso era suficiente: el fallo de que la
+  // biblioteca se viera sin panel **solo existe por encima de 1100 px**, porque por debajo
+  // hay barra de destinos abajo y se ve igual. Una prueba que pone 360 px arriba del todo no
+  // puede ver un fallo que no existe a 360 px.
+  t.view.physicalSize = tamano;
   t.view.devicePixelRatio = 1.0;
   addTearDown(t.view.reset);
   // Y EL PROVEEDOR DE RUTAS TAMBIEN, y va con la ruta que ya tiene el enrutador.

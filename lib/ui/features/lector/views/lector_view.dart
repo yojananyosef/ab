@@ -54,7 +54,6 @@ import '../widgets/campo_de_referencia.dart';
 import '../../busqueda/widgets/columna_de_texto.dart';
 import '../widgets/estilo_de_palabra.dart';
 import '../widgets/hoja_de_versiones.dart';
-import '../widgets/marco_de_estudio.dart';
 import '../widgets/terminos_del_modulo.dart';
 
 class LectorView extends StatefulWidget {
@@ -69,7 +68,6 @@ class LectorView extends StatefulWidget {
     required this.alAlternarPalabrasDeJesus,
     required this.alAbrirLibros,
     required this.alAbrirVersiones,
-    this.alCambiarDeDestino,
     this.alDescargarComentario,
     this.alBuscar,
     this.modulosDelCatalogo = const <Modulo>[],
@@ -134,16 +132,6 @@ class LectorView extends StatefulWidget {
   /// Abrir el selector de version del texto.
   final VoidCallback alAbrirVersiones;
 
-  /// Ir a otra pantalla desde el panel de herramientas.
-  ///
-  /// Y ES UN CALLBACK Y NO UNA RUTA, porque esta pantalla no sabe que hay biblioteca ni
-  /// busqueda. Lo que sabe es que hay un destino; quien decide que destino es cual pantalla
-  /// es el enrutador, que es el unico que sabe de pantallas.
-  ///
-  /// Y ES OPCIONAL, como `alBuscar` y por el mismo motivo: hay montajes sin enrutador --las
-  /// pruebas de esta pantalla-- donde no hay a donde ir. En la aplicacion lo pone siempre.
-  final void Function(DestinoDeEstudio destino)? alCambiarDeDestino;
-
   /// Las versiones del catalogo, con su estado, para el selector.
   ///
   /// Y SE PREPARA FUERA Y SE PASA, y no se arma en la vista. La vista no sabe que hay un
@@ -198,16 +186,14 @@ class _LectorViewState extends State<LectorView> {
   Widget build(BuildContext context) {
     final vm = widget.viewModel;
 
-    // Y EL MARCO ENVUELVE AL **SCAFFOLD ENTERO**, y no va dentro del `body`. El panel de
-    // herramientas de Logos va a la izquierda de **todo** --tambien de la cabecera de la
-    // ventana--, y si el marco fuera solo del cuerpo, en la cabecera de la ventana del
-    // navegador se veria el titulo de la pagina a lo ancho de la pantalla con el panel
-    // empezando debajo. Es un detalle de una linea que se ve.
-    return MarcoDeEstudio(
-      destino: DestinoDeEstudio.biblia,
-      alElegirDestino: widget.alCambiarDeDestino ?? _noSeMueve,
-      hijo: _panelConBarra(vm),
-    );
+    // Y **SIN MARCO AQUI**, y no por descuido. El marco --el panel de herramientas o la
+    // barra de destinos-- lo pone el enrutador, que envuelve **todas** las pantallas.
+    //
+    // Cuando estaba aqui, la barra lateral solo existia en la lectura: al pulsar
+    // "Biblioteca" se salia de la barra, y la biblioteca se veia **desacoplada**, sin panel
+    // y sin poder cambiar de destino. Un marco que solo envuelve una pantalla de cinco no
+    // es un marco: es una decoracion de la lectura.
+    return _panelConBarra(vm);
   }
 
   /// El `Scaffold` y la decision de si el campo va en la cabecera o en la barra de abajo.
@@ -769,9 +755,6 @@ class _Nota extends StatelessWidget {
 /// Y CUANDO NO HAY VERSION NO SE PINTA LA LINEA, y no un hueco. Un modulo sin manifiesto al
 /// que pertenece deja la cabecera a una linea y no con un espacio vacio que empuja el
 /// texto hacia abajo.
-/// Un destino al que no se va. Para los montajes sin enrutador.
-void _noSeMueve(DestinoDeEstudio destino) {}
-
 /// La clave del numero de un versiculo, para las pruebas.
 ///
 /// Y ES UNA CONSTANTE PUBLICA Y NO UN LITERAL EN CADA PRUEBA, porque el mismo numero

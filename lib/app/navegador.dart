@@ -956,6 +956,23 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
     }
   }
 
+  /// Que destino de la barra lateral corresponde a la ruta de ahora.
+  ///
+  /// Y ES UNA TABLA, Y NO UNA CADENA DE `if`, porque hay cinco destinos y cuatro tipos de
+  /// ruta y la pantalla de lectura **cae a la biblioteca** cuando no hay texto abierto. Ese
+  /// caso es el que importa: si se olvidara, la barra marcaria "Biblia" mientras lo que se
+  /// ve es la biblioteca, que es la marca descolocada.
+  DestinoDeEstudio _destinoDeLaRuta() => switch (_ruta) {
+        RutaLectura() => DestinoDeEstudio.biblia,
+        RutaBusqueda() => DestinoDeEstudio.buscar,
+        RutaIndice() => DestinoDeEstudio.lexico,
+        RutaBiblioteca() => DestinoDeEstudio.biblioteca,
+        // Y LA RUTA QUE NO SE CONOCE MARCA **BIBLIA**, porque es la pantalla de lectura la
+        // que se cae a la biblioteca cuando no hay texto. Sin este caso el `switch` no es
+        // exhaustivo y el analisis avisa; con el caso, la marca no se inventa.
+        RutaDesconocida() => DestinoDeEstudio.biblia,
+      };
+
   /// El numero de la primera palabra con indice de la lectura actual, o null.
   String? _primeraPalabraConIndice() {
     final versiculos = lector.pasaje?.versiculos;
@@ -1047,7 +1064,18 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
     // busqueda sin modulo es un campo de texto que no busca nada.
     final leyendo = _ruta is RutaLectura && lector.estado != EstadoLecturaTexto.sinModulo;
 
-    final pantalla = _ruta is RutaIndice && lector.modulo != null
+    // Y EL MARCO ENVUELVE A **CUALQUIER** PANTALLA, y no solo a la de lectura.
+    //
+    // Cuando el marco estaba dentro de `LectorView`, pulsar "Biblioteca" en la barra lateral
+    // sacaba de la barra lateral: la biblioteca se pintaba sin panel de herramientas, sin
+    // saber donde estabas y sin poder cambiar de destino sin darle a "atras". Y era
+    // literalmente lo que se veia: la biblioteca **desacoplada**, como si fuera otra
+    // aplicacion.
+    //
+    // El marco es de la **aplicacion** --una ventana con herramientas al lado y destinos-- y
+    // no de una pantalla. Lo pone el enrutador, que es el unico que sabe cual de las cinco
+    // pantallas esta viva.
+    Widget pantalla = _ruta is RutaIndice && lector.modulo != null
         ? IndiceView(
             viewModel: _indice,
             alPulsarPasaje: abrirDesdeElIndice,
@@ -1097,7 +1125,6 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
             alAbrirLibros: () => elegirLibro(context),
             alAbrirVersiones: () => elegirVersion(context),
             alCambiarDeVersion: cambiarDeVersion,
-            alCambiarDeDestino: (d) => irAlDestino(d, context),
             alVolver: irAHome,
           )
         : BibliotecaView(
@@ -1107,6 +1134,15 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
             alPulsarFicheroLocal: abrirFicheroLocal ?? noHaceNada,
             alReintentar: reintentarCatalogo ?? noHaceNadaVoid,
           );
+
+    // Y EL DESTINO DE LA BARRA SE SACA DE LA RUTA, y no se pasa como parametro. Una
+    // pantalla que sabe en que destino esta es una pantalla que lleva el estado de la
+    // aplicacion, y es el mismo fallo que una vista que decide cuando abrir el catalogo.
+    pantalla = MarcoDeEstudio(
+      destino: _destinoDeLaRuta(),
+      alElegirDestino: irAlDestino,
+      hijo: pantalla,
+    );
 
     // Y ESTE `Navigator` NO ES PARA NAVEGAR: es por el `Overlay`.
     //

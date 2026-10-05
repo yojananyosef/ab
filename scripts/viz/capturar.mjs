@@ -35,15 +35,27 @@
 // ============================================================================
 //
 // Se necesita Playwright, y **NO** va en `pubspec.yaml` porque no es una dependencia de
-// la aplicacion: es una herramienta de mirar. Se instala una vez, en el arbol de trabajo,
-// no en el repositorio:
+// la aplicacion: es una herramienta de mirar. Se instala una vez, en el arbol de trabajo, no
+// en el repositorio:
 //
 //     cd scripts/viz && npm install playwright
+//     node scripts/viz/capturar.mjs
+//
+// Y EL FICHERO ESTA **AQUI MISMO**, y no en `scripts/`, por un motivo concreto: Node busca
+// `node_modules` subiendo desde el directorio **del fichero**, no desde el de trabajo. Con el
+// script en `scripts/` y las dependencias en `scripts/viz/`, esto es lo que pasaba:
+//
+//     Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'playwright' imported from
+//     /home/j/ab/scripts/capturar.mjs
+//
+// Y lo que mas engaña es que el `package.json` esta a la vista, en `scripts/viz/`, con sus
+// dependencias. El error habla de un paquete inexistente y no de que el fichero este en el
+// sitio equivocado.
 //
 // Y el navegador es el del sistema --`/usr/bin/brave-browser`--, no uno que descarga
 // Playwright: son 300 MB que no hacen falta porque ya hay un Chromium instalado.
 import { chromium } from 'playwright';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 
 const BASE = process.env.AB_URL ?? 'http://127.0.0.1:8099';
 const SALIDA = process.env.AB_SALIDA ?? '/tmp/opencode/viz/capturas';
@@ -80,8 +92,46 @@ async function capturar(page, nombre) {
   return ruta;
 }
 
+/**
+ * Que el `404.html` que hay en el paquete sea **de esta** build.
+ *
+ * Y POR QUE HACE FALTA. `flutter build` reescribe `index.html` y **no toca `404.html`**, que
+ * se copia a mano. Con dos compilaciones de prefijos distintos --`--base-href=/` en local y
+ * `--base-href=/ab/` para GitHub Pages-- el `404.html` se queda con el prefijo de la build
+ * anterior, y como las rutas profundas losirven **el** `404.html`, un enlace a
+ * `/leer/KJV2006/John.3.16` pide `/ab/flutter_bootstrap.js` contra un servidor local que no
+ * tiene `/ab/`, y la pantalla sale **en blanco**.
+ *
+ * Medido el 5 de octubre de 2026: una captura de 19.307 bytes, que es el color del fondo y
+ * nada mas, con cuatro 404 en la consola. Y `/` funcionaba, con lo que parecia un fallo de
+ * la aplicacion y era un fichero viejo.
+ *
+ * Se comprueba aqui y no en el servidor porque **una captura en blanco es una captura**: sin
+ * mirar el tamano del PNG no hay nada que sospeche, y el PNG en blanco parece una pantalla
+ * vacia.
+ */
+function comprobarEl404() {
+  const raiz = process.env.AB_PAQUETE ?? '/home/j/ab/build/web';
+  const idx = `${raiz}/index.html`;
+  const cfa = `${raiz}/404.html`;
+  if (!existsSync(idx) || !existsSync(cfa)) {
+    console.log('  el paquete no tiene index.html o 404.html; se sigue igual');
+    return;
+  }
+  const base = (f) => (readFileSync(f, 'utf8').match(/<base href="([^"]*)"/) ?? [, '?'])[1];
+  const a = base(idx);
+  const b = base(cfa);
+  if (a !== b) {
+    console.log(`  AVISO: index.html declara "${a}" y 404.html declara "${b}".`);
+    console.log('         Las rutas profundas se sirven con 404.html, y con el prefijo');
+    console.log('         viejo la pantalla sale EN BLANCO. Se arregla con:');
+    console.log(`             cp ${idx} ${cfa}`);
+  }
+}
+
 async function main() {
   mkdirSync(SALIDA, { recursive: true });
+  comprobarEl404();
 
   const rutas = (process.env.AB_RUTAS ?? '/leer/KJV2006/John.3.16').split(',');
   const pantallas = (process.env.AB_PANTALLAS ?? 'movil,escritorio').split(',');
@@ -150,6 +200,39 @@ async function main() {
       // abiertas, y esperar a un elemento del `canvas` no sirve porque el texto **no esta
       // en el DOM**: Flutter pinta en un `canvas` y el DOM solo tiene el `<pre>` de la
       // sonda. Un tiempo fijo es feo, y es lo unico que se puede hacer sin la sonda.
+      // Y SE LIMPIA EL **SERVICE WORKER** ANTES DE MIRAR, y no es una medida de higiene.
+      //
+      // Medido el 5 de octubre de 2026: una captura de la pantalla de lectura salia de
+      // **19.307 bytes**, que es una imagen del color del fondo y nada mas. La pagina
+      // estaba en blanco y el perfil **no** estaba roto:
+      //
+      //     Manifest fetch from http://127.0.0.1:8099/ab/manifest.json failed, code 404
+      //
+      // Se estaba pidiendo `/ab/` cuando el paquete local declara `/`. La causa es el
+      // `flutter_service_worker.js`, que **cachea el paquete entero** y se queda con la
+      // ultima build. Como `scripts/publicar.sh` compila con `--base-href=/ab/` para GitHub
+      // Pages y en local se compila con `--base-href=/`, el service worker tenia la build de
+      // Pages y servia esa, con sus rutas de Pages, contra un servidor local que no las tiene.
+      //
+      // Y LO QUE HACE ESTO PELIGROSO ES QUE **NO FALLA**: una captura en blanco es una
+      // captura, y sin mirar los errores de pagina parece que la pantalla esta vacia. Una
+      // herramienta que puede enseñar una build equivocada y no lo dice es peor que no
+      // tenerla -- y este es el mismo fallo que `AGENTS.md` escribe para las comprobaciones
+      // que pasan sin comprobar lo nuevo.
+      //
+      // Y POR QUE NO SE BORRA EL PERFIL ENTERO: el `.amod` de 22,5 MB vive en el
+      // `IndexedDB`, que **no** es la Cache Storage. `caches.delete` se lleva el service
+      // worker y el paquete cacheado y deja el texto descargado, que es lo que hace lento
+      //cada iteracion.
+      await page.evaluate(async () => {
+        for (const r of await navigator.serviceWorker.getRegistrations()) {
+          await r.unregister();
+        }
+        for (const k of await caches.keys()) {
+          await caches.delete(k);
+        }
+      });
+      await page.reload({ waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(ESPERA);
 
       const nombre = `${clave}-${ruta.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'raiz'}`;

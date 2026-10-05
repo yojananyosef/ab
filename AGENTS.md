@@ -1086,7 +1086,7 @@ documento como imposible. **No era imposible: era otro camino.**
 
 ```bash
 cd scripts/viz && npm install playwright          # una vez, no se versiona
-node scripts/capturar.mjs                         # a 360 y a 1440
+node scripts/viz/capturar.mjs                      # a 360 y a 1440
 ```
 
 Y EL PERFIL **PERSISTENTE**, que es lo que hace esto utilizable: el `.amod` son 22,5 MB y
@@ -1221,6 +1221,54 @@ Y LO QUE SI SIRVE, para la proxima vez: `gh run view <id> --json jobs` da `concl
 cancelled` **sin pasos**, y eso ya dice que no llego a ejecutar nada. Un job con pasos en
 `completed` y alguno en `failure` es un fallo de codigo; un job **sin pasos** no es un fallo
 de codigo y no hay que_debugarlo.
+
+### UNA CAPTURA EN BLANCO ES UN `404.html` VIEJO, Y NO ES LA APLICACION
+
+Medido el 5 de octubre de 2026. Una captura de la pantalla de lectura a 1440 px salia de
+**19.307 bytes**, que es una imagen del color del fondo y nada mas, mientras `/` servia
+perfectamente.
+
+La causa: **`flutter build` reescribe `index.html` y no toca `404.html`**, que se copia a
+mano. Con dos compilaciones de prefijos distintos --`--base-href=/` en local y
+`--base-href=/ab/` para GitHub Pages-- el `404.html` se quedaba con el prefijo de la build
+anterior:
+
+    index.html declara "/"
+    404.html   declara "/ab/"
+
+Y como las rutas profundas losirven **el** `404.html`, un enlace a
+`/leer/KJV2006/John.3.16` pedia `/ab/flutter_bootstrap.js` contra un servidor local que no
+tiene `/ab/`, con cuatro 404 en la consola y la pantalla en blanco.
+
+TRES COSAS QUE HACE ESTO FALAR Y QUE NO SON LA APLICACION:
+
+- **`/` funcionaba.** Con lo que parecia un fallo de la pantalla de lectura, y era un fichero
+  del directorio de la build anterior.
+- **Una captura en blanco es una captura.** Sin mirar el tamano del PNG no hay nada que
+  sospeche, y el PNG en blanco parece una pantalla vacia.
+- **Borrar el perfil del navegador tampoco lo arregla**, que es lo que se pruebo primero, y
+  con acierto: el `flutter_service_worker.js` cachea el paquete entero, pero el culpable de
+  estos 404 era el `404.html`.
+
+Por eso `scripts/viz/capturar.mjs` **comprueba los dos `base href` antes de sacar nada** y avisa
+con el comando exacto, y por eso hay que dejar el `404.html` al dia en cuanto se compila, no
+cuando se va a publicar.
+
+### EL SCRIPT DE CAPTURAS BUSCA `node_modules` EN SU DIRECTORIO, NO EN EL DE TRABAJO
+
+Medido el 5 de octubre de 2026. Con el script en `scripts/capturar.mjs` y las dependencias en
+`scripts/viz/`:
+
+    Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'playwright' imported from
+    /home/j/ab/scripts/capturar.mjs
+
+Node busca `node_modules` subiendo desde el directorio **del fichero**, no desde el que se
+ejecuta. Y lo que mas engaña es que el `package.json` esta a la vista, con sus dependencias
+instaladas al lado. El error habla de un paquete que no existe y no de un fichero en el sitio
+equivocado.
+
+Por eso el script esta **en `scripts/viz/`**, y hay un `.gitignore` con `node_modules/` para
+que las 300 MB de Playwright no se acaben versionando por accidente.
 
 ### LO QUE MIDIO Y NO SE PEDIA
 
