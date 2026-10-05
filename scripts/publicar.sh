@@ -91,8 +91,19 @@ else
   exit 1
 fi
 
+# Y CON `--base-href=/ab/`, Y NO CON `/`.
+#
+# El sitio se sirve en `https://<usuario>.github.io/ab/`, y con `/` el paquete busca sus
+# recursos **en la raiz** --`https://<usuario>.github.io/main.dart.js`--, que no existe: es
+# otro repositorio. La app arranca y luego no encuentra ni el motor SQLite, que es el peor
+# sitio posible para descubrirlo.
+#
+# La primera version de este script usaba `--base-href=/`, copiado del comando que se usa
+# para **servir en local** con `scripts/servir.py` en la raiz. En local `/` es lo correcto; en
+# GitHub Pages no lo es, y la diferencia es el prefijo del repositorio. El script se
+# comprueba en los dos sitios distintos y por eso los dos necesitan el flag distinto.
 echo "==> 3/7  flutter build web --release"
-flutter build web --release --base-href=/ --no-wasm-dry-run
+flutter build web --release --base-href=/ab/ --no-wasm-dry-run
 
 # `404.html` para las rutas profundas: `/leer/KJV2006/John.3.16` no es un fichero, es una
 # ruta, y GitHub Pages sirve `404.html` cuando no encuentra lo que se le pide. Sin esto,
@@ -105,6 +116,19 @@ echo "==> 5/7  el motor SQLite tiene que viajar en el paquete"
 test -f build/web/sqlite3.wasm
 test -f build/web/index.html
 test -f build/web/404.html
+
+# Y QUE EL PREFIJO SEA EL DE ESE REPOSITORIO. Sin esta comprobacion, un `--base-href=/`
+# --que es lo correcto para servir en local-- sube un paquete que en GitHub Pages busca sus
+# recursos en la raiz de `github.io`, que es otro sitio. La app arranca y falla al abrir el
+# primer texto, y desde fuera parece que el despliegue salio bien porque devuelve 200.
+PREFIJO=$(grep -o 'base href="[^"]*"' build/web/index.html | head -1)
+case "$PREFIJO" in
+  *href="/ab/"*) echo "          prefijo: $PREFIJO, correcto para /ab/" ;;
+  *) echo "AVISO: el paquete declara $PREFIJO y deberia declarar /ab/."
+     echo "        En GitHub Pages los recursos se buscarian en la raiz de github.io,"
+     echo "        que no es este repositorio. No se publica."
+     exit 1 ;;
+esac
 echo "          sqlite3.wasm: $(stat -c%s build/web/sqlite3.wasm) bytes"
 echo "          ficheros: $(find build/web -type f | wc -l)"
 
