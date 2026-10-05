@@ -1119,6 +1119,69 @@ Y la causa **no era el diseno**, era el dato: `Juan 3:16` traia **un versiculo**
 consulta filtraba con `verse = ?`. Un lector de Biblia que al abrir un versiculo ensena un
 versiculo y tres lineas de terminos no esta enseñando la Biblia.
 
+### LA LISTA DE LA CAPTURA, Y POR QUE ESTA EN EL SPEC
+
+Medido el 5 de octubre de 2026, poniendo una captura de esta aplicacion al lado de una de
+Logos con la misma tarea:
+
+    panel de herramientas a la izquierda      Logos si    aqui no
+    pestanas por panel                        Logos si    aqui no
+    paneles lado a lado con scroll propio     Logos si    aqui no
+    fila de menu por panel                    Logos si    aqui no
+    segunda barra de formato                  Logos si    aqui no
+    migas de pan sobre el texto               Logos si    aqui no
+    numero de capitulo grande y epigrafes     Logos si    aqui no
+    numeros de versiculo en linea             Logos si    columna a la izquierda
+    panel de ideas a la derecha               Logos si    aqui no
+    barra inferior en pantalla estrecha       Logos si    no habia ninguna
+
+De diez cosas, **una** estaba. Y el fallo **no era el diseno**, era el metodo: se hicieron
+nueve changes, cada uno probado, y las capturas eran de la aplicacion propia. Decian «no
+desborda» y «el versiculo sale», nunca «esto se parece a lo que te ensenaron». La lista esta
+ahora en `openspec/changes/el-marco-de-estudio/specs/marco/spec.md` como requisito
+comprobable, no como descripcion.
+
+**ASI QUE LA CAPTURA TIENE QUE IR AL LADO DE LA DE REFERENCIA, NO SOLA.** Mirar la propia
+pantalla es ver que se ha dibujado.
+
+### LOS TRES FALLOS QUE SALIERON AL COPIAR LA DISTRIBUCION
+
+Todos en el mismo commit, y los tres los sacaron pruebas que ya existian:
+
+**1. `NavigationRail` con `minWidth: 0` revienta.** Con `extended: true` el `minWidth` tiene
+que ser `null`:
+
+    Failed assertion: line 118 pos 15: 'minWidth == null || minWidth > 0'
+
+Y `minExtendedWidth` es un **minimo**, no un ancho: el panel mide **226,5** porque la
+etiqueta mas larga es "Comentarios", no los 176 que se le habian puesto.
+
+**2. El marco esta fuera del `Scaffold` y necesita su propio `Material`.** El `Scaffold` pone
+el suyo en la barra y en el cuerpo; un `TextField` en la barra de abajo lanza
+
+    The specific widget that could not find a Material ancestor was: TextField
+
+que es un fallo que no dice de donde viene.
+
+**3. `find.byType(Scrollable).first` cogia el `EditableText` del campo, no la lista.** En
+la pantalla de lectura hay **dos** `Scrollable`: el de dentro del campo --212 x 23-- y el
+de la lista --332 x 480--. El primero esta antes en el arbol, el arrastre no hacia nada, y
+la prueba de los terminos decia "no han salido" cuando en realidad no se habia movido nada.
+Hay que acotar al `ListView`.
+
+**Y UN MAS, DE LOS PROPIOS TESTS**: recoger "los numeros de versiculo visibles" por
+`find.byType(RichText)` y quedarse con los que son un numero entero devolvio `[3, 36]` al
+abrir Juan 3. El 3 de mas era el **numero de capitulo**, que ahora va antes de los
+versiculos. Tres pruebas contaban 37 versiculos visibles. Se resolvio con una clave publica
+en el numero del versiculo, no con un filtro mas estrecho.
+
+### LO QUE MIDIO Y NO SE PEDIA
+
+**Juan 3, que son 36 versiculos, ocupa 16.848 pixeles a 360 px de ancho.** La columna de
+texto se queda en 260 px y cada versiculo sale en cinco o seis lineas. Que es lo que pasa
+sin un solo ajuste de tamano de letra, de alto de linea o de fondo, que es exactamente lo
+que no existe.
+
 ### LOS DOS FALLOS QUE SOLO SALIERON MIRANDO
 
 **1. La version no salia nunca en la cabecera.** El enrutador escuchaba a la biblioteca

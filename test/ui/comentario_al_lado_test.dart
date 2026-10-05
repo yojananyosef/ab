@@ -466,17 +466,35 @@ void main() {
       // la version es ilegible y no vale la pena ensenarlo.
       await montar(tester, referencia: const Referencia('John', 3, 16));
 
-      // Y DENTRO DE LA BARRA, Y NO POR TODO PANTALLA. "Juan 3:16" sale tres veces en la
-      // pantalla --la cabecera, el campo de referencia y el selector-- y sin acotar, esta
-      // comprobacion mide el ancho del campo de referencia, que es ancho por construccion, y
-      // pasaria siempre.
-      final texto = find.descendant(
-        of: find.byType(AppBar),
-        matching: find.text('Juan 3:16'),
+      // Y LO QUE SE MIDE AHORA ES **OTRA COSA**, y el cambio es el que importa.
+      //
+      // Antes el titulo de la barra decia "Juan 3:16" y esta comprobacion media que
+      // tuviera sitio. Ahora la version es la pestana y **la referencia es el campo**, que
+      // esta en su propia fila: no hay ningun texto con la referencia en la barra, y medir
+      // un texto que ya no esta seria medir el ancho de otra cosa.
+      //
+      // Asi que lo que se comprueba es que las dos cosas que hay en pantalla --el rotulo de
+      // la version y el campo-- tienen ancho de verdad. Un `Text` de 13,9 pixeles no
+      // desborda: se recorta entero y no hay excepcion, que es el fallo entero.
+      expect(
+        find.descendant(of: find.byType(AppBar), matching: find.text('Juan 3:16')),
+        findsNothing,
+        reason: 'la referencia no esta en la barra: esta en el campo',
       );
-      expect(texto, findsOneWidget);
-      expect(tester.getSize(texto).width, greaterThan(120),
-          reason: 'a 360 px el titulo de la cabecera tiene que caber');
+
+      // Y LA PESTAÑA DE LA VERSION **NO** SE COMPRUEBA AQUI, y hay un motivo: este montaje
+      // no pasa manifiesto, y sin manifiesto no hay nombre de version que poner. Pedirlo
+      // seria pedir algo que la pantalla no puede saber.
+      //
+      // Y TAMPOCO CON UN "SI HAY PESTAÑA, MIDE ELLA", que es lo que se intento primero:
+      // `InkResponse` **hereda de `InkWell`**, asi que `find.byType(InkWell)` dentro de la
+      // barra devuelve los tres botones de accion --40 px cada uno-- y no el rotulo. La
+      // comprobacion media un boton de 40 px y fallaba por 80.
+      //
+      // El ancho del rotulo se comprueba donde si hay manifiesto: `cabecera_de_lectura_test`,
+      // grupo 1.
+      expect(tester.getSize(find.byType(TextField)).width, greaterThan(240),
+          reason: 'el campo tiene que caber con sus dos iconos de sufijo');
     });
 
     testWidgets('el aviso del comentario tiene un boton para quitarlo', (tester) async {

@@ -118,10 +118,25 @@ class CampoDeReferencia extends StatelessWidget {
           decoration: InputDecoration(
             isDense: true,
             hintText: 'Ir a: Juan 3:16',
-            helperText: esValido
-                ? null
-                : 'No se entiende. Escribe el libro y el capitulo, como "Juan 3:16".',
-            helperMaxLines: 3,
+            // Y **SIN** TEXTO DE AYUDA, Y SOLO EL DE ERROR.
+            //
+            // Antes habia las dos cosas a la vez: "No se entiende. Escribe el libro y el
+            // capitulo, como "Juan 3:16"." encima de "Falta el capitulo. Por ejemplo,
+            // "Juan 3"." Son dos frases que dicen lo mismo en 16 px de alto, y en una fila
+            // de cabecera eso son 32 px de la pantalla por repetir un motivo.
+            //
+            // Y EL DE ERROR **TAMBIEN** SE ACORTA, porque dice lo mismo con menos:
+            // "Falta el capitulo. Por ejemplo, "Juan 3"." son 38 caracteres y en 330 px de
+            // campo salen en dos lineas. Con una linea --"Falta el capitulo."-- el motivo
+            // sigue estando y el ejemplo se lleva al `Semantics`, que es lo que lee el
+            // lector de pantalla.
+            //
+            // Y EL ANTERIOR MOTIVO DE LAS TRES LINEAS, que era "el campo vivia en el
+            // cuerpo y tenia sitio", dejo de ser cierto cuando el campo subio a la
+            // cabecera. Un motivo que se queda escrito sin que su cosa cambie es un motivo
+            // que ya no explica nada.
+            helperText: null,
+            helperMaxLines: 1,
             errorText: esValido ? null : _motivoDeNoEntenderse(control.text),
             // Y EL SUFIJO **ES EL BOTON**, y no un "borrar" con el "ir" al lado. Con texto
             // escrito se ofrecen los dos, porque borrar sin poder ir no sirve de nada y
@@ -170,9 +185,9 @@ class CampoDeReferencia extends StatelessWidget {
     // Sin ningun numero no hay capitulo: casi siempre es que se ha escrito el libro
     // solo, que es lo mas comun y lo que mas se equivoca uno.
     if (!RegExp(r'\d').hasMatch(t)) {
-      return 'Falta el capitulo. Por ejemplo, "$t 3".';
+      return 'Falta el capitulo.';
     }
-    return 'No hay ningun texto con esa referencia. Prueba con "Juan 3:16".';
+    return 'No hay ningun texto con esa referencia.';
   }
 }
 

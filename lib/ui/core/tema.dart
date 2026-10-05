@@ -177,6 +177,19 @@ class Medidas {
   /// ventana de 120 px ya no hay nada que leer de todas formas.
   static const double anchoMinimoDeColumna = 120;
 
+  /// A partir de aqui hay sitio para un panel de herramientas lateral con sus nombres.
+  ///
+  /// Y EL NUMERO ESTA MEDIDO, Y NO ES UN GUSTO. Mirada la captura responsive de Logos a
+  /// 768 px: **no hay panel lateral**, hay una barra de iconos abajo. Y mirada la de
+  /// escritorio a 1920 px, el panel con los nombres ocupa unos 200 px de 1920, un 10 %.
+  ///
+  /// El corte se pone en 1100 y no en 900 porque con nombres el panel mide unos 200 px y
+  /// la columna de lectura no puede bajar de los 900: por debajo, el texto a 90 caracteres
+  /// --el tope que ya usa [anchoMaximoDeFila] escalado-- empieza a cortar lineas de la
+  /// Escritura en sitios que no son los del final de la frase, que es lo unico que no se
+  /// puede hacer con un texto.
+  static const double anchoParaPanelDeHerramientas = 1100;
+
   /// Margen de los lados en pantallas estrechas.
   static const double margenEstrecho = 14;
 

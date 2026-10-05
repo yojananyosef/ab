@@ -54,6 +54,7 @@ import '../widgets/campo_de_referencia.dart';
 import '../../busqueda/widgets/columna_de_texto.dart';
 import '../widgets/estilo_de_palabra.dart';
 import '../widgets/hoja_de_versiones.dart';
+import '../widgets/marco_de_estudio.dart';
 import '../widgets/terminos_del_modulo.dart';
 
 class LectorView extends StatefulWidget {
@@ -68,6 +69,7 @@ class LectorView extends StatefulWidget {
     required this.alAlternarPalabrasDeJesus,
     required this.alAbrirLibros,
     required this.alAbrirVersiones,
+    this.alCambiarDeDestino,
     this.alDescargarComentario,
     this.alBuscar,
     this.modulosDelCatalogo = const <Modulo>[],
@@ -132,6 +134,16 @@ class LectorView extends StatefulWidget {
   /// Abrir el selector de version del texto.
   final VoidCallback alAbrirVersiones;
 
+  /// Ir a otra pantalla desde el panel de herramientas.
+  ///
+  /// Y ES UN CALLBACK Y NO UNA RUTA, porque esta pantalla no sabe que hay biblioteca ni
+  /// busqueda. Lo que sabe es que hay un destino; quien decide que destino es cual pantalla
+  /// es el enrutador, que es el unico que sabe de pantallas.
+  ///
+  /// Y ES OPCIONAL, como `alBuscar` y por el mismo motivo: hay montajes sin enrutador --las
+  /// pruebas de esta pantalla-- donde no hay a donde ir. En la aplicacion lo pone siempre.
+  final void Function(DestinoDeEstudio destino)? alCambiarDeDestino;
+
   /// Las versiones del catalogo, con su estado, para el selector.
   ///
   /// Y SE PREPARA FUERA Y SE PASA, y no se arma en la vista. La vista no sabe que hay un
@@ -186,9 +198,49 @@ class _LectorViewState extends State<LectorView> {
   Widget build(BuildContext context) {
     final vm = widget.viewModel;
 
+    // Y EL MARCO ENVUELVE AL **SCAFFOLD ENTERO**, y no va dentro del `body`. El panel de
+    // herramientas de Logos va a la izquierda de **todo** --tambien de la cabecera de la
+    // ventana--, y si el marco fuera solo del cuerpo, en la cabecera de la ventana del
+    // navegador se veria el titulo de la pagina a lo ancho de la pantalla con el panel
+    // empezando debajo. Es un detalle de una linea que se ve.
+    return MarcoDeEstudio(
+      destino: DestinoDeEstudio.biblia,
+      alElegirDestino: widget.alCambiarDeDestino ?? _noSeMueve,
+      hijo: _panelConBarra(vm),
+    );
+  }
+
+  /// El `Scaffold` y la decision de si el campo va en la cabecera o en la barra de abajo.
+  /// Lo que va en el `title` de la barra: la version, como rotulo de pestana.
+  ///
+  /// Y SE CALLA EN UN METODO Y NO EN EL `build` CON UN `case`, porque un `case` dentro de
+  /// una expresion ternaria no es Dart: `x case final String n ? a : b` se lee como un
+  /// identificador llamado `case`. Y el compilador dice «can't be used as an identifier
+  /// because it's a keyword», que es un error de sintaxis y no dice nada de que la intencion
+  /// estaba bien.
+  Widget _tituloDeLaBarra(LectorViewModel vm) {
+    final nombre = _nombreDeLaVersionAbierta(vm);
+    if (nombre == null) return const _SinVersion();
+    return _PestanaDeVersion(nombre: nombre, alPulsar: widget.alAbrirVersiones);
+  }
+
+  Widget _panelConBarra(LectorViewModel vm) {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: Medidas.margenEstrecho,
+        // Y LA BARRA MIDE LOS **56 px** DE MATERIAL, y no mas, porque en ella va **solo**
+        // la linea de la version. El campo de la referencia va en su propia fila debajo,
+        // como en Logos.
+        //
+        // Y ESO NO ES UN DETALLE DE ESTILO, ES UNA MEDIDA. Con el campo dentro del `title`
+        // de la barra, a 360 px los tres botones de la derecha --buscar, letras rojas,
+        // comentario-- se llevan 144 px, y al campo le quedan **225**. Medido, y el campo
+        // entero con sus margenes son 330.
+        //
+        // En su propia fila el campo tiene los **330 px** de la pantalla, y la fila son 48.
+        // Antes de este change ese campo vivia **en medio del texto**, y era lo mismo: lo
+        // que cambia no es el sitio dentro de la pantalla sino que **deja de competir** con
+        // los botones de la barra.
         // Y EL TITULO **ES** LA CABECERA, y no un `Text` con la referencia. Es la decision
         // que mas se ve de esta pantalla y la que mas se Habia Tardado: la referencia y la
         // version son las dos cosas que mas se usan --una para ir a otro sitio, otra para
@@ -201,18 +253,13 @@ class _LectorViewState extends State<LectorView> {
         //
         // Y NO HAY ICONO DE NINGUNO DE LOS DOS. Se **ahorra** un boton, que es el problema
         // que tenia la barra --cuatro iconos y ninguno util-- en vez de añadir uno mas.
-        title: _CabeceraDeLectura(
-          referencia: vm.leyendo?.texto ?? 'Leyendo',
-          version: _nombreDeLaVersionAbierta(vm),
-          hayVersion: widget.versiones.isNotEmpty,
-          alPulsarPasaje: widget.alAbrirLibros,
-          alPulsarVersion: widget.alAbrirVersiones,
-        ),
-        leading: IconButton(
-          tooltip: 'Volver a la biblioteca',
-          icon: const Icon(Icons.arrow_back),
-          onPressed: widget.alVolver,
-        ),
+        title: _tituloDeLaBarra(vm),
+        // Y **SIN FLECHA DE VOLVER**, y no por forgotten sino por decision. El panel de
+        // herramientas **es** el camino de vuelta, y tener las dos cosas --una barra lateral
+        // que dice "Biblioteca" y una flecha que tambien vuelve-- es no decidir cual manda.
+        // En la captura de Logos no hay flecha de volver en la cabecera del panel, y la
+        // razon es que no la hay en ninguna parte: la aplicacion es una ventana con
+        // herramientas, no una pila de pantallas.
         actions: <Widget>[
           if (widget.alBuscar != null)
             IconButton(
@@ -245,7 +292,21 @@ class _LectorViewState extends State<LectorView> {
           SizedBox(width: Medidas.margenEstrecho / 2),
         ],
       ),
-      body: SafeArea(child: _cuerpo(vm)),
+      body: SafeArea(
+        // Y LA FILA DE LA REFERENCIA VA **DEBAJO** DE LA BARRA Y **ENCIMA** DEL TEXTO, y
+        // es una fila propia con su borde. Antes de este change estaba en medio del texto
+        // --con su boton de "Buscar" debajo, que eran 164 px-- y despues dentro del `title`
+        // de la barra, donde le quedaban 225 px de los 330. Aqui tiene la pantalla.
+        child: Column(
+          children: <Widget>[
+            _CabeceraDelPanel(
+              campoDeReferencia: _campoDeReferencia(vm),
+              flechas: _tituloConFlechas(vm),
+            ),
+            Expanded(child: _cuerpo(vm)),
+          ],
+        ),
+      ),
     );
   }
 
@@ -268,25 +329,17 @@ class _LectorViewState extends State<LectorView> {
             hijo: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                const SizedBox(height: 8),
-                // Y LAS FLECHAS EN LA **MISMA FILA** QUE EL CAMPO, y no en una fila
-                // propia. Medido: la fila sola eran **48 px** mas un hueco, con dos
-                // flechas alineadas a la derecha y nada mas, que se leen como un boton
-                // suelto en mitad de la pantalla.
-                //
-                // A 360 px el campo se queda con 270 y las flechas con 80, y "Juan 3:16"
-                // entra de sobra: el problema original --"el texto se corta a los 12
-                // caracteres"-- era del boton de 48 px de ancho **completo** debajo, no
-                // de dos flechas de 40.
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: <Widget>[
-                    Expanded(child: _campoDeReferencia(vm)),
-                    const SizedBox(width: 4),
-                    _tituloConFlechas(vm),
-                  ],
+                // Y EL CUERPO **EMPIEZA POR LAS MIGAS**, no por el campo. Medido a 360 px
+                // antes de este cambio: el campo y su boton eran 164 px, mas 48 px de
+                // flechas en su propia fila, y eran **212 px por encima del primer
+                // versiculo**. Los dos han subido a la cabecera del panel --que es donde
+                // Logos tiene la referencia-- y aqui solo queda una linea de 32 px que
+                // ademas dice algo que antes no decia en ninguna parte: como se llama el
+                // libro.
+                _MigasDelLibro(
+                  referencia: vm.leyendo,
+                  alPulsar: widget.alAbrirLibros,
                 ),
-                const SizedBox(height: 8),
                 if (vm.aviso != null) ...<Widget>[
                   AvisoDePasajeInexistente(
                     texto: vm.aviso!,
@@ -321,6 +374,8 @@ class _LectorViewState extends State<LectorView> {
               ],
             ),
           ),
+
+          MargenDeLectura(hijo: _NumeroDeCapitulo(capitulo: vm.leyendo?.capitulo)),
 
           MargenDeLectura(hijo: _capitulo(vm, estiloVersiculo)),
 
@@ -714,99 +769,164 @@ class _Nota extends StatelessWidget {
 /// Y CUANDO NO HAY VERSION NO SE PINTA LA LINEA, y no un hueco. Un modulo sin manifiesto al
 /// que pertenece deja la cabecera a una linea y no con un espacio vacio que empuja el
 /// texto hacia abajo.
-class _CabeceraDeLectura extends StatelessWidget {
-  const _CabeceraDeLectura({
-    required this.referencia,
-    required this.version,
-    required this.hayVersion,
-    required this.alPulsarPasaje,
-    required this.alPulsarVersion,
+/// Un destino al que no se va. Para los montajes sin enrutador.
+void _noSeMueve(DestinoDeEstudio destino) {}
+
+/// La clave del numero de un versiculo, para las pruebas.
+///
+/// Y ES UNA CONSTANTE PUBLICA Y NO UN LITERAL EN CADA PRUEBA, porque el mismo numero
+/// aparece en tres sitios --la vista que lo pinta, la prueba que lo busca y la prueba que
+/// cuenta la columna-- y si uno de los tres cambia el nombre, las otras dos dejan de
+/// encontrarlo y el fallo dice "0 widgets" sin decir de donde.
+const Key claveDelNumeroDeVersiculo = ValueKey<String>('numeroDeVersiculo');
+
+/// La fila de la referencia, debajo de la barra y encima del texto.
+///
+/// ============================================================================
+/// POR QUE ESTO NO ES LA BARRA
+/// ============================================================================
+///
+/// Comparada con la cabecera del panel de Logos, la distribucion estaba del reves:
+///
+///   - En Logos la **version identifica la pestana** --arriba, en la tira-- y la
+///     **referencia es un campo** en su propia fila de cabecera.
+///   - Aqui las dos cosas estaban en la barra, una encima de otra, y el campo en medio
+///     del texto.
+///
+/// Que la version sea la pestana no es un detalle de maquetacion: es lo que hace que
+/// "tengo dos textos abiertos" sea una cosa que se pueda **ensenar**. Una tira de
+/// pestanas dice RVR60 y JFB; dos lineas de texto en una barra no dicen eso.
+///
+/// Y POR QUE UNA FILA Y NO DENTRO DE LA BARRA. Medido a 360 px: los tres botones de la
+/// derecha --buscar, letras rojas, comentario-- son **144 px**, y dentro del `title` al
+/// campo le quedan **225** de los 330 que mide la pantalla. En su propia fila tiene los
+/// 330.
+///
+/// Y ES UNA FILA DE **48 px**, no mas. Con el borde de abajo, porque en Logos la fila de
+/// la cabecera esta separada del texto por una linea, y sin ella el campo flota encima de
+/// los versiculos y parece un texto suelto.
+class _CabeceraDelPanel extends StatelessWidget {
+  const _CabeceraDelPanel({
+    required this.campoDeReferencia,
+    required this.flechas,
   });
 
-  final String referencia;
-  final String? version;
-  final bool hayVersion;
-  final VoidCallback alPulsarPasaje;
-  final VoidCallback alPulsarVersion;
+  final Widget campoDeReferencia;
+  final Widget flechas;
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context);
-
-    return Column(
-      // `mainAxisSize: min` es lo que hace que la barra mida lo que mide. Sin el, un
-      // `Column` dentro de un `title` quiere ocupar toda la altura disponible y la barra
-      // crece, y una barra de 80 px en un movil de 640 de alto es un 12 % de pantalla que
-      // se va en decir donde estas.
-      mainAxisSize: MainAxisSize.min,
-      // Y `crossAxisAlignment: stretch`, Y NO `start`. Con `start`, cada hijo del `Column`
-      // recibe la holgura y mide lo que quiere, y entonces el `Flexible` de dentro no tiene
-      // ancho que recortar: el texto no se recorta y la fila **desborda**. Medido a 360 px,
-      // con los tres botones de la barra al lado: **4,1 pixeles de mas**, con el nombre de
-      // la version entero en vez de con puntos suspensivos.
-      //
-      // Y QUEDA UN `start` PARA LO QUE SIGUE, porque el `Column` de dentro del selector de
-      // libros si quiere alinearse a la izquierda. Aqui lo que se quiere es lo contrario:
-      // que las dos lineas ocupen exactamente el ancho del titulo.
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
-        _linea(
-          texto: referencia,
-          estilo: t.textTheme.titleMedium,
-          descripcion: 'Elegir libro y capitulo',
-          alPulsar: alPulsarPasaje,
+    final colores = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colores.surfaceContainerLow,
+        border: Border(bottom: BorderSide(color: colores.outlineVariant)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          Medidas.margenEstrecho,
+          4,
+          Medidas.margenEstrecho,
+          4,
         ),
-        if (version != null)
-          _linea(
-            texto: version!,
-            estilo: t.textTheme.bodySmall?.copyWith(color: Colores.textoSuave),
-            descripcion: 'Elegir la version del texto',
-            alPulsar: alPulsarVersion,
-            sinSeparacion: true,
-          ),
-      ],
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            // Y EL CAMPO **NO** SE ESTIRA. A 360 px --sin panel de herramientas-- mide lo que
+            // queda, que son 248 px. Con panel, se queda en **360** y el resto de la fila
+            // queda vacio a la derecha, que es lo que hay en la captura de Logos: el campo
+            // de la referencia es una caja corta a la izquierda de la fila de cabecera y a
+            // su derecha van los menus del panel, que aqui todavia no existen.
+            //
+            // Estirado a 1440 --1.260 pixeles-- el campo parece la pagina de busqueda de
+            // una aplicacion y no la cabecera de un panel de lectura, y el hueco de la
+            // derecha queda como un error de maquetacion en vez de como sitio reservado.
+            //
+            // Y CON UN **TOPE**, Y NO CON UN `Flexible` SUELTO, porque un `Flexible` sin
+            // `fit` deja que el hijo pida lo que quiera y un `TextField` pide todo: la
+            // primera version de esta fila usaba `Expanded` y despues `Flexible`, y en las
+            // dos capturas de 1440 el campo seguia ocupando los 1.260 px. Lo que hace falta
+            // es un `maxWidth`, no una regla de reparto.
+            //
+            // Y DENTRO DE UN `Flexible` SUELTO, Y NO SUELTO A SECO. Un hijo **no flexible**
+            // de una `Row` recibe del alto principal una restriccion **sin limite**, y un
+            // `TextField` con ancho sin limite pide infinito: la fila se sale y los
+            // versiculos no se ven. El `Flexible` pone el limite de la fila y el
+            // `ConstrainedBox` pone el de 360, que es el mas pequeno de los dos.
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 360),
+                child: campoDeReferencia,
+              ),
+            ),
+            const SizedBox(width: 4),
+            flechas,
+          ],
+        ),
+      ),
     );
   }
+}
 
-  Widget _linea({
-    required String texto,
-    required TextStyle? estilo,
-    required String descripcion,
-    required VoidCallback alPulsar,
-    bool sinSeparacion = false,
-  }) {
+/// Lo que se ve en la barra cuando no hay manifiesto y, por tanto, no hay version.
+///
+/// Y NO UN HUECO. Una barra de 56 px con un `Text` que pone "Leyendo" en el sitio donde
+/// deberia ir la version no dice nada; un hueco de 56 px dice que se esta cargando algo, y
+/// no se esta cargando nada. Y "Leyendo" se queda en la fila de la referencia, que es donde
+/// esta el pasaje.
+class _SinVersion extends StatelessWidget {
+  const _SinVersion();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
+/// El rotulo de la version, que hace de pestana.
+///
+/// Y ES UN BOTON, porque abre el selector de versiones. Y lleva un cuadrado de color a la
+/// izquierda como en Logos, y ese cuadrado **no finge un color**: con una sola version
+/// descargada no hay con que comparar, asi que va en el color de superficie, que es lo que
+/// se ve de verdad. Un cuadrado de color que significa "esto es una version y se puede
+/// comparar" sin que se pueda comparar es peor que no ponerlo.
+class _PestanaDeVersion extends StatelessWidget {
+  const _PestanaDeVersion({required this.nombre, required this.alPulsar});
+
+  final String nombre;
+  final VoidCallback alPulsar;
+
+  @override
+  Widget build(BuildContext context) {
+    final colores = Theme.of(context).colorScheme;
     return Semantics(
       button: true,
-      label: '$texto. $descripcion',
+      label: '$nombre. Cambiar de version',
       child: InkWell(
         onTap: alPulsar,
-        // Y EL SALPICADO **NO** SE VE SI EL `InkWell` NO TOCA EL BORDE. Un
-        // `InkWell` dentro de un `AppBar` pinta el salpicado donde ocupa el widget, y sin
-        // margen se pinta pegado al borde de los pixeles y no se ve. Este es el motivo de
-        // que el `title` lleve `titleSpacing`: el margen va **ahi** y no en un `Padding`
-        // dentro de la linea, que ademas es lo que hacia desbordar la fila.
+        borderRadius: BorderRadius.circular(6),
         child: Padding(
-          padding: EdgeInsets.only(right: 4, top: sinSeparacion ? 0 : 1, bottom: 1),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
           child: Row(
-            // Y `Expanded` Y NO `Flexible`. Con `Flexible` holgado, el `Text` pide lo que
-            // necesita hasta el ancho disponible y el `Row` **mide lo que sus hijos piden**:
-            // a 360 px, con la flecha de 20 al lado, la linea se pasaba **4,1 pixeles** y
-            // `overflow: ellipsis` no llegaba a activarse. `Expanded` obliga a que el texto
-            // ocupe el hueco que sobra, y entonces el recorte ocurre.
+            mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Expanded(
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: colores.surfaceContainerHighest,
+                  border: Border.all(color: colores.outlineVariant),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
                 child: Text(
-                  texto,
-                  style: estilo,
+                  nombre,
+                  style: Theme.of(context).textTheme.bodySmall,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              // Y LA FLECHA DESPUES DEL TEXTO Y NO ANTES. Delante parece un boton de
-              // "abrir" del que no se sabe que abre; al lado parece un desplegable, que es
-              // lo que es.
-              Icon(Icons.arrow_drop_down, size: 20, color: Colores.textoSuave),
+              Icon(Icons.arrow_drop_down, size: 18, color: colores.outline),
             ],
           ),
         ),
@@ -814,6 +934,109 @@ class _CabeceraDeLectura extends StatelessWidget {
     );
   }
 }
+
+/// Las migas del libro, encima del texto.
+///
+/// Y ES LO PRIMERO DEL CUERPO. Medido a 360 px antes de este change: el campo y su boton
+/// eran 164 px, y las flechas de capitulo 48 px mas su hueco, y eran **212 px por encima
+/// del primer versiculo** en una pantalla de 760. Los dos han subido a la cabecera del
+/// panel.
+///
+/// Y ADEMAS DIJE ALGO QUE ANTES NO SE DECIA EN NINGUN SITIO: como se llama el libro. En
+/// Logos esta el nombre del libro --"San Juan", "The Gospel according to John"-- y es un
+/// salto al selector de libros. Aqui solo aparecia dentro del texto de la referencia, y no
+/// como algo pulsable.
+///
+/// Y VA EN `bodySmall` Y CON COLOR SUAVE, y no en `titleMedium`, porque es una posicion en
+/// el libro y no el titulo de la pagina. En grande compite con el numero de capitulo, que va
+/// justo debajo.
+class _MigasDelLibro extends StatelessWidget {
+  const _MigasDelLibro({required this.referencia, required this.alPulsar});
+
+  final Referencia? referencia;
+  final VoidCallback alPulsar;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = referencia;
+    if (r == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Semantics(
+        button: true,
+        label: '${r.nombreLibro} ${r.capitulo}. Elegir libro y capitulo',
+        child: InkWell(
+          onTap: alPulsar,
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+            child: Row(
+              children: <Widget>[
+                const Icon(Icons.menu_book_outlined,
+                    size: 15, color: Colores.textoSuave),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '${r.nombreLibro} ${r.capitulo}',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Colores.textoSuave),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// El numero de capitulo, antes de los versiculos.
+///
+/// Y VA DENTRO DE LA COLUMNA DE LECTURA, y no centrado en la ventana. El motivo es el
+/// mismo que el de las migas: si se sale de la columna, el texto deja de tener un sitio fijo
+/// al que volver el ojo, y en un capitulo largo --Salmos 119, 176 versiculos medido-- eso es
+/// justo lo que hace falta.
+///
+/// Y ES UN NUMERO Y NO UN TITULO. "Capitulo 1" ocupa media linea y no dice nada que el 1 no
+/// diga; el 1 solo, en grande y ligero, es lo que pone un libro impreso.
+class _NumeroDeCapitulo extends StatelessWidget {
+  const _NumeroDeCapitulo({required this.capitulo});
+
+  final int? capitulo;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = capitulo;
+    if (c == null) return const SizedBox.shrink();
+
+    // Y EN `headlineLarge`, Y NO EN `displaySmall`.
+    //
+    // La primera version lo puso en `displaySmall` --36 px-- y en una captura a 360 px el
+    // numero se comia **72 pixeles de alto**, que es un 9 % de la pantalla para un digito.
+    // En `headlineLarge` son 32 px y con `letterSpacing` se separa, que es lo que hace que
+    // se lea como un capitulo y no como un titular.
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 2),
+      child: Center(
+        child: Text(
+          '$c',
+          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                color: Colores.textoSuave,
+                fontWeight: FontWeight.w300,
+                letterSpacing: 2,
+              ),
+        ),
+      ),
+    );
+  }
+}
+
 
 class _BotonDeComentario extends StatelessWidget {
   const _BotonDeComentario({required this.id, required this.alPulsar});
@@ -1162,6 +1385,12 @@ class _Versiculo extends StatelessWidget {
             width: 34,
             child: Text(
               '${versiculo.numero}',
+              // Y LA CLAVE, PORQUE SIN ELLA LAS PRUEBAS RECOGEN EL NUMERO DEL CAPITULO.
+              // El numero de capitulo que ahora va antes de los versiculos tambien es un
+              // `Text` con un numero entero, y la prueba que recogia "los numeros de
+              // versiculo visibles" devolvia `[3, 36]` al abrir Juan 3: **un 3 de mas** que
+              // es el capitulo. La prueba daba verde con 37 versiculos visibles.
+              key: claveDelNumeroDeVersiculo,
               textAlign: TextAlign.right,
               style: estiloDelVersiculo.copyWith(
                 fontSize: 13,

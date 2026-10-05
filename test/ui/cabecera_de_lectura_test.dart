@@ -112,22 +112,20 @@ void main() {
     bytes: 22544384,
   );
 
-  group('1. el titulo TIENE sitio, que es lo que estaba roto', () {
-    testWidgets('a 360 px el pasaje se lee entero', (tester) async {
-      await pintar(tester, versiones: const <VersionDisponible>[kjv]);
-
-      final titulo = find.descendant(
-        of: find.byType(AppBar),
-        matching: find.text('Juan 3:16'),
-      );
-      expect(titulo, findsOneWidget);
-      // Y CON UN MINIMO, Y NO CON "NO DESBORDA". Un `Text` de 13,9 pixeles no desborda
-      // nunca: se recorta y no hay exception. El minimo sale de medir lo que ocupa el
-      // pasaje con la flecha al lado, y por debajo de eso el texto no se lee.
-      expect(tester.getSize(titulo).width, greaterThan(60));
-    });
-
-    testWidgets('y la version tambien, aunque sea truncada', (tester) async {
+  group('1. la version es la pestana y la referencia es un campo', () {
+    // ============================================================================
+    // Y ESTO CAMBIO DE DISTRIBUCION, Y LA RAZON ESTA EN UNA CAPTURA.
+    // ============================================================================
+    //
+    // Antes las dos lineas --pasaje y version-- estaban en la barra y el campo vivia en
+    // medio del texto. Comparada con la cabecera del panel de Logos, esa distribucion
+    // estaba del reves: alli la version identifica la pestana y la referencia es un campo
+    // en su propia fila.
+    //
+    // Y LO QUE SE MIDIO AL PASAR EL CAMPO DENTRO DE LA BARRA: a 360 px los tres botones de
+    // la derecha son 144 px y al campo le quedan **225** de los 330. Por eso el campo esta
+    // en su propia fila y no en el `title`.
+    testWidgets('la version va en la barra, como rotulo de pestana', (tester) async {
       await pintar(tester, versiones: const <VersionDisponible>[kjv]);
 
       final version = find.descendant(
@@ -138,35 +136,103 @@ void main() {
       expect(tester.getSize(version).width, greaterThan(40));
     });
 
-    testWidgets('a 320 px tampoco desborda, y el pasaje sigue leible', (tester) async {
-      // Y 320, QUE ES UN ANCHO REAL. La prueba anterior de esta pantalla era a 360 y la
-      // de mas ancho no encuentra nada: una cabecera que cabe en 360 y se pasa en 320 es
-      // una cabecera que no esta terminada, y 320 px es un ancho de telefono viejo, no una
-      // hipotesis.
+    testWidgets('la referencia es un campo, y **no** esta en la barra', (tester) async {
+      await pintar(tester, versiones: const <VersionDisponible>[kjv]);
+
+      // Y QUE ESTE FUERA DE LA BARRA ES LA COMPROBACION, no un detalle. Si vuelve a entrar
+      // en el `title`, el campo se queda en 225 px a 360 y "Juan 3:16" con sus dos iconos
+      // de sufijo no entra.
+      expect(
+        find.descendant(of: find.byType(AppBar), matching: find.byType(TextField)),
+        findsNothing,
+        reason: 'el campo no compite con los botones de la barra',
+      );
+      expect(find.byType(TextField), findsOneWidget);
+    });
+
+    testWidgets('a 360 px el campo tiene lo que dejan las flechas, y es bastante',
+        (tester) async {
+      await pintar(tester, versiones: const <VersionDisponible>[kjv]);
+
+      // Y **248 PIXELES**, Y NO 330, Y EL NUMERO ESTA MEDIDO.
+      //
+      //     360  la pantalla
+      //      14  margen izquierdo
+      //      14  margen derecho
+      //       4  hueco entre el campo y las flechas
+      //      80  las dos flechas de capitulo, a 40 cada una con `VisualDensity.compact`
+      //     ---
+      //     248  lo que le queda al campo
+      //
+      // Y 248 ALCANZA, porque dentro van los dos iconos de sufijo --borrar e ir, 80 mas-- y
+      // quedan **168** para el texto. "Juan 3:16" mide unos 70.
+      //
+      // Y POR QUE NO SE BAJAN LAS FLECHAS A 32. `IconButton` con `compact` ya esta por
+      // debajo del minimo de 48 px que el framework considera pulsable con el dedo; a 32
+      // se fallaria la pulsacion sin darse cuenta, y leer seguido es el uso mas frecuente
+      // de un lector de Biblia. Es un precio que se paga a proposito, no por descuido.
+      expect(tester.getSize(find.byType(TextField)).width, greaterThan(240));
+    });
+
+    testWidgets('a 320 px tampoco, y el campo sigue leible', (tester) async {
+      // Y 320, QUE ES UN ANCHO REAL. Una cabecera que cabe en 360 y se pasa en 320 no esta
+      // terminada, y 320 px es un telefono viejo, no una hipotesis.
       await pintar(tester, versiones: const <VersionDisponible>[kjv], ancho: 320);
       expect(tester.takeException(), isNull);
 
-      final titulo = find.descendant(
-        of: find.byType(AppBar),
-        matching: find.text('Juan 3:16'),
-      );
-      expect(tester.getSize(titulo).width, greaterThan(50));
+      // 320 - 28 de margenes - 4 - 80 de flechas = **208**.
+      expect(tester.getSize(find.byType(TextField)).width, greaterThan(200));
     });
 
-    testWidgets('sin manifiesto el titulo no empuja con un hueco', (tester) async {
-      // Y UNA SOLA LINEA, no una linea y un hueco. Un modulo al que no se le puede quitar
-      // el nombre de la version --porque no hay manifiesto al que pertenece-- deja la
-      // cabecera a una linea; un hueco de mas seria empujar el texto abajo sin motivo.
+    testWidgets('a 1440 el campo NO se estira', (tester) async {
+      // Y 360 DE TOPE. Medido: estirado, el campo ocupaba los **1.260 pixeles** que quedan
+      // despues del panel de herramientas, y una fila de cabecera con un campo de 1.260 px
+      // parece la pagina de busqueda de una aplicacion. En la captura de Logos el campo de
+      // la referencia es una caja corta a la izquierda de la fila y a su derecha van los
+      // menus del panel.
+      //
+      // Y CON UN `Flexible` SUELTO NO SE ARREGLA: un `TextField` pide todo el ancho
+      // disponible y lo recibe. Hace falta un `maxWidth`.
+      await pintar(tester, versiones: const <VersionDisponible>[kjv], ancho: 1440);
+
+      expect(tester.getSize(find.byType(TextField)).width, lessThanOrEqualTo(360));
+    });
+
+    testWidgets('la fila de la referencia crece con el texto de error', (tester) async {
+      // Y ESTA ES LA SEGUNDA MEDIDA. La primera version de la fila la fijaba en 48 px, y el
+      // campo con su linea de error necesita 56 y con las dos lineas 72:
+      //
+      //     A RenderFlex overflowed by 24 pixels on the bottom.
+      //     Column  campo_de_referencia.dart:105
+      //
+      // Un alto fijo que funciona con el campo vacio y revienta con el campo mal escrito no
+      // es un alto fijo: es un fallo esperando a que alguien escriba "Juan".
+      await pintar(tester, versiones: const <VersionDisponible>[kjv]);
+
+      final altoConElCampoVacio = tester.getSize(find.byType(TextField)).height;
+      await tester.enterText(find.byType(TextField), 'Juan');
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull,
+          reason: 'con texto que no se entiende, el campo tiene que crecer');
+      expect(tester.getSize(find.byType(TextField)).height,
+          greaterThan(altoConElCampoVacio),
+          reason: 'y si no crece, el error se sale de la fila');
+    });
+
+    testWidgets('sin manifiesto no hay pestana, y la barra no empuja con un hueco',
+        (tester) async {
       await pintar(tester, versiones: const <VersionDisponible>[]);
 
-      expect(find.text('Juan 3:16'), findsWidgets);
       expect(find.text('Leyendo'), findsNothing);
+      expect(find.byType(TextField), findsOneWidget,
+          reason: 'la referencia esta en el campo, y sin manifiesto tambien');
       expect(tester.takeException(), isNull);
     });
   });
 
-  group('2. las dos lineas hacen cosas distintas', () {
-    testWidgets('el pasaje abre los libros y la version abre las versiones',
+  group('2. las dos cosas hacen cosas distintas', () {
+    testWidgets('la version abre las versiones y las migas abren los libros',
         (tester) async {
       var libros = 0, versiones = 0;
 
@@ -196,22 +262,22 @@ void main() {
 
       await tester.tap(find.descendant(
         of: find.byType(AppBar),
-        matching: find.text('Juan 3:16'),
-      ));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.descendant(
-        of: find.byType(AppBar),
         matching: find.text('King James Version (2006)'),
       ));
       await tester.pumpAndSettle();
 
-      expect(libros, 1);
+      // Y LAS MIGAS, QUE SON "Juan 3" EN EL TEXTO. Antes el pasaje se elegia con un boton
+      // de volver atras en el titulo; ahora el sitio para ir a otro lugar es el nombre del
+      // libro, que es lo que hay encima del texto.
+      await tester.tap(find.text('Juan 3'));
+      await tester.pumpAndSettle();
+
       expect(versiones, 1);
+      expect(libros, 1);
     });
 
     testWidgets('las dos tienen etiqueta para un lector de pantalla', (tester) async {
-      // Y CON `Semantics(button: true)`. Dos lineas pulsables sin etiqueta son dos zonas
+      // Y CON `Semantics(button: true)`. Dos cosas pulsables sin etiqueta son dos zonas
       //illas que un lector de pantalla anuncia como texto plano, y quien no ve la pantalla
       // no puede ni adivinar que son pulsables ni que abren.
       await pintar(tester, versiones: const <VersionDisponible>[kjv]);
@@ -223,42 +289,48 @@ void main() {
           .join(' | ');
 
       expect(semantica, contains('Elegir libro y capitulo'));
-      expect(semantica, contains('Elegir la version del texto'));
+      expect(semantica, contains('Cambiar de version'));
     });
   });
 
   group('3. lo que la cabecera no trae', () {
-    testWidgets('no hay icono de version: la version es el titulo', (tester) async {
-      // Y NO UN QUINTO ICONO. La barra tiene volver, buscar, letras rojas y comentario, y
-      // con un icono mas a 360 el titulo volveria a los 13,9 pixeles. El selector de
-      // version no cabe en un boton porque es la interaccion mas valiosa de la categoria,
-      // y lo que hace falta para que quepa es **dejarle sitio**, no anadirle sitio.
+    testWidgets('no hay flecha de volver: el marco es el camino de vuelta', (tester) async {
+      // Y NO POR OLVIDO. Con el panel de herramientas, tener las dos cosas --una barra
+      // lateral que dice "Biblioteca" y una flecha que tambien vuelve-- es no decidir
+      // cual manda. En la captura de Logos no hay flecha de volver en la cabecera del
+      // panel, y la razon es que no la hay en ninguna parte: la aplicacion es una ventana
+      // con herramientas, no una pila de pantallas.
       await pintar(tester, versiones: const <VersionDisponible>[kjv]);
 
-      // Y TODO ACOTADO A LA BARRA. `Icons.tonality` sale **dos** veces en pantalla: en el
-      // interruptor de la barra y en el boton del campo de referencia, que se parece
-      // bastante. Sin acotar, "findsOneWidget" se quejaria de algo que esta bien.
+      expect(
+        find.descendant(of: find.byType(AppBar), matching: find.byIcon(Icons.arrow_back)),
+        findsNothing,
+      );
+    });
+
+    testWidgets('no hay icono de version: la version es la pestana', (tester) async {
+      await pintar(tester, versiones: const <VersionDisponible>[kjv]);
+
+      // Y TODO ACOTADO A LA BARRA. `Icons.tonality` sale una vez, en el interruptor, y
+      // acotar el finder sigue siendo necesario porque el mismo icono esta en el boton de
+      // borrar del campo en otras pantallas.
       final barra = find.byType(AppBar);
-      expect(find.descendant(of: barra, matching: find.byIcon(Icons.translate)), findsNothing);
+      expect(
+          find.descendant(of: barra, matching: find.byIcon(Icons.translate)), findsNothing);
       expect(
           find.descendant(of: barra, matching: find.byIcon(Icons.library_books)),
           findsNothing);
-      // Y LOS TRES QUE SI HAY.
+      // Y LOS QUE SI HAY.
       expect(find.descendant(of: barra, matching: find.byIcon(Icons.search)), findsOneWidget);
       expect(
           find.descendant(of: barra, matching: find.byIcon(Icons.tonality)),
           findsOneWidget);
-      expect(
-          find.descendant(of: barra, matching: find.byIcon(Icons.arrow_back)),
-          findsOneWidget);
     });
 
     testWidgets('el boton de comentario no lleva texto', (tester) async {
-      // Y LA PALABRA "Comentario" SE LLEVA 110 PIXELES. Es el numero que ha dejado el
-      // titulo sin sitio, y por eso esta comprobacion existe: si alguien vuelve a poner un
-      // boton con texto en la barra, el titulo se encoge otra vez y esta comprobacion no
-      // lo dice --lo dice la de mas arriba, que mide el ancho--, pero al menos se ve que
-      // se toco algo.
+      // Y LA PALABRA "Comentario" SE LLEVA 110 PIXELES. Es el numero que dejo el titulo
+      // sin sitio en su dia, y por eso esta comprobacion sigue aqui: si alguien vuelve a
+      // poner un boton con texto en la barra, se vuelve al problema de antes.
       await pintar(tester, versiones: const <VersionDisponible>[kjv]);
 
       expect(find.widgetWithText(TextButton, 'Comentario'), findsNothing);
@@ -267,9 +339,9 @@ void main() {
     testWidgets('la version abierta se busca en la lista, no en el manifiesto',
         (tester) async {
       // Y LA LISTA QUE LLEGA YA ESTA PREPARADA. La vista no sabe que hay un manifiesto ni
-      // de donde sale "descargado", y si lo supiera acabaria preguntando al almacenamiento
-      // --que es lo que `arranque.dart` hace con un plazo porque en un navegador puede no
-      // contestar-- para pintar un boton.
+      // de donde sale "descargado", y si lo supiera acabaria preguntando al
+      // almacenamiento --que es lo que `arranque.dart` hace con un plazo porque en un
+      // navegador puede no contestar-- para pintar un boton.
       await pintar(
         tester,
         versiones: const <VersionDisponible>[
@@ -289,6 +361,7 @@ void main() {
       expect(find.text('King James Version (2006)'), findsOneWidget);
     });
   });
+
 
   group('4. el tamano del boton de descargar', () {
     testWidgets('sale con la unidad y con coma', (tester) async {

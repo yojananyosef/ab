@@ -179,11 +179,18 @@ void main() {
       vm.leer(const Referencia('John', 3, 16));
       await t.pumpAndSettle();
 
-      final marcados = find.byWidgetPredicate(
-        (w) => w is DecoratedBox &&
-            w.decoration is BoxDecoration &&
-            (w.decoration as BoxDecoration).border != null,
-      );
+      // Y EL FILTRO ES **UNA MARCA IZQUIERDA DE 3**, y no "cualquier `DecoratedBox` con
+      // borde". Con lo mas ancho salian **2**: la fila de la referencia tambien lleva
+      // `DecoratedBox`, y su borde es de abajo. La comprobacion decia "solo el versiculo
+      // pedido lleva la marca" y habia dos cosas marcadas, una de ellas el borde de la
+      // cabecera.
+      final marcados = find.byWidgetPredicate((w) {
+        if (w is! DecoratedBox) return false;
+        final d = w.decoration;
+        if (d is! BoxDecoration) return false;
+        final b = d.border;
+        return b is Border && b.left.width == 3;
+      });
       expect(marcados, findsOneWidget,
           reason: 'solo el versiculo pedido lleva la marca');
 
@@ -678,12 +685,58 @@ String crearModuloConUnDefecto() => crearModuloConTerminos(
 /// final del capitulo, en vez de fijos. Un pie fijo taparia versiculos; bajando se llega
 /// con el mismo gesto que se usa para leer, sin un boton de por medio.
 Future<void> _bajarALosTerminos(WidgetTester t) async {
-  await t.scrollUntilVisible(
-    find.textContaining('Atribucion'),
-    400,
-    scrollable: find.byType(Scrollable).first,
-  );
-  await t.pumpAndSettle();
+  // Y UN BUCLE, Y NO `scrollUntilVisible`.
+  //
+  // `scrollUntilVisible` lanza, desde dentro del framework, en cuanto el objetivo **todavia
+  // no esta construido**, que es justo lo que pasa con un `ListView` perezoso:
+  //
+  //     Bad state: No element
+  //     #0  Iterable.single (dart:core/iterable.dart:694:5)
+  //     #2  WidgetController.element (package:flutter_test/src/controller.dart:888:30)
+  //
+  // Ese error no dice de donde sale y no parece de esta prueba. Antes funcionaba porque los
+  // terminos estaban mas arriba; al anadir la fila de la referencia, 48 px, dejan de
+  // construirse en el primer cuadro y la prueba revienta.
+  //
+  // Con el bucle se baja en pasos, se mira, y se para. Y ademas **falla con un motivo** si
+  // no aparece, que es lo que una comprobacion deberia hacer siempre.
+  // Y EL SCROLLABLE **DEL LISTVIEW**, Y NO EL PRIMERO.
+  //
+  // Hay **dos** `Scrollable` en esta pantalla y el primero **no** es la lista: es el de
+  // dentro del `EditableText` del campo de referencia. Medido:
+  //
+  //     Scrollable  212 x  23   en (32, 68)    <- el campo
+  //     Scrollable  332 x 480   en (14, 104)   <- la lista
+  //
+  // `find.byType(Scrollable).first` cogia el del campo, el arrastre no hacia nada, y la
+  // comprobacion decia "los terminos no han salido" cuando en realidad no se habia movido
+  // nada. Un fallo que blames a la pantalla por no haber迨 algo que la prueba no hizo.
+  final lista = find
+      .descendant(of: find.byType(ListView), matching: find.byType(Scrollable))
+      .first;
+
+  // Y EL PASO ES **UN CUARTO** DEL RECORRIDO, Y NO 300 PX FIJOS. Medido: Juan 3 --36
+  // versiculos-- ocupa **16.848 pixeles** a 360 px de ancho, porque la columna de texto se
+  // queda en 260 px y cada versiculo sale en cinco o seis lineas. Con 25 pasos de 300 px se
+  // llega a 7.500, y los terminos estan en 16.848: la prueba fallaba por no llegar, y el
+  // mensaje decia "los terminos no han salido", que es una mentira sobre la aplicacion.
+  //
+  // Y ESE 16.848 ES UN DATO QUE NO ESTABA EN NINGUN SITE. Es la medida de lo que cuesta
+  // leer un capitulo en un movil: trece pantallas y media de scroll para 36 versiculos. Lo
+  // que lo arregla es tipografia --tamano de letra y alto de linea-- y eso todavia no
+  // existe. Ver `tasks.md` de `lectura-como-lector`, punto 5.1.
+  for (var i = 0; i < 8; i++) {
+    final control = t.widget<Scrollable>(lista).controller;
+    final porRecorrer = (control?.position.maxScrollExtent ?? 0) -
+        (control?.position.pixels ?? 0);
+    if (porRecorrer <= 0) break;
+    await t.drag(lista, Offset(0, -porRecorrer / 4));
+    await t.pumpAndSettle();
+    if (find.textContaining('Atribucion').evaluate().isNotEmpty) return;
+  }
+  fail('los terminos del modulo no han salido; quedan '
+      '${(t.widget<Scrollable>(lista).controller?.position.maxScrollExtent ?? 0) - (t.widget<Scrollable>(lista).controller?.position.pixels ?? 0)} '
+      'pixeles por bajar');
 }
 
 /// Los numeros de versiculo que hay en pantalla, en el orden en que se ven.
@@ -692,10 +745,21 @@ Future<void> _bajarALosTerminos(WidgetTester t) async {
 /// comprueba la tarea 7.1 es que los numeros se **vean**, no que el modelo los tenga.
 /// Un modelo con 36 versiculos y una pantalla que no pinta ninguno pasaria la
 /// comprobacion del modelo.
+/// Los numeros de versiculo que hay en pantalla, **en orden**.
+///
+/// Y POR LA **CLAVE** Y NO POR "cualquier `RichText` que sea un numero entero". La primera
+/// version de este ayudante recogia todos los `RichText` y se quedaba con los que eran un
+/// numero, y al abrir Juan 3 devolvia `[3, 36]`: el 3 de mas era el **numero de capitulo**,
+/// que ahora va antes de los versiculos. Tres pruebas_contaban 37 versiculos visibles.
+///
+/// Y ES UN FALLO QUE NO SE VE. La prueba que queria "36 versiculos" recibia 37 y se quejaba;
+/// pero si hubiera sido al reves --"empieza por el 3"-- habria dado verde viendo un capitulo
+/// donde creia ver un versiculo.
 List<int> _numerosDeVersiculoVisibles(WidgetTester t) {
   final numeros = <int>[];
-  for (final e in find.byType(RichText).evaluate()) {
-    final texto = (e.widget as RichText).text.toPlainText().trim();
+  for (final e in find.byKey(claveDelNumeroDeVersiculo).evaluate()) {
+    final texto = (e.widget as Text).data?.trim();
+    if (texto == null) continue;
     final n = int.tryParse(texto);
     if (n != null) numeros.add(n);
   }

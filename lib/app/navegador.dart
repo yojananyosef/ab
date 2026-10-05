@@ -98,6 +98,7 @@ import 'package:ab/ui/features/busqueda/views/busqueda_view.dart';
 import 'package:ab/ui/features/indice/view_models/indice_view_model.dart';
 import 'package:ab/ui/features/indice/views/indice_view.dart';
 import 'package:ab/ui/features/lector/widgets/hoja_de_libros.dart';
+import 'package:ab/ui/features/lector/widgets/marco_de_estudio.dart';
 import 'package:ab/ui/features/lector/widgets/hoja_de_versiones.dart';
 import 'package:ab/ui/features/biblioteca/views/biblioteca_view.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
@@ -891,6 +892,83 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   /// biblioteca tiene que devolver al pasaje.
   Future<void> irAHome() => irA(const RutaBiblioteca());
 
+  /// Ir a la pantalla de un destino del panel de herramientas.
+  ///
+  /// Y CADA DESTINO **TENIA** QUE LLEVAR A ALGO, porque en Logos los nueve llevan a un
+  /// producto y un destino que no lleva a ninguna parte es peor que un destino que no
+  /// existe. Los cinco que hay aqui son los cinco que existen de verdad.
+  ///
+  /// Y CUANDO EL DESTINO **NO** SE PUEDE CUMPLIR, SE VA A LA BIBLIOTECA Y NO SE PINTA UN
+  /// AVISO. "Buscar" sin texto abierto no busca nada, y el sitio donde se elige un texto
+  /// es la biblioteca; un aviso encima dira "no hay texto abierto" y dejara al usuario
+  /// buscando el mismo boton.
+  Future<void> irAlDestino(DestinoDeEstudio destino, [BuildContext? contexto]) async {
+    final id = lector.idDelModulo;
+    final referencia = lector.leyendo;
+
+    switch (destino) {
+      case DestinoDeEstudio.biblia:
+        // Y AL PANEL DE LECTURA CON **SU** PASAJE. Pulsar "Biblia" con Juan 3 abierto
+        // vuelve a Juan 3, y no a la pagina de inicio del texto: el panel de
+        // herramientas es como se sale de aqui, no como se vuelve a entrar.
+        if (id != null && referencia != null) {
+          await irA(RutaLectura(id, referencia, lector.idDelComentario));
+        } else {
+          await irAHome();
+        }
+
+      case DestinoDeEstudio.buscar:
+        if (id != null) {
+          await irA(RutaBusqueda(id, ''));
+        } else {
+          await irAHome();
+        }
+
+      case DestinoDeEstudio.lexico:
+        // Y EL LEXICO **NO TIENE PANTALLA PROPIA**: se llega desde una palabra del texto,
+        // porque quien quiere saber donde mas sale `G2316` ya esta leyendo la palabra y la
+        // toca. Asi que este destino abre el indice de la **primera palabra con numero de
+        // la lectura actual**, y si la lectura no trae ninguno --porque el modulo no es
+        // KJV con Strongs-- a la biblioteca, que es donde se baja uno que si lo trae.
+        final strong = _primeraPalabraConIndice();
+        if (strong != null) {
+          await verElIndiceDe(strong);
+        } else {
+          await irAHome();
+        }
+
+      case DestinoDeEstudio.comentarios:
+        // Y ESTE ES EL UNICO QUE **NO** CAMBIA DE RUTA, y no es una excepcion: abrir un
+        // comentario es elegir uno, y elegir uno es una hoja con una lista. La hoja la abre
+        // quien tiene el manifiesto --la biblioteca-- asi que el enrutador la abre con el
+        // mismo metodo que usa el boton de la cabecera.
+        // Y NECESITA UN CONTEXTO, porque elegir comentario es abrir una hoja. El que
+        // llega es el de la pantalla de lectura, que esta vivo mientras el marco esta
+        // vivo, que es justo cuando se ha podido pulsar el destino.
+        if (contexto != null) {
+          await elegirComentario(contexto);
+        } else {
+          await irAHome();
+        }
+
+      case DestinoDeEstudio.biblioteca:
+        await irAHome();
+    }
+  }
+
+  /// El numero de la primera palabra con indice de la lectura actual, o null.
+  String? _primeraPalabraConIndice() {
+    final versiculos = lector.pasaje?.versiculos;
+    if (versiculos == null) return null;
+    for (final v in versiculos) {
+      for (final a in v.anotaciones) {
+        final s = a.strong;
+        if (s != null && s.isNotEmpty) return s;
+      }
+    }
+    return null;
+  }
+
   /// La longitud del historial, DESPUES DE QUE EL FRAMEWORK HAYA ESCRITO LA URL.
   ///
   /// Y HAY QUE ESPERAR, Y POR QUE MEDIR DIRECTO DA UN NUMERO DESPLAZADO.
@@ -1019,6 +1097,7 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
             alAbrirLibros: () => elegirLibro(context),
             alAbrirVersiones: () => elegirVersion(context),
             alCambiarDeVersion: cambiarDeVersion,
+            alCambiarDeDestino: (d) => irAlDestino(d, context),
             alVolver: irAHome,
           )
         : BibliotecaView(
