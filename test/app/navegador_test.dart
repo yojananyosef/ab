@@ -111,8 +111,13 @@ void main() {
       expect(n.currentConfiguration, const RutaLectura('KJV2006', Referencia('John', 3, 16)));
       expect(abiertos, <String>['KJV2006']);
       expect(n.lector.estado, EstadoLecturaTexto.leyendo);
-      expect(n.lector.pasaje!.versiculos.length, 1);
+      // Y EL PASAJE TRAE EL CAPITULO **DESDE EL VERSICULO PEDIDO**, no un versiculo
+      // suelto: Juan 3 va del 1 al 36 y desde el 16 son 21. La razon esta medida en una
+      // captura a 360 px, donde el versiculo suelto era el 16 % de la pantalla. Ver la
+      // nota de `leer` en `modulo_repository.dart`.
+      expect(n.lector.pasaje!.versiculos.length, 21);
       expect(n.lector.pasaje!.versiculo(16), isNotNull);
+      expect(n.lector.pasaje!.versiculo(15), isNull);
     });
 
     test('la biblioteca es la pantalla inicial', () async {

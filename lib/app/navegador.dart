@@ -257,7 +257,32 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   /// La biblioteca avisa de los progresos, de los errores y de los filtros, y con
   /// cualquier otro aviso esta comprobacion se cumple igual y se abriria el comentario
   /// otra vez en cada barra de progreso.
+  ///
+  /// ============================================================================
+  /// Y ADEMAS **AVISA SIEMPRE**, Y ANTES NO LO HACIA NUNCA. ESTO ERA UN FALLO REAL.
+  /// ============================================================================
+  ///
+  /// Medido el 5 de octubre de 2026 en una captura de la pantalla de lectura a 360 px con
+  /// Juan 3:16 abierto y el modulo entero ya en el `IndexedDB`: **la segunda linea de la
+  /// barra, con el nombre de la version, no salia**. Se espero 20 s. No era tiempo: era
+  /// que el enrutador escuchaba a la biblioteca solo para el comentario y **no llamaba a
+  //  `notifyListeners()`**, con lo que la pantalla de lectura se quedaba con la lista de
+  //  versiones que tenia cuando se construyo --vacia, porque el manifiesto todavia no
+  //  habia llegado-- para siempre.
+  ///
+  /// Y POR QUE NO SE VIO ANTES. El nombre de la version es texto de la barra, y la sonda
+  /// del navegador lee el **pasaje**; `flutter test` montaba la pantalla con la lista ya
+  /// puesta a mano. Los dos dan verde con el bug puesto: hace falta mirar la imagen.
+  ///
+  /// Y AVISA EN CADA AVISO DE LA BIBLIOTECA, con lo que repinta la pantalla en cada barra
+  /// de progreso de una descarga de 57 MiB. Es trabajo de sobra y no se nota, y aun asi
+  /// es lo correcto: la lista de versiones y los tamanos **son** datos de la biblioteca y
+  /// la pantalla los lee, asi que cuando la biblioteca cambia hay que redibujar lo que la
+  //  lee. Lo que no se puede es repintar por la descarga del comentario, que es lo que
+  //  hacia antes.
   void _alCambiarLaBiblioteca() {
+    notifyListeners();
+
     final ruta = _ruta;
     if (ruta is! RutaLectura) return;
     final comentario = ruta.comentario;

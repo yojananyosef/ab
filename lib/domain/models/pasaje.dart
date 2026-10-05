@@ -29,6 +29,7 @@ class Pasaje {
     required this.versiculos,
     required this.titulo,
     this.notas = const <Nota>[],
+    this.versiculoPedido,
   });
 
   /// Donde se ha leido. Sirve para el titulo de la pantalla y para la URL.
@@ -50,6 +51,23 @@ class Pasaje {
   /// Nombre legible: `Juan 3`. Lo pone quien lee, no se deduce aqui, para que la View
   /// no tenga que preguntar nada.
   final String titulo;
+
+  /// El versiculo **que se pidio**, o null si se pidio el capitulo entero.
+  ///
+  /// Y NO SE ADIVINA. Con `verse >= ?` en la consulta, `Juan 3:16` trae los versiculos
+  /// 16 al 36 y `Juan 3` trae del 1 al 36, y son **la misma lista**. Lo unico que las
+  /// distingue es esto: cual de los dos pidio quien esta leyendo. Y lo necesita la vista
+  /// para marcar el que se pidio, porque un enlace a Juan 3:16 tiene que abrir Juan 3 con
+  /// el 16 destacado y no abrir Juan 3:1.
+  ///
+  /// Y ESTO ES LO QUE SE PIDIO, NO LO QUE ESTA EN PANTALLA. El nombre lo dice porque son
+  /// dos cosas distintas y confundirlas haria que el enlace a un versiculo abriera el
+  /// capitulo sin decir nada de donde salio.
+  final int? versiculoPedido;
+
+  /// Si [numero] es el versiculo que se pidio.
+  bool esElPedido(int numero) =>
+      versiculoPedido != null && versiculoPedido == numero;
 
   /// Si no hay nada que ensenar, del tipo que sea.
   bool get vacio => versiculos.isEmpty && notas.isEmpty;

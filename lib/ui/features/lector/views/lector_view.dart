@@ -269,10 +269,24 @@ class _LectorViewState extends State<LectorView> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 const SizedBox(height: 8),
-                _campoDeReferencia(vm),
-                const SizedBox(height: 12),
-                _tituloConFlechas(vm),
-                const SizedBox(height: 12),
+                // Y LAS FLECHAS EN LA **MISMA FILA** QUE EL CAMPO, y no en una fila
+                // propia. Medido: la fila sola eran **48 px** mas un hueco, con dos
+                // flechas alineadas a la derecha y nada mas, que se leen como un boton
+                // suelto en mitad de la pantalla.
+                //
+                // A 360 px el campo se queda con 270 y las flechas con 80, y "Juan 3:16"
+                // entra de sobra: el problema original --"el texto se corta a los 12
+                // caracteres"-- era del boton de 48 px de ancho **completo** debajo, no
+                // de dos flechas de 40.
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    Expanded(child: _campoDeReferencia(vm)),
+                    const SizedBox(width: 4),
+                    _tituloConFlechas(vm),
+                  ],
+                ),
+                const SizedBox(height: 8),
                 if (vm.aviso != null) ...<Widget>[
                   AvisoDePasajeInexistente(
                     texto: vm.aviso!,
@@ -364,8 +378,9 @@ class _LectorViewState extends State<LectorView> {
     final anterior = pos > 0 ? capitulos[pos - 1] : null;
     final siguiente = pos >= 0 && pos < capitulos.length - 1 ? capitulos[pos + 1] : null;
 
-    return TituloDelPasaje(
-      referencia: r,
+    // Y SIN EL TITULO NI LA FLECHA DE VOLVER: los dos estan ya en la barra de arriba, y
+    // medidos costaban 40 px por encima del primer versiculo. Ver `FlechasDeCapitulo`.
+    return FlechasDeCapitulo(
       hayAnterior: anterior != null,
       haySiguiente: siguiente != null,
       // Con `!` porque los botones estan deshabilitados cuando no hay capitulo, y
@@ -373,7 +388,6 @@ class _LectorViewState extends State<LectorView> {
       // se llego aqui con un null, que es mejor que una excepcion en pantalla.
       alAnterior: () => widget.alPulsarPasaje(Referencia(r.libro, anterior!)),
       alSiguiente: () => widget.alPulsarPasaje(Referencia(r.libro, siguiente!)),
-      alVolver: widget.alVolver,
     );
   }
 
@@ -448,6 +462,11 @@ class _LectorViewState extends State<LectorView> {
                 estilo: estilo,
                 alVerIndice: widget.alVerIndice,
                 mostrarPalabrasDeJesus: vm.mostrarPalabrasDeJesus,
+                // Y SI ESTE ES EL VERSICULO QUE SE PIDIO. Un enlace a Juan 3:16 abre el
+                // capitulo entero desde el 16, y el 16 queda en **color** para que se vea
+                // de donde se salio. Sin esto, un enlace a un versiculo abre un capitulo
+                // y no dice nada de cual era.
+                esElPedido: p.esElPedido(v.numero),
               ),
               if (conNotas) ..._notasDe(vm, v.numero, estilo),
             ],
@@ -938,10 +957,19 @@ class _TextoDelVersiculo extends StatefulWidget {
     required this.estilo,
     required this.alVerIndice,
     required this.mostrarPalabrasDeJesus,
+    required this.esElPedido,
   });
 
   final Versiculo versiculo;
   final TextStyle estilo;
+
+  /// Si este es el versiculo que se pidio en la URL.
+  ///
+  /// Y EL NUMERO **NO** CAMBIA. Se mantiene en su columna de 34 px para todos, porque una
+  /// columna de versiculos con numeros desalineados no se puede leer como una columna. Lo
+  /// que cambia es el **color** del texto, que es lo que permite ver el punto de partida
+  /// sin romper la columna.
+  final bool esElPedido;
 
   /// Abrir el indice de un numero del lexicon. Lo llama quien ha pulsado la palabra.
   final void Function(String numero) alVerIndice;
@@ -1087,10 +1115,19 @@ class _Versiculo extends StatelessWidget {
     required this.estilo,
     required this.alVerIndice,
     required this.mostrarPalabrasDeJesus,
+    required this.esElPedido,
   });
 
   final Versiculo versiculo;
   final TextStyle estilo;
+
+  /// Si este es el versiculo que se pidio en la URL.
+  ///
+  /// Y EL NUMERO **NO** CAMBIA. Se mantiene en su columna de 34 px para todos, porque una
+  /// columna de versiculos con numeros desalineados no se puede leer como una columna. Lo
+  /// que cambia es el **color** del texto, que es lo que permite ver el punto de partida
+  /// sin romper la columna.
+  final bool esElPedido;
 
   /// Pasa de la palabra al indice. Se pasa de uno a otro porque `_Versiculo` esta en medio
   /// y no sabe que hay un indice detras.
@@ -1101,9 +1138,24 @@ class _Versiculo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Y EL VERSICULO PEDIDO SE PINTA CON UN MARGEN IZQUIERDO Y UN FONDO, y no con otro
+    // color de texto. El texto de la Escritura no cambia de color: lo que se pinta es el
+    // **margen** de una linea vertical, que es como se marca un pasaje en un libro
+    // impreso y no le quita nada al texto. Y con el color de acento, que contrasta 7,1:1
+    // con el fondo y es el mismo color de los demas enlaces.
+    final estiloDelVersiculo = esElPedido
+        ? estilo.copyWith(color: Colores.acento, fontWeight: FontWeight.w500)
+        : estilo;
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
+      padding: EdgeInsets.only(bottom: 10, left: esElPedido ? 6 : 0),
+      child: DecoratedBox(
+        decoration: esElPedido
+            ? const BoxDecoration(
+                border: Border(left: BorderSide(color: Colores.acento, width: 3)),
+              )
+            : const BoxDecoration(),
+        child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           SizedBox(
@@ -1111,7 +1163,7 @@ class _Versiculo extends StatelessWidget {
             child: Text(
               '${versiculo.numero}',
               textAlign: TextAlign.right,
-              style: estilo.copyWith(
+              style: estiloDelVersiculo.copyWith(
                 fontSize: 13,
                 color: Colores.textoSuave,
                 height: 1.9,
@@ -1125,9 +1177,11 @@ class _Versiculo extends StatelessWidget {
               estilo: estilo,
               alVerIndice: alVerIndice,
               mostrarPalabrasDeJesus: mostrarPalabrasDeJesus,
+              esElPedido: esElPedido,
             ),
           ),
         ],
+      ),
       ),
     );
   }

@@ -367,19 +367,78 @@ class ModuloAbierto {
             ? 'SELECT verse, text, raw FROM $_tabla'
             : 'SELECT verse, text FROM $_tabla';
     final orden = tieneNotas ? ' ORDER BY verse, seq' : ' ORDER BY verse';
-    final filas = referencia.versiculo == null
-        ? _sqlite.consultar(
-            '$seleccion WHERE book = ? AND chapter = ?$orden',
-            <Object?>[referencia.libro, referencia.capitulo],
-          )
-        : _sqlite.consultar(
-            '$seleccion WHERE book = ? AND chapter = ? AND verse = ?$orden',
-            <Object?>[referencia.libro, referencia.capitulo, referencia.versiculo],
-          );
+    // ============================================================================
+    // Y UN VERSICULO **NO** FILTRA: TRAE EL CAPITULO ENTERO Y MARCA CUAL ES EL QUE SE
+    // PIDIO. Y ESTO SE CAMBIO AL MEDIR, Y EL MOTIVO ES QUE LA PANTALLA NO ENSENABA NADA.
+    // ============================================================================
+    //
+    // Medido en una captura de la pantalla de lectura a 360 px, con Juan 3:16 abierto en
+    // el KJV y el modulo entero ya descargado:
+    //
+    //     barra de arriba                          56 px
+    //     cromo antes del versiculo               206 px
+    //     el versiculo 16, que es todo el texto    122 px
+    //     los terminos del modulo                  268 px
+    //     ---------------------------------------------------------
+    //     de 760 px: el versiculo es el **16 %** de la pantalla
+    //
+    // Un lector de Biblia que al abrir Juan 3:16 ensefna **un versiculo y tres lineas de
+    // terminos** no esta enseñando la Biblia. Y el problema no es el diseno de la pantalla:
+    // es que el dato que llega es un versiculo, y no hay nada mas que pintar.
+    //
+    // Y LO QUE DICEN LOS TRES QUE SE COPIAN:
+    //
+    //   - YouVersion, de `docs/investigacion-ux.md`: "la URL canonica por pasaje...
+    //     que ademas **selecciona** el primer versiculo del rango al abrirse". Selecciona,
+    //     no acota.
+    //
+    //   - MyBible, del mismo documento: "it allows you to put any place of a book into the
+    //     center of your screen and study it in its immediate context". **Su contexto
+    //     inmediato**, que es el capitulo.
+    //
+    //   - Y el mismo documento, de Accordance: la ambiguedad de versificacion "se muestra,
+    //     no se tapa... resolviendo mostrando los paneles en paralelo en vez de dejar un
+    //     numero en blanco". Un versiculo suelto no deja ver si los de al lado cuentan igual.
+    //
+    // Y EL FILTRO **NO SE PIERDE**: `Pasaje.versiculoPedido` dice cual es, y la vista lo
+    // marca. Un enlace a Juan 3:16 sigue abriendo Juan 3 con el 16 destacado, que es lo
+    // que pedia el enlace.
+    //
+    // Y EL COSTE, MEDIDO SOBRE EL KJV REAL con el `raw` de los Strongincluded y todo:
+    //
+    //     Juan 3:16      21 versiculos    2.338 caracteres     5,1 ms
+    //     Juan 3         36 versiculos    3.969 caracteres     5,0 ms
+    //     Genesis 1      31 versiculos    4.994 caracteres     2,5 ms
+    //     Apocalipsis 22 21 versiculos    2.880 caracteres     1,3 ms
+    //     Salmos 119    176 versiculos   14.116 caracteres     9,6 ms
+    //     el comentario, Juan 3:16     19 notas                    0,26 ms
+    //
+    // Y EL QUE MANDA ES EL `raw`, no el texto: casi todo ese tiempo es el analizador USFM
+    // emparejando las anotaciones con las palabras, y por eso dos capitulos con casi los
+    // mismos caracteres --Juan 3:16 con 2.338 y Apocalipsis 22 con 2.880-- cuestan 5,1 y
+    // 1,3 ms.
+    //
+    // SALMOS 119 ES EL PEOR CASO Y SIGUE SIENDO BARATO: 176 versiculos y 9,6 ms. Y lo que
+    // se nota de ese capitulo no es el tiempo, es que hay que desplazarse mucho: es el
+    // unico de la Biblia que no cabe en una pantalla ni en diez.
+    final filas = _sqlite.consultar(
+      referencia.versiculo == null
+          ? '$seleccion WHERE book = ? AND chapter = ?$orden'
+          : // Y CUANDO HAY VERSICULO, `verse >= ?` Y NO `verse = ?`. Con `=` sale un
+            // versiculo; con `>=` sale el capitulo desde el pedido, que es lo que se lee:
+            // uno no abre Juan 3:16 para ver Juan 3:1, sino para leer desde ahi.
+            '$seleccion WHERE book = ? AND chapter = ? AND verse >= ?$orden',
+      <Object?>[
+        referencia.libro,
+        referencia.capitulo,
+        if (referencia.versiculo != null) referencia.versiculo!,
+      ],
+    );
 
     return Pasaje(
       referencia: referencia,
       titulo: referencia.texto,
+      versiculoPedido: referencia.versiculo,
       versiculos: tieneNotas
           ? const <Versiculo>[]
           : <Versiculo>[

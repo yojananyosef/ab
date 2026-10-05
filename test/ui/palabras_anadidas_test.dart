@@ -40,7 +40,7 @@ void main() {
 
     test('1 Cronicas 1:19 trae dos "was" del traductor, y solo dos', () {
       // Y MEDIDO sobre el fichero real: dos marcas `\add`, y son dos "was".
-      final v = modulo.leer(const Referencia('1Chronicles', 1, 19)).versiculos.single;
+      final v = modulo.leer(const Referencia('1Chronicles', 1, 19)).versiculo(19)!;
 
       expect(v.palabrasAnadidas(), <String>['was', 'was']);
       expect(v.anotaciones.where((a) => a.esAnadido), hasLength(2));
@@ -52,7 +52,7 @@ void main() {
     test('Juan 3:16 no tiene ni una palabra del traductor', () {
       // Y ES LO QUE HACE COMPROBABLE LA CIFRA: si Juan 3:16 tuviera un `\add`, entonces
       // "41.692 marcas en 31.102 versiculos" seria una media y no una medida.
-      final v = modulo.leer(const Referencia('John', 3, 16)).versiculos.single;
+      final v = modulo.leer(const Referencia('John', 3, 16)).versiculo(16)!;
 
       expect(v.palabrasAnadidas(), isEmpty);
       expect(v.texto, startsWith('For God so loved the world'));
@@ -69,7 +69,7 @@ void main() {
         const Referencia('Genesis', 1, 1),
         const Referencia('Psalms', 150, 1),
       ]) {
-        final v = modulo.leer(r).versiculos.single;
+        final v = modulo.leer(r).versiculo(r.versiculo ?? 1)!;
         final n = v.palabras.length;
         expect(
           v.anotaciones.isEmpty || v.anotaciones.length == n,
@@ -137,7 +137,7 @@ void main() {
     testWidgets('lo que se lee es EXACTAMENTE lo que tiene el modulo', (tester) async {
       await pintar(tester, const Referencia('1Chronicles', 1, 19));
 
-      final delModulo = modulo.leer(const Referencia('1Chronicles', 1, 19)).versiculos.single;
+      final delModulo = modulo.leer(const Referencia('1Chronicles', 1, 19)).versiculo(19)!;
 
       // Y SE BUSCA EL QUE **ES** EL VERSICULO, y no se coge el ultimo. Con `.last`
       // salia el titulo de la barra --"Comentario"-- y la comprobacion comparaba la
@@ -162,25 +162,29 @@ void main() {
         (tester) async {
       await pintar(tester, const Referencia('1Chronicles', 1, 19));
 
-      // Y SE CUENTAN LOS SUBRAYADOS DEL **VERSAICULO**, y no los de la pantalla: hay
-      // subrayados en los terminos y en el campo, y contarlos todos no dice nada de las
-      // palabras del traductor.
-      final subrayados = <String>[];
-      for (final rico in tester.widgetList<RichText>(find.byType(RichText))) {
-        _recorrer(rico.text, subrayados);
-      }
+      // Y SE CUENTAN LOS SUBRAYADOS **DEL VERSICULO PEDIDO**, y no los de la pantalla.
+      //
+      // Y NO POR EL VERSICULO 19 SINO POR EL **TEXTO IGUAL**: desde que un versiculo
+      // pedido trae el capitulo entero, 1 Cronicas 1:19 enseña del 19 al 29 y los
+      // capitulos siguientes traen mas palabras del traductor. Contando toda la pantalla
+      // salia una lista de nueve palabras en vez de dos, y la prueba daba verde sin
+      // comprobar lo que decia comprobar.
+      final v = modulo.leer(const Referencia('1Chronicles', 1, 19)).versiculo(19)!;
+      final subrayados = _subrayadosDe(tester, v.texto);
       expect(subrayados, <String>['was', 'was'],
-          reason: 'son dos marcas \\add, medidas sobre el fichero real');
+          reason: 'son dos marcas de anadido, medidas sobre el fichero real');
     });
 
     testWidgets('Juan 3:16 no tiene nada subrayado', (tester) async {
+      // Y JUAN 3:16 **NO TIENE NADA SUBRAYADO**, y eso se comprobaba mal hasta hace un
+      // momento: la pantalla trae el capitulo entero desde el 16, y del 17 al 36 hay
+      // palabras del traductor. Contando toda la pantalla salia una lista con cinco
+      // palabras --'some', 'men', 'must', 'unto', 'him.'-- y la prueba fallaba. Con el
+      // versiculo acotado, Juan 3:16 sigue sin tener ni una.
       await pintar(tester, const Referencia('John', 3, 16));
 
-      final subrayados = <String>[];
-      for (final rico in tester.widgetList<RichText>(find.byType(RichText))) {
-        _recorrer(rico.text, subrayados);
-      }
-      expect(subrayados, isEmpty);
+      final v = modulo.leer(const Referencia('John', 3, 16)).versiculo(16)!;
+      expect(_subrayadosDe(tester, v.texto), isEmpty);
     });
 
     testWidgets('a 360 px un versiculo con palabras subrayadas no sale del borde',
@@ -193,6 +197,22 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+}
+
+/// Los tramos subrayados del `RichText` cuyo texto es exactamente [texto].
+///
+/// Y POR TEXTO IGUAL Y NO POR POSICION. El capitulo entero son 21 `RichText` y la
+/// pantalla tiene ademas el campo, el titulo y los terminos; el primero no es el
+/// versiculo. Y con texto igual no hay ambiguedad: dos versiculos distintos no tienen el
+/// mismo texto.
+List<String> _subrayadosDe(WidgetTester tester, String texto) {
+  for (final rico in tester.widgetList<RichText>(find.byType(RichText))) {
+    if (rico.text.toPlainText() != texto) continue;
+    final salida = <String>[];
+    _recorrer(rico.text, salida);
+    return salida;
+  }
+  fail('no se ha encontrado en pantalla el texto: "$texto"');
 }
 
 /// Recorre un `TextSpan` y recoge el texto de los tramos subrayados.

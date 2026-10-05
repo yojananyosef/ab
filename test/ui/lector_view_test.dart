@@ -148,14 +148,68 @@ void main() {
       expect(n16.text.toPlainText(), juan316);
     });
 
-    testWidgets('un versiculo suelto sale solo, con su numero', (t) async {
+    testWidgets('un versiculo pedido trae el capitulo desde ahi, con el suyo marcado',
+        (t) async {
+      // Y NO "UN VERSICULO SUELTO". Medido en una captura a 360 px: el versiculo pedido
+      // era el **16 %** de la pantalla y los terminos del modulo el 35 %. Un lector de
+      // Biblia que al abrir Juan 3:16 enseña un versiculo y tres lineas de terminos no
+      // esta enseñando la Biblia. Ver la nota de `leer` en `modulo_repository.dart`.
       final vm = await montarLector(t);
       vm.leer(const Referencia('John', 3, 16));
       await t.pumpAndSettle();
 
-      expect(vm.pasaje!.versiculos.length, 1);
+      // Juan 3 va del 1 al 36; desde el 16 son 21.
+      expect(vm.pasaje!.versiculos.length, 21);
+      expect(vm.pasaje!.versiculos.first.numero, 16);
       expect(find.text(juan316), findsOneWidget);
-      expect(_numerosDeVersiculoVisibles(t), <int>[16]);
+
+      // Y LOS 21 NUMEROS **NO** CABEN EN PANTALLA, y no se comprueba que esten todos: el
+      // `ListView` solo construye los que se ven. Lo que se comprueba es que el primero es
+      // el pedido, que es lo que dice el enlace.
+      final visibles = _numerosDeVersiculoVisibles(t);
+      expect(visibles.first, 16);
+      expect(visibles, contains(16));
+    });
+
+    testWidgets('el versiculo pedido se distingue en la columna', (t) async {
+      // Y CON UNA **LINEA VERTICAL AL LADO** y el texto en color de acento, y no con otro
+      // color de texto: el texto de la Escritura no cambia de color, y una columna de
+      // versiculos con numeros desalineados no se puede leer como una columna.
+      final vm = await montarLector(t);
+      vm.leer(const Referencia('John', 3, 16));
+      await t.pumpAndSettle();
+
+      final marcados = find.byWidgetPredicate(
+        (w) => w is DecoratedBox &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).border != null,
+      );
+      expect(marcados, findsOneWidget,
+          reason: 'solo el versiculo pedido lleva la marca');
+
+      // Y DENTRO DE LA MARCA ESTA **EL VERSICULO ENTERO**, no una palabra suelta.
+      //
+      // Y SE BUSCA POR EL TEXTO PLANO DEL `RichText` Y **NO** POR `find.text`. El versiculo
+      // se pinta con `Text.rich` --una palabra con su `TextSpan`, con su color y su
+      // subrayado-- y no hay ningun `Text` con el texto entero, asi que
+      // `find.text('For God so loved the world')` no encuentra nada. Y eso no es que falte
+      // el versiculo: es que el finder equivocado da "0 widgets" cuando lo que falla es
+      // que se busca en el sitio incorrecto.
+      // Y HAY **DOS** `RichText` DENTRO: el numero del versiculo y el texto. Los dos, y
+      // el segundo es el versiculo entero. La primera version de esta comprobacion pedia
+      // uno solo y por eso fallaba: el numero va en su propia columna de 34 px y es su
+      // propio `RichText`, como lo ha sido siempre.
+      final dentro = t
+          .widgetList<RichText>(
+            find.descendant(of: marcados, matching: find.byType(RichText)),
+          )
+          .map((r) => r.text.toPlainText())
+          .toList();
+
+      expect(dentro, hasLength(2), reason: 'el numero y el texto');
+      expect(dentro.first, '16', reason: 'el numero del versiculo pedido');
+      expect(dentro.last, startsWith('For God so loved the world'),
+          reason: 'y el texto entero, con su puntuacion y todo');
     });
 
     testWidgets('el titulo sale en castellano y el pasaje en la URL en la clave', (t) async {
@@ -235,27 +289,29 @@ void main() {
     testWidgets('el boton se habilita y se deshabilita mientras se escribe', (t) async {
       await montarLector(t);
 
-      final boton = find.widgetWithText(FilledButton, 'Buscar');
-      expect(t.widget<FilledButton>(boton).onPressed, isNull,
-          reason: 'vacio no es una referencia: no se busca nada');
+      // Y EL BOTON **NO EXISTE** SIN TEXTO, y no es que este deshabilitado. Es el icono de
+      // sufijo del campo, y con el campo vacio no hay ni el icono de borrar ni el de ir: dos
+      // iconos grises en un campo vacio son dos controles que no hacen nada.
+      expect(_botonDeIr(t), findsNothing);
 
       await t.enterText(find.byType(TextField), 'Juan');
       await t.pump();
-      expect(t.widget<FilledButton>(boton).onPressed, isNull,
+      expect(_botonDeIr(t), findsOneWidget);
+      expect(t.widget<IconButton>(_botonDeIr(t)).onPressed, isNull,
           reason: '"Juan" sin capitulo no es una referencia');
 
       await t.enterText(find.byType(TextField), 'Juan 3');
       await t.pump();
-      expect(t.widget<FilledButton>(boton).onPressed, isNotNull);
+      expect(t.widget<IconButton>(_botonDeIr(t)).onPressed, isNotNull);
 
       await t.enterText(find.byType(TextField), 'Zetaquiel 3');
       await t.pump();
-      expect(t.widget<FilledButton>(boton).onPressed, isNull,
+      expect(t.widget<IconButton>(_botonDeIr(t)).onPressed, isNull,
           reason: 'ese libro no existe');
 
       await t.enterText(find.byType(TextField), 'Juan 3:16');
       await t.pump();
-      expect(t.widget<FilledButton>(boton).onPressed, isNotNull);
+      expect(t.widget<IconButton>(_botonDeIr(t)).onPressed, isNotNull);
     });
 
     testWidgets('buscar lleva a lo escrito', (t) async {
@@ -263,7 +319,21 @@ void main() {
 
       await t.enterText(find.byType(TextField), 'Génesis 1');
       await t.pump();
-      await t.tap(find.widgetWithText(FilledButton, 'Buscar'));
+      await t.tap(_botonDeIr(t));
+      await t.pumpAndSettle();
+
+      expect(vm.leyendo, const Referencia('Genesis', 1));
+    });
+
+    testWidgets('el teclado tambien lleva a lo escrito', (t) async {
+      // Y ESTO ES LO QUE SUSTITUYE AL BOTON DE 48 PX. El `textInputAction: search`--que ya
+      // estaba— manda el mismo `alBuscar`, y el "Ir" del teclado del movil esta a la
+      // altura de los dedos sin ocupar nada de la pantalla.
+      final vm = await montarLector(t);
+
+      await t.enterText(find.byType(TextField), 'Génesis 1');
+      await t.pump();
+      await t.testTextInput.receiveAction(TextInputAction.search);
       await t.pumpAndSettle();
 
       expect(vm.leyendo, const Referencia('Genesis', 1));
@@ -279,37 +349,43 @@ void main() {
       expect(campo.style!.fontSize, greaterThanOrEqualTo(16));
     });
 
-    testWidgets('a 360 px el campo y el boton caben sin desbordarse', (t) async {
+    testWidgets('a 360 px el campo con sus dos iconos cabe sin desbordarse', (t) async {
       await montarLector(t, tamano: const Size(360, 640));
       await t.pumpAndSettle();
+      await t.enterText(find.byType(TextField), 'Juan 3:16');
+      await t.pump();
 
-      // Sin el teclado se ve que el boton es alcanzable. Con el teclado abierto el
-      // alto util baja a unos 360 px, y eso se comprueba en el grupo de mas abajo con
-      // la vista de 360x360.
-      final boton = find.widgetWithText(FilledButton, 'Buscar');
+      final boton = _botonDeIr(t);
       expect(boton, findsOneWidget);
       expect(t.getSize(boton).width, lessThanOrEqualTo(360));
       expect(t.getSize(boton).height, greaterThanOrEqualTo(48),
           reason: 'por debajo de 48 px se falla la pulsacion sin darse cuenta');
+
+      // Y EL CAMPO **TODO EL ANCHO**, y no la mitad. Ese era el motivo del boton debajo: el
+      // texto se cortaba a los 12 caracteres justo al escribir "Juan 3:16". Con el boton
+      // dentro, el campo mide lo que mide la columna y "Juan 3:16" entra de sobra.
+      final campo = find.byType(TextField);
+      expect(t.getSize(campo).width, greaterThan(280));
     });
 
     testWidgets('a 360x360 --con el teclado abierto-- nada se sale', (t) async {
-      // Con el teclado abierto en un movil de 640 px de alto quedan unos 360 px. A esa
-      // altura, si el boton estuviera en fila con el campo, quedaria con la mitad del
-      // ancho y habria que buscarlo con el dedo.
+      // Con el teclado abierto en un movil de 640 px de alto quedan unos 360 px. Antes
+      // habia un boton de 48 px en su propia fila; ahora no hay fila, asi que el campo
+      // ocupa lo que ocupaba y el versiculo empieza mas arriba.
       await montarLector(t, tamano: const Size(360, 360));
+      await t.pump();
+      await t.enterText(find.byType(TextField), 'Juan 3:16');
       await t.pumpAndSettle();
 
       expect(t.takeException(), isNull);
-      final ancho = t.getSize(find.byType(TextField)).width;
-      final anchoBoton = t.getSize(find.widgetWithText(FilledButton, 'Buscar')).width;
-      expect(ancho, lessThanOrEqualTo(360));
-      expect(anchoBoton, lessThanOrEqualTo(360));
-      // Y el boton esta **debajo** del campo, no al lado: en una columna estrecha, en
-      // fila, cada uno se queda con la mitad.
+      expect(t.getSize(find.byType(TextField)).width, lessThanOrEqualTo(360));
+
+      // Y EL CAMPO ESTA EN LA MISMA ALTA QUE EL ICONO, no debajo: es la prueba de que no
+      // hay una segunda fila.
       final yCampo = t.getTopLeft(find.byType(TextField)).dy;
-      final yBoton = t.getTopLeft(find.widgetWithText(FilledButton, 'Buscar')).dy;
-      expect(yBoton, greaterThan(yCampo));
+      final yBoton = t.getTopLeft(_botonDeIr(t)).dy;
+      expect((yBoton - yCampo).abs(), lessThan(30),
+          reason: 'el boton va DENTRO del campo, no debajo');
     });
 
     testWidgets('el campo no se borra al cambiar de capitulo', (t) async {
@@ -625,3 +701,15 @@ List<int> _numerosDeVersiculoVisibles(WidgetTester t) {
   }
   return numeros;
 }
+
+/// El boton de ir del campo, que es un icono de sufijo.
+///
+/// Y SE BUSCA POR SU **ICONO** y no por su texto, porque ya no tiene texto. Con un
+/// `find.widgetWithText` esto daba "0 widgets" y el fallo decia "no se encuentra", que es
+/// un sintoma de otra cosa.
+Finder _botonDeIr(WidgetTester t) => find.descendant(
+      of: find.byType(TextField),
+      matching: find.byWidgetPredicate(
+        (w) => w is IconButton && w.icon is Icon && (w.icon as Icon).icon == Icons.arrow_forward,
+      ),
+    );

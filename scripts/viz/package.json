@@ -1,0 +1,9 @@
+{
+  "name": "ab-viz",
+  "private": true,
+  "type": "module",
+  "description": "Herramienta de mirar la aplicacion. No es una dependencia de `ab`.",
+  "dependencies": {
+    "playwright": "^1.63.0"
+  }
+}

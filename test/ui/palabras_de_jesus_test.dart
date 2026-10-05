@@ -221,7 +221,7 @@ void main() {
         (tester) async {
       await pintar(tester, const Referencia('John', 3, 16));
       final delModulo =
-          modulo.leer(const Referencia('John', 3, 16)).versiculos.single;
+          modulo.leer(const Referencia('John', 3, 16)).versiculo(16)!;
 
       expect(pintado(tester, delModulo.texto), delModulo.texto);
       expect(rojas(tester, delModulo.texto), isNotEmpty,
@@ -231,7 +231,7 @@ void main() {
     testWidgets('Juan 3:16 sale entero en rojo: sus 25 palabras', (tester) async {
       await pintar(tester, const Referencia('John', 3, 16));
 
-      final v = modulo.leer(const Referencia('John', 3, 16)).versiculos.single;
+      final v = modulo.leer(const Referencia('John', 3, 16)).versiculo(16)!;
       final enRojo = rojas(tester, v.texto);
 
       expect(enRojo.length, v.palabras.length);
@@ -243,7 +243,7 @@ void main() {
       // Y ESTA ES LA MITAD QUE HACE QUE LO DE JUAN 3:16 VALGA. Un color puesto sin
       // criterio seria rojo en todo Juan 3, y entonces no estaria diciendo nada.
       await pintar(tester, const Referencia('John', 3, 29));
-      final v = modulo.leer(const Referencia('John', 3, 29)).versiculos.single;
+      final v = modulo.leer(const Referencia('John', 3, 29)).versiculo(29)!;
 
       expect(rojas(tester, v.texto), isEmpty);
     });
@@ -253,7 +253,7 @@ void main() {
       // Y NO ES UN FALLO DEL PARSER. Alli el que habla es el Dios del Antiguo Testamento
       // y este catalogo no lo marca, asi que no hay de donde sacarlo.
       await pintar(tester, const Referencia('Psalms', 23, 1));
-      final v = modulo.leer(const Referencia('Psalms', 23, 1)).versiculos.single;
+      final v = modulo.leer(const Referencia('Psalms', 23, 1)).versiculo(1)!;
 
       expect(rojas(tester, v.texto), isEmpty);
       expect(v.palabrasDeJesus(), 0);
@@ -263,7 +263,7 @@ void main() {
         (tester) async {
       await pintar(tester, const Referencia('John', 3, 16));
       final delModulo =
-          modulo.leer(const Referencia('John', 3, 16)).versiculos.single;
+          modulo.leer(const Referencia('John', 3, 16)).versiculo(16)!;
 
       expect(rojas(tester, delModulo.texto), isNotEmpty);
 

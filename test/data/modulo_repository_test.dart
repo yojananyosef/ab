@@ -133,21 +133,79 @@ void main() {
     });
 
     test('el versiculo 16 es el texto COMPLETO, no un trozo', () {
+      // Y `verse = 16` Y NO `verse >= 16`. La primera version de esta prueba pedia que el
+      // pasaje fuera de **un** versiculo, y con el cambio de alcance --que trae el capitulo
+      // desde el versiculo pedido— llego con 21. Un recorte de texto es lo que no se puede
+      // tener: "For God so loved the world... but have everlasting life." entero, con sus
+      // 141 caracteres.
       final p = m.leer(const Referencia('John', 3, 16));
-      expect(p.versiculos.length, 1);
-      expect(
-        p.versiculos.single.texto,
-        'For God so loved the world, that he gave his only begotten Son, that '
-        'whosoever believeth in him should not perish, but have everlasting life.',
-      );
+      expect(p.versiculo(16)!.texto,
+          'For God so loved the world, that he gave his only begotten Son, that '
+          'whosoever believeth in him should not perish, but have everlasting life.');
     });
 
-    test('un versiculo suelto pide solo ese versiculo', () {
+    test('un versiculo pedido trae el capitulo DESDE ESE, no uno suelto', () {
+      // Y ESTE ES EL CAMBIO, Y SE MIDIO ANTES DE HACERLO. En una captura de la pantalla de
+      // lectura a 360 px, con Juan 3:16 abierto y el KJV entero descargado, la pantalla
+      // repartia 760 px en 206 de cromo, **122 px de versiculo** y 268 px de terminos del
+      // modulo. El versiculo era el **16 %** de la pantalla.
+      //
+      // Y lo que dicen los tres que se copian: YouVersion "selecciona el primer versiculo
+      // del rango" --selecciona, no acota--; MyBible deja poner "any place of a book into
+      // the center of your screen and study it in its immediate context"; y Accordance
+      // resuelve la ambiguedad de versificacion "mostrando los paneles en paralelo en vez
+      // de dejar un numero en blanco". Un versiculo suelto no deja ver nada de eso.
       final p = m.leer(const Referencia('John', 3, 16));
-      expect(p.total, 1);
+
+      // Juan 3 va del 1 al 36. Pedir el 16 trae del 16 al 36: **21** versiculos.
+      expect(p.versiculos.length, 21);
+      expect(p.versiculos.first.numero, 16);
+      expect(p.versiculos.last.numero, 36);
       expect(p.versiculo(16), isNotNull);
-      // Y uno que no esta en el capitulo devuelve null, no lanza.
+      // Y UNO QUE NO ESTA DEVUELVE NULL, NO LANZA. El 15 esta antes del pedido, y ahora es
+      // alcanzable, asi que esto paso de ser trivial a ser real.
+      expect(p.versiculo(15), isNull);
       expect(p.versiculo(999), isNull);
+    });
+
+    test('el versiculo pedido se sabe, y no se deduce de la lista', () {
+      // Y POR QUE HACE FALTA UN CAMPO PARA ESO. `Juan 3:16` y `Juan 3` dan **la misma
+      // lista** de 21 y de 36 versiculos que se solapan, y lo unico que las distingue es
+      // cual de las dos se pidio. Sin ese dato, un enlace a Juan 3:16 abriria Juan 3 sin
+      // decir nada de donde salio, y la palabra "Juan 3:16" de la barra seria mentira.
+      final conVersiculo = m.leer(const Referencia('John', 3, 16));
+      final sinVersiculo = m.leer(const Referencia('John', 3));
+
+      expect(conVersiculo.versiculoPedido, 16);
+      expect(sinVersiculo.versiculoPedido, isNull);
+
+      expect(conVersiculo.esElPedido(16), isTrue);
+      expect(conVersiculo.esElPedido(17), isFalse);
+      // Y CUANDO SE PIDIO EL CAPITULO ENTERO, **NINGUN** versiculo es "el pedido". Si no,
+      // el primero de la lista saldria destacado sin que nadie lo haya pedido.
+      expect(sinVersiculo.esElPedido(1), isFalse);
+    });
+
+    test('pedir el ultimo versiculo del capitulo trae solo ese', () {
+      // Y EL OTRO EXTREMO, que es donde se nota si la consulta esta bien: `verse >= 36` en
+      // Juan 3 son 36 versiculos, y uno solo. Si aqui salieran mas, la consulta estaria
+      // cruzando el limite del capitulo.
+      final p = m.leer(const Referencia('John', 3, 36));
+
+      expect(p.versiculos.length, 1);
+      expect(p.versiculos.single.numero, 36);
+    });
+
+    test('un capitulo entero no pierde ni el primero ni el ultimo', () {
+      final p = m.leer(const Referencia('Psalms', 119));
+
+      // Y SALMOS 119, QUE ES EL CAPITULO MAS LARGO DEL KJV: 176 versiculos. Es el que se
+      // nota en el desplazamiento, no porque no quepa --unos 9.000 caracteres, muy por
+      // debajo del limite-- sino porque hay que bajar mucho para llegar al final.
+      expect(p.versiculos.length, 176);
+      expect(p.versiculos.first.numero, 1);
+      expect(p.versiculos.last.numero, 176);
+      expect(p.versiculoPedido, isNull);
     });
 
     test('un pasaje que no existe sale VACIO, no null', () {

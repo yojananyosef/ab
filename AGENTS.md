@@ -1070,6 +1070,79 @@ web. Unicamente abrir un navegador de verdad y mirar lo que pedia ha encontrado 
 cuatro. Por eso el grupo 8 existe y por eso `scripts/comprobar-en-navegador.sh` se
 ejecuta aparte y no se puede sustituir por una prueba.
 
+### SIN IMAGEN NO SE PUEDE MIRAR LA INTERFAZ, Y ESO CAMBIA LO QUE SE ENCUENTRA
+
+Medido el 5 de octubre de 2026. `--screenshot` de Brave se queda colgado y devuelve 0
+bytes, asi que el paso de la captura se quito de `scripts/comprobar-en-navegador.sh` y se
+documento como imposible. **No era imposible: era otro camino.**
+
+`page.screenshot()` de Playwright funciona, y las tres diferencias son:
+
+| | |
+| --- | --- |
+| espera a `domcontentloaded` y ademas a un tiempo fijo | en vez de depender del reloj virtual |
+| `--enable-unsafe-swiftshader` | sin el, Brave 154 avisa y sale con el lienzo **en blanco** |
+| **no** usa `--virtual-time-budget` | que es lo que deja a Flutter colgado: el motor mantiene vivo el `requestAnimationFrame` |
+
+```bash
+cd scripts/viz && npm install playwright          # una vez, no se versiona
+node scripts/capturar.mjs                         # a 360 y a 1440
+```
+
+Y EL PERFIL **PERSISTENTE**, que es lo que hace esto utilizable: el `.amod` son 22,5 MB y
+va al `IndexedDB`. Con perfil de cada vez, cada captura se baja el modulo entero, y una
+iteracion de diseno son 12 segundos de descarga antes de poder mirar nada. Con perfil
+persistente la segunda vez ya esta y la captura sale en dos.
+
+Y ADEMAS HAY QUE **CALENTAR EL PERFIL**: un enlace profundo a un modulo que no esta
+descargado avisa y se queda en la biblioteca, porque reintentar solo esta en la sonda. Con
+el perfil frio, la primera captura de la pantalla de lectura sale siendo la biblioteca con
+un 60 % de descarga, y parece que la ruta no funciona.
+
+### LO QUE SALIO DE MIRAR, Y NO SALIO DE LEER
+
+Medido en una captura a 360 px, con Juan 3:16 abierto y el KJV entero descargado:
+
+    barra de arriba                              56 px
+    campo "Ir a" + boton "Buscar" de 48 px      164 px
+    titulo del capitulo, que repetia la barra   40 px
+    ----------------------------------------------------------
+    cromo antes del primer versiculo            260 px
+    el versiculo, que era TODO el texto          122 px
+    los terminos del modulo                      268 px
+
+**De 760 px de alto, el versiculo era el 16 % y los terminos el 35 %.** Y ninguna prueba
+de este repositorio lo veia, porque el sintoma no es un fallo: es una pantalla que muestra
+muy poco texto.
+
+Y la causa **no era el diseno**, era el dato: `Juan 3:16` traia **un versiculo**, porque la
+consulta filtraba con `verse = ?`. Un lector de Biblia que al abrir un versiculo ensena un
+versiculo y tres lineas de terminos no esta enseñando la Biblia.
+
+### LOS DOS FALLOS QUE SOLO SALIERON MIRANDO
+
+**1. La version no salia nunca en la cabecera.** El enrutador escuchaba a la biblioteca
+**solo** para saber si podia abrir el comentario, y **nunca llamaba a `notifyListeners()`**.
+Asi que la pantalla de lectura se quedaba con la lista de versiones que tenia al
+construirse --vacia, porque el manifiesto no habia llegado-- para siempre. Se espero 20 s en
+el navegador: no era tiempo.
+
+Y **ninguna comprobacion lo veía**: el nombre de la version es texto de la barra, la sonda
+del navegador lee el **pasaje**, y `flutter test` montaba la pantalla con la lista ya puesta
+a mano. Las dos dan verde con el bug puesto.
+
+**2. El boton de "Ir" estaba debajo del campo por un motivo que se midio mal.** El
+argumento era que en fila con el campo el boton se quedaba con la mitad del ancho y "el
+texto se corta a los 12 caracteres". Es verdad, y la causa no era la fila: era que el boton
+de abajo era de **48 px de alto y de ancho completo**, y el campo solo tenia la mitad. Con
+el boton **dentro** del campo, como icono de sufijo, el campo toma la columna entera y
+"Juan 3:16" entra de sobra.
+
+Y el boton de abajo eran **62 px** de los 760 --un 8 % de la pantalla-- para un control
+deshabilitado el 99 % del tiempo porque no hay nada escrito. Con el boton dentro no hay
+segunda fila, y el `textInputAction: search` --que ya estaba-- hace lo mismo desde el
+teclado.
+
 ### En web, `--dump-dom` no sirve y `page.evaluate` tampoco se puede aqui
 
 Medido el 4 de octubre de 2026 con Brave 154:

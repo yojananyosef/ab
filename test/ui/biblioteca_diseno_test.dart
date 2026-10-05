@@ -73,10 +73,19 @@ void main() {
 
       expect(pasaje.versiculos, isEmpty,
           reason: 'un comentario no trae texto de Biblia, y no debe disfrazarse');
-      expect(pasaje.notas, hasLength(1), reason: 'medido sobre el fichero real');
+      // Y JUAN 3:16 TIENE UNA **NOTA SUELTA**, pero el pasaje trae **19**: desde el 16 hasta
+      // el final del capitulo. Es el mismo alcance que el de la Biblia --del versiculo
+      // pedido en adelante-- y por eso un comentario abierto al lado va leyendo las notas
+      // que corresponden a lo que se esta leyendo, en vez de traer las de todo el modulo.
+      //
+      // La comprobacion de "Juan 3:16 tiene una nota" la hace `notasDe`, que es por
+      // versiculo, y sigue siendo la que importa: es la que ve quien lee.
+      expect(pasaje.notasDe(16), hasLength(1), reason: 'medido sobre el fichero real');
+      expect(pasaje.versiculosConNota.first, 16,
+          reason: 'y el primero con nota es el que se pidio');
       expect(pasaje.vacio, isFalse);
       expect(pasaje.traeNotas, isTrue);
-      expect(pasaje.notas.single.texto.trim(), isNotEmpty);
+      expect(pasaje.notasDe(16).single.texto.trim(), isNotEmpty);
     });
 
     test('Mateo 23:13 tiene dos notas repetidas, y se ensena una', () {
@@ -98,11 +107,13 @@ void main() {
       // repositorio; esta comprueba lo que ve quien lee.
       final pasaje = r.modulo.leer(const Referencia('Matthew', 23, 13));
 
-      expect(pasaje.notas, hasLength(1));
-      expect(pasaje.notas.single.orden, 0);
+      // Y POR `notasDe`, NO POR `notas`. El pasaje llega con las notas desde el 13 en
+      // adelante --el mismo alcance que el de la Biblia— y la repetida se quita en
+      // cualquier forma: `notasDe(13)` es la vista que ve quien lee.
       expect(pasaje.notasDe(13), hasLength(1));
+      expect(pasaje.notasDe(13).single.orden, 0);
       expect(pasaje.notasDe(12), isEmpty);
-      expect(pasaje.versiculosConNota, <int>[13]);
+      expect(pasaje.versiculosConNota, contains(13));
 
       // Y EL SELECTOR DE VERSICULOS LO DICE UNA VEZ. Sin `DISTINCT`, Mateo 23:13
       // apareceria dos veces en la lista y quien lo pulsara no sabria que ya lo ha leido.
@@ -187,7 +198,7 @@ void main() {
       expect(m.totalDeVersiculos(), 31102);
       expect(m.totalDeNotas(), 0,
           reason: 'la tabla `verses` no tiene columna `seq`, y preguntar por el debe dar 0');
-      expect(m.leer(const Referencia('John', 3, 16)).versiculos.single.texto,
+      expect(m.leer(const Referencia('John', 3, 16)).versiculo(16)!.texto,
           startsWith('For God so loved the world'));
       // Y LAS NOTAS VIENEN VACIAS, y no "nulas": un pasaje de Biblia con la lista de notas
       // vacia se puede comprobar, y una lista nula habria que adivinarla en la vista.

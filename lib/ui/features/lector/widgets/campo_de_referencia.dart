@@ -34,11 +34,45 @@ import '../../../core/tema.dart';
 
 /// El campo de referencia y su boton.
 ///
-/// El boton va **debajo** del campo y no al lado, y no es una decision de estetica.
-/// A 360 px, con el teclado abierto, quedan unos 360 px de alto: campo y boton en
-/// fila dejan al boton con la mitad del ancho y el texto se corta a los 12
-/// caracteres justo cuando se esta escribiendo "Juan 3:16". En fila vertical el boton
-/// ocupa todo el ancho y se llega con el pulgar, que es donde esta el pulgar.
+/// ============================================================================
+/// Y EL BOTON **NO** VA DEBAJO, Y ESTO CAMBIO AL MEDIR, NO POR GUSTO
+/// ============================================================================
+///
+/// Medido en una captura de la pantalla de lectura a 360 px, con 22,5 MB del modulo ya
+/// descargados yJuan 3:16 abierto en el KJV:
+///
+///     barra de arriba (dos lineas)                     56 px
+///     campo "Ir a"                                     34 px
+///     hueco                                            14 px
+///     boton "Buscar" de 48 px, en su propia fila       48 px
+///     hueco                                            14 px
+///     titulo del capitulo, que **repetia** la barra    40 px
+///     --------------------------------------------------------
+///     cromo antes del primer versiculo                206 px
+///     el versiculo                                     122 px
+///     los terminos del modulo                          268 px
+///
+/// De 760 px de alto: **el versiculo es el 16 %** de la pantalla y los terminos el **35 %**.
+///
+/// Y EL BOTON DEBAJO ERA UNA DECISION ANTERIOR, CON SU MOTIVO, Y EL MOTIVO SE MIDIO:
+///
+///     "El boton va **debajo** del campo y no al lado. A 360 px, con el teclado abierto,
+///     quedan unos 360 px de alto: campo y boton en fila dejan al boton con la mitad del
+///     ancho y el texto se corta a los 12 caracteres."
+///
+/// El texto se corta a los 12 caracteres porque el campo se queda con la mitad del ancho.
+/// **Eso se arregla dando al campo todo el ancho y poniendo el boton DENTRO**, como icono
+/// de sufijo, que es donde lo pone Material y donde lo pone el resto. El campo entero para
+/// "Juan 3:16" y el boton al lado derecho del campo, no debajo.
+///
+/// Y NO ES SOLO CUATRO PIXELES: son **62 px de alto** de los 760, un 8 % de la pantalla, y
+/// un boton de 48 px de alto que esta deshabilitado el 99 % del tiempo porque no hay nada
+/// escrito. Un control de medio palmo que casi nunca se puede pulsar, en la parte de arriba
+/// de la pantalla, es el sitio mas caro de la pantalla para lo menos util.
+///
+/// Y EL TECLADO **NO** ES EL ARGUMENTO. Con el boton como icono de sufijo, el `Ir` del
+/// teclado --`textInputAction: TextInputAction.search`, que ya estaba-- hace lo mismo, y
+/// hace falta sin ningun boton en pantalla.
 class CampoDeReferencia extends StatelessWidget {
   const CampoDeReferencia({
     super.key,
@@ -83,31 +117,36 @@ class CampoDeReferencia extends StatelessWidget {
           style: const TextStyle(fontSize: 16),
           decoration: InputDecoration(
             isDense: true,
-            labelText: 'Ir a',
-            hintText: 'Juan 3:16',
+            hintText: 'Ir a: Juan 3:16',
             helperText: esValido
                 ? null
                 : 'No se entiende. Escribe el libro y el capitulo, como "Juan 3:16".',
             helperMaxLines: 3,
             errorText: esValido ? null : _motivoDeNoEntenderse(control.text),
+            // Y EL SUFIJO **ES EL BOTON**, y no un "borrar" con el "ir" al lado. Con texto
+            // escrito se ofrecen los dos, porque borrar sin poder ir no sirve de nada y
+            // dos iconos de 40 px en un campo de 330 caben de sobra.
             suffixIcon: hayTexto
-                ? IconButton(
-                    tooltip: 'Borrar',
-                    icon: const Icon(Icons.close),
-                    onPressed: alLimpiar,
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      IconButton(
+                        tooltip: 'Borrar',
+                        icon: const Icon(Icons.close),
+                        onPressed: alLimpiar,
+                      ),
+                      // Y EL BOTON DE IR, QUE ESTA DESHABILITADO SI NO HAY NADA ESCRITO.
+                      // Un boton deshabilitado dentro del campo no empuja el texto: se ve
+                      // gris y no hace nada, que es justo lo que tiene que hacer.
+                      IconButton.filled(
+                        tooltip: 'Ir a este pasaje',
+                        icon: const Icon(Icons.arrow_forward),
+                        onPressed: esValido ? alBuscar : null,
+                      ),
+                    ],
                   )
                 : null,
             border: const OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 8),
-        // Un boton alto. 48 px es el minimo que el framework considera pulsable con
-        // el dedo, y por debajo la gente falla la pulsacion sin darse cuenta.
-        SizedBox(
-          height: 48,
-          child: FilledButton(
-            onPressed: esValido && hayTexto ? alBuscar : null,
-            child: const Text('Buscar', style: TextStyle(fontSize: 16)),
           ),
         ),
       ],
@@ -153,52 +192,60 @@ class CampoDeReferencia extends StatelessWidget {
 /// Y NO HAY UN BOTON DE "CAPITULO ANTERIOR" EN EL PRIMERO NI DE "SIGUIENTE" EN EL
 /// ULTIMO. Un boton deshabilitado se ve, y se ve para decir "no hay mas", que es
 /// informacion. Un boton que desaparece deja a quien lo busca sin respuesta.
-class TituloDelPasaje extends StatelessWidget {
-  const TituloDelPasaje({
+/// Las flechas de capitulo.
+///
+/// ============================================================================
+/// Y ESTO YA **NO** DICE EL PASAJE, Y ANTES SI, Y ESO ERA UN ERROR MEDIDO
+/// ============================================================================
+///
+/// Antes era una fila con una flecha de volver, el pasaje en grande en el centro y dos
+/// flechas de capitulo. Medido en una captura a 360 px: la fila ocupaba **40 px** y
+/// **repetia literalmente lo que ya decia la barra de arriba**, que desde el change de la
+/// cabecera es "Juan 3:16" en su propia linea.
+///
+/// Dos veces el mismo dato, 40 px, en la parte de arriba de la pantalla, por encima del
+/// primer versiculo. Y la flecha de volver tambien estaba duplicada: la barra ya tiene la
+/// suya.
+///
+/// Y QUEDAN LAS DOS FLECHAS Y NO EL TITULO, porque el titulo no hace falta --esta ahi
+/// arriba-- y las flechas si: leer seguido es el uso mas frecuente de un lector de Biblia
+/// y ellas son un gesto de un dedo.
+///
+/// Y AL DERECHA Y NO CENTRADAS, porque con el titulo fuera las dos flechas centradas
+/// quedan en mitad de la pantalla, que es donde esta el texto, y parece un boton suelto en
+/// medio del versiculo.
+class FlechasDeCapitulo extends StatelessWidget {
+  const FlechasDeCapitulo({
     super.key,
-    required this.referencia,
     required this.hayAnterior,
     required this.haySiguiente,
     required this.alAnterior,
     required this.alSiguiente,
-    required this.alVolver,
   });
 
-  final Referencia referencia;
   final bool hayAnterior;
   final bool haySiguiente;
   final VoidCallback alAnterior;
   final VoidCallback alSiguiente;
-  final VoidCallback alVolver;
 
   @override
   Widget build(BuildContext context) {
+    // Y `visualDensity: compact` PORQUE VAN EN LA FILA DEL CAMPO. Con la densidad
+    // normal, dos `IconButton` de 48 pxNextracted con el campo de 34 px obligan a que el
+    // campo crezca para poder alinearse al centro, y el campo es el que importa.
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        IconButton(
-          tooltip: 'Volver a la biblioteca',
-          icon: const Icon(Icons.arrow_back),
-          onPressed: alVolver,
-        ),
-        Expanded(
-          child: Text(
-            referencia.texto,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleLarge,
-            // Una linea, con puntos. Un titulo de tres lineas empuja el versiculo 1
-            // fuera de la pantalla, que en un movil es la primera linea que se lee.
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
         IconButton(
           tooltip: 'Capitulo anterior',
           icon: const Icon(Icons.chevron_left),
+          visualDensity: VisualDensity.compact,
           onPressed: hayAnterior ? alAnterior : null,
         ),
         IconButton(
           tooltip: 'Capitulo siguiente',
           icon: const Icon(Icons.chevron_right),
+          visualDensity: VisualDensity.compact,
           onPressed: haySiguiente ? alSiguiente : null,
         ),
       ],

@@ -36,6 +36,11 @@ import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/ui/core/numeros.dart';
 import 'package:ab/ui/core/rutas.dart';
 import 'package:ab/ui/core/tema.dart';
+import 'package:ab/app/navegador.dart';
+import 'package:ab/domain/models/manifiesto.dart';
+import 'package:ab/domain/models/modulo.dart';
+import 'package:ab/data/repositories/catalogo_repository.dart';
+import 'package:ab/ui/features/biblioteca/view_models/biblioteca_view_model.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
 import 'package:ab/ui/features/lector/views/lector_view.dart';
 import 'package:ab/ui/features/lector/widgets/hoja_de_versiones.dart';
@@ -310,4 +315,104 @@ void main() {
       );
     });
   });
+
+  group('6. la version llega TARDE, y eso es lo que rompia la barra', () {
+    // ============================================================================
+    // Y ESTA SECCION ES LA QUE ATRAPA EL FALLO QUE SOLO SE VE EN UNA IMAGEN.
+    // ============================================================================
+    //
+    // Medido el 5 de octubre de 2026 en una captura de la pantalla de lectura a 360 px, con
+    // Juan 3:16 abierto y el KJV entero en el `IndexedDB`: **la segunda linea de la barra,
+    // con el nombre de la version, no salia**. Se espero 20 s: no era tiempo.
+    //
+    // La causa: el enrutador escuchaba a la biblioteca solo para saber si podia abrir el
+    // comentario, y **nunca llamaba a `notifyListeners()`**. Con eso la pantalla de lectura
+    // se quedaba con la lista de versiones que tenia cuando se construyo --vacia, porque
+    // el manifiesto todavia no habia llegado-- y para siempre.
+    //
+    // Y POR QUE NO LO VEIA NINGUNA COMPROBACION. El nombre de la version es texto de la
+    // barra; la sonda del navegador lee el **pasaje**, y `flutter test` montaba la pantalla
+    // con la lista ya puesta a mano. Las dos dan verde con el bug puesto. Hace falta mirar
+    // la imagen, y por eso esta prueba monta el enrutador entero y cambia la biblioteca
+    // **despues**.
+    testWidgets('el nombre de la version aparece cuando llega el manifiesto', (t) async {
+      final biblioteca = BibliotecaViewModel();
+      final lector = LectorViewModel();
+      // Y SIN `addTearDown` PARA ESOS DOS, porque `NavegadorAb.dispose` ya los cierra: con
+      // las dos llamadas, el enrutador los cerraba y despues la prueba los cerraba otra
+      // vez, y `ChangeNotifier.dispose` sobre uno ya cerrado lanza.
+      // El fallo sale en el `dispose` y no en el `build`, asi que el sintoma es "un
+      // LectorViewModel se uso despues de cerrarse" en una prueba que no hace nada raro.
+
+      final abierto = ModuloAbierto.abrir(rutaBibliaReal, id: 'KJV2006');
+      if (abierto is! Abierto) fail('la Biblia real deberia abrirse');
+      addTearDown(abierto.modulo.cerrar);
+
+      // Y PRIMERO UNA BIBLIOTECA **VACIA**, que es lo que hay en el arranque: el manifiesto
+      // todavia no ha llegado y la pantalla de lectura ya esta montada.
+      final n = NavegadorAb(
+        biblioteca: biblioteca,
+        lector: lector,
+        abrir: (id, _) async => abierto.modulo,
+      );
+      addTearDown(n.dispose);
+
+      t.view.physicalSize = const Size(360, 760);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+
+      await t.pumpWidget(MaterialApp.router(
+        theme: temaDeAb(),
+        routerDelegate: n,
+        routeInformationParser: const AnalizadorDeRuta(),
+      ));
+      await n.irA(RutaLectura('KJV2006', const Referencia('John', 3, 16)));
+      await t.pumpAndSettle();
+
+      // Y LA BARRA TIENE UNA SOLA LINEA, y no es un fallo: no hay manifiesto del que sacar
+      // el nombre. Una linea y sin hueco.
+      expect(
+        find.descendant(of: find.byType(AppBar), matching: find.text('King James Version (2006)')),
+        findsNothing,
+      );
+
+      // Y AHORA LLEGA EL MANIFIESTO. Este es el momento en que se rompia: la lista de
+      // versiones pasa de vacia a tener una entrada y la pantalla **no se enteraba**.
+      biblioteca.aplicarResultado(
+        ResultadoCatalogo(
+          manifiesto: Manifiesto(
+            formato: 'aa-catalog/1',
+            version: 'v0.1.1',
+            etiqueta: 'v0.1.1',
+            modulos: <Modulo>[
+              Modulo(
+                id: 'KJV2006',
+                nombre: 'King James Version (2006)',
+                tipo: TipoModulo.biblia,
+                idioma: 'eng',
+                licencia: 'PublicDomain',
+                tamanoBytes: 22544384,
+                sha256: 'a' * 64,
+                urlDescarga: Uri.parse('https://example.invalid/KJV2006.amod'),
+                urlNavegador: Uri.parse('https://example.invalid/KJV2006'),
+              ),
+            ],
+          ),
+          estado: EstadoLectura.delServidor,
+        ),
+        idsLocales: <String>{'KJV2006'},
+        hashesLocales: <String, String>{'KJV2006': 'a' * 64},
+      );
+      await t.pumpAndSettle();
+
+      expect(
+        find.descendant(of: find.byType(AppBar), matching: find.text('King James Version (2006)')),
+        findsOneWidget,
+        reason: 'el manifiesto ha llegado y la barra tiene que redibujarse sola',
+      );
+      // Y EL PASAJE SIGUE ESTANDO, que es lo que no hay que romper al redibujar.
+      expect(n.lector.leyendo, const Referencia('John', 3, 16));
+    });
+  });
 }
+
