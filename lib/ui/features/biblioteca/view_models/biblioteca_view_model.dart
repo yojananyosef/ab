@@ -466,6 +466,47 @@ class BibliotecaViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ============================================================================
+  // POR QUE ESTAS EN LA BIBLIOTECA, QUE NO ES LO MISMO QUE UN AVISO
+  // ============================================================================
+
+  /// Por que se ha llegado aqui **sin** un texto abierto, o null.
+  ///
+  /// Y NO ES UN `Aviso` Y ESTA FUERA DE LA LISTA DE AVISOS, y esa es la distincion que lo
+  /// hace funcionar. La lista `_avisos` la reemplaza entera [aplicarResultado] cada vez que
+  /// llega algo del repositorio --que es lo que hacia que los avisos de progreso se
+  /// reemplazaran a si mismos-- asi que un motivo guardado ahi **desaparece en el primer
+  /// refresco**, que es justo lo que Refresh haria y justo cuando se mas necesita.
+  ///
+  /// Y ADEMAS SON COSAS DISTINTAS Y SE LEEN DISTINTO. Un aviso es "ha pasado algo"; un
+  /// motivo es "**esta** pantalla tiene que decirte por que te ha traido aqui", con una
+  /// accion dentro. Meterlos en la misma lista hace que el motivo se mezcle con un
+  /// "Bajando CLARKE: 80 por ciento" y los dos parezcan cosas del mismo tipo.
+  String? get motivoDeLaVisita => _motivoDeLaVisita;
+  String? _motivoDeLaVisita;
+
+  /// Poner el motivo de por que se esta en la biblioteca.
+  ///
+  /// Y CON `replaceState` DE SU LADO, o sea que se sustituye: pulsar "Biblia" dos veces
+  /// seguidas con dos motivos distintos tiene que decir el segundo, no acumular dos lineas
+  /// que dicen casi lo mismo.
+  void pedirTexto(String motivo) {
+    if (_motivoDeLaVisita == motivo) return;
+    _motivoDeLaVisita = motivo;
+    notifyListeners();
+  }
+
+  /// Olvidar el motivo, cuando ya ha cumplido.
+  ///
+  /// Y SE LLAMA AL ABRIR UN TEXTO, que es cuando el motivo deja de ser cierto: en cuanto hay
+  /// una Biblia abierta, decir "no tienes ninguna Biblia" es falso, y un texto en pantalla
+  /// que no se corresponde con lo que se ve es la peor forma de avisar.
+  void olvidarElMotivo() {
+    if (_motivoDeLaVisita == null) return;
+    _motivoDeLaVisita = null;
+    notifyListeners();
+  }
+
   /// El progreso de una descarga, **reemplazando** el anterior del mismo modulo.
   ///
   /// Y ESTO ES LO QUE ARREGLA LA PANTALLA DE LA CAPTURA. Antes se anadia un aviso por

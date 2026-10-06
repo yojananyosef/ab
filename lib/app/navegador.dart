@@ -85,6 +85,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import 'package:ab/data/repositories/modulo_repository.dart';
+import 'package:ab/domain/models/modulo.dart';
 import 'package:ab/domain/models/indice_de_strong.dart';
 import 'package:ab/domain/models/panel_abierto.dart';
 import 'package:ab/domain/models/referencia.dart';
@@ -1145,11 +1146,35 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
         // Y AL PANEL DE LECTURA CON **SU** PASAJE. Pulsar "Biblia" con Juan 3 abierto
         // vuelve a Juan 3, y no a la pagina de inicio del texto: el panel de
         // herramientas es como se sale de aqui, no como se vuelve a entrar.
+        //
+        // Y SI **NO HAY NADA ABIERTO**, ANTES NO HACIA NADA, y es lo que se quejo quien
+        // tiene una Biblia descargada y le pulsa: la rama de seguridad era `irAHome()`, y
+        // desde la biblioteca eso es **volver a la biblioteca**. Un boton que no cambia la
+        // pantalla parece un boton roto, y lo es.
+        //
+        // Y POR QUE NO ES "ABRIR EL PRIMERO DEL CATALOGO": porque el primero del catalogo
+        // puede no estar descargado, y abrirlo pide una descarga de 22 MiB **sin haber
+        // elegido**. Lo que hace falta es lo unico que hay: una Biblia que este en el
+        // dispositivo.
         if (id != null && referencia != null) {
           await irA(RutaLectura(id, referencia, lector.idDelComentario));
-        } else {
-          await irAHome();
+          return;
         }
+
+        final biblia = _primeraBibliaEnElDispositivo();
+        if (biblia != null) {
+          await abrirDesdeLaBiblioteca(biblia);
+          return;
+        }
+
+        // Y SI NO HAY NI UNA, SE VA A LA BIBLIOTECA **DICIENDOLO**. Que es lo que se pidio
+        // y es lo unico honesto: una biblioteca con la lista de textos es el sitio donde
+        // se elige uno, y sin texto no hay nada que hacer aqui. Un boton que lleva a una
+        // pantalla sin explicar por que es el callejon sin salida que ya se ha descrito.
+        await irAHome();
+        biblioteca.pedirTexto(
+          'No tienes ningun texto descargado todavia. Bajar uno para poder leer.',
+        );
 
       case DestinoDeEstudio.buscar:
         if (id != null) {
@@ -1172,18 +1197,42 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
         }
 
       case DestinoDeEstudio.comentarios:
-        // Y ESTE ES EL UNICO QUE **NO** CAMBIA DE RUTA, y no es una excepcion: abrir un
-        // comentario es elegir uno, y elegir uno es una hoja con una lista. La hoja la abre
-        // quien tiene el manifiesto --la biblioteca-- asi que el enrutador la abre con el
-        // mismo metodo que usa el boton de la cabecera.
-        // Y NECESITA UN CONTEXTO, porque elegir comentario es abrir una hoja. El que
-        // llega es el de la pantalla de lectura, que esta vivo mientras el marco esta
-        // vivo, que es justo cuando se ha podido pulsar el destino.
-        if (contexto != null) {
-          await elegirComentario(contexto);
-        } else {
-          await irAHome();
+        // ================================================================================
+        // MEDIDO EL 6 DE OCTUBRE DE 2026: ESTE DESTINO NO HACIA NADA, Y POR DOS MOTOS
+        // ================================================================================
+        //
+        // **Uno**: el marco llamaba a `alElegirDestino(destino)` **sin contexto**, asi que el
+        // `BuildContext?` del enrutador era siempre `null` y este caso caia en su rama de
+        // seguridad, que es `irAHome()`. Desde la biblioteca, volver a la biblioteca. El
+        // contexto va ahora en la firma del marco, y es el **del elemento del destino**, que
+        // esta por debajo del `Navigator` y por eso puede abrir la hoja.
+        //
+        // **Dos**, y este seguia dando igual que se arreglara lo otro: [elegirComentario]
+        // empieza con
+        //
+        //     if (ruta is! RutaLectura) return;
+        //
+        // que es lo correcto --una hoja de comentarios sin texto al que ponerlos no tiene
+        // sentido-- pero **se vuelve sin decir nada**. Y volver sin decir nada desde un boton
+        // es lo mismo que no hacer nada, que es como se ha leido.
+        if (id != null && referencia != null) {
+          if (contexto != null) {
+            await elegirComentario(contexto);
+          } else {
+            // Y ESTA ES LA RAMA QUE NO SE PUEDE QUITAR: sin contexto no hay hoja, y sin hoja
+            // no hay destino. Se avisa en vez de ir a la biblioteca en silencio.
+            biblioteca.pedirTexto(
+              'No se ha podido abrir la lista de comentarios desde aqui.',
+            );
+          }
+          return;
         }
+
+        await irAHome();
+        biblioteca.pedirTexto(
+          'Para poner un comentario hace falta un texto abierto. Elige uno y vuelve a '
+          'pulsar Comentarios.',
+        );
 
       case DestinoDeEstudio.biblioteca:
         await irAHome();
@@ -1751,6 +1800,29 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   /// leidos dos veces, y la segunda conexion a la base de datos se queda abierta. Aqui
   /// solo se pide el sitio al que ir, y quien abre es [irA], que es quien lo hace para
   /// todo lo demas.
+  /// El identificador de la primera Biblia que esta **en este dispositivo**, o null.
+  ///
+  /// ================================================================================
+  /// POR QUE UNA FUNCION PROPIA Y NO UN `firstWhere` EN EL `switch`
+  /// ================================================================================
+  ///
+  /// Porque la pregunta --"¿tengo ya algo que leer?"-- la van a hacer varios sitios a partir
+  /// de ahora, y una pregunta con tres sitios que la responden es una pregunta que acaba
+  /// con tres reglas distintas. Y porque **el filtro es de tipo, no de estado**: `descargado`
+  /// incluye lo desactualizado y lo retirado, que se leen, asi que un "descargado" aqui
+  /// significa "esta en el dispositivo y se puede abrir".
+  ///
+  /// Y `descargado` Y NO `sePuedeLeer` A PROPOSITO. Los dos ahora mismo coinciden, pero
+  /// `sePuedeLeer` es la pregunta de "puedo pulsar Leer en esta fila" y esta es la de
+  /// "puedo abrir una Biblia sin descargar nada". Confundir los dos es el fallo de hacer que
+  /// el boton "Leer" aparezca en un modulo que no se puede abrir.
+  String? _primeraBibliaEnElDispositivo() {
+    for (final f in biblioteca.filas) {
+      if (f.descargado && f.modulo?.tipo == TipoModulo.biblia) return f.id;
+    }
+    return null;
+  }
+
   Future<void> abrirDesdeLaBiblioteca(String id) async {
     await irA(RutaLectura(id, const Referencia('John', 1)));
   }

@@ -30,7 +30,7 @@ void main() {
   Future<void> pintar(
     WidgetTester t, {
     required double ancho,
-    void Function(DestinoDeEstudio)? alElegir,
+    void Function(DestinoDeEstudio destino, BuildContext contexto)? alElegir,
   }) async {
     t.view.physicalSize = Size(ancho, 900);
     t.view.devicePixelRatio = 1;
@@ -42,7 +42,7 @@ void main() {
         home: Scaffold(
           body: MarcoDeEstudio(
             destino: DestinoDeEstudio.biblia,
-            alElegirDestino: alElegir ?? (_) {},
+            alElegirDestino: alElegir ?? (_, _) {},
             hijo: const _HijoQueSeMide(),
           ),
         ),
@@ -95,7 +95,7 @@ void main() {
           home: Scaffold(
             body: MarcoDeEstudio(
               destino: DestinoDeEstudio.biblia,
-              alElegirDestino: (_) {},
+              alElegirDestino: (_, _) {},
               hijo: const _HijoQueSeMide(),
             ),
           ),
@@ -150,7 +150,7 @@ void main() {
       // Y CADA UNO POR SEPARADO, porque un `onDestinationSelected` que siempre devuelve el
       // primero pasa estas cinco pruebas igual.
       final vistos = <DestinoDeEstudio>[];
-      await pintar(t, ancho: 834, alElegir: vistos.add);
+      await pintar(t, ancho: 834, alElegir: (d, _) => vistos.add(d));
 
       for (final d in DestinoDeEstudio.values) {
         await t.tap(find.byTooltip(d.rotulo));

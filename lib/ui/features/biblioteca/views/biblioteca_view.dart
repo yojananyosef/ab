@@ -28,6 +28,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:ab/data/repositories/catalogo_repository.dart';
+import 'package:ab/domain/models/modulo.dart';
 import 'package:ab/ui/core/idiomas.dart';
 import 'package:ab/ui/core/tema.dart';
 
@@ -60,6 +61,23 @@ class BibliotecaView extends StatefulWidget {
 }
 
 class _BibliotecaViewState extends State<BibliotecaView> {
+  /// Bajar el primer texto que se pueda bajar.
+  ///
+  /// Y POR QUE SE QUITA EL FILTRO AQUI Y NO DENTRO DEL BOTON: `limpiarFiltros` es estado de
+  /// la pantalla, y el boton solo sabe que hay que pulsar una vez. Ponerlo en el boton
+  /// obligaria a que `_CajaDelMotivo` recibiera el `viewModel`, que es justo lo que esta
+  /// Pantalla no tiene: el `viewModel` lo tiene **la** pantalla que la contiene.
+  ///
+  /// Y ADEMAS SE OLVIDA EL MOTIVO, porque en cuanto hay una descarga en marcha el motivo
+  /// "no tienes ningun texto" es a medias, y el aviso de progreso --que esta justo debajo-- ya
+  /// esta diciendo lo que esta pasando. Dejar los dos son dos verdades a la vez.
+  void _bajarElPrimero() {
+    final vm = widget.viewModel;
+    vm.limpiarFiltros();
+    final id = _primerTextoParaBajar(vm);
+    if (id != null) widget.alPulsarDescargar(id);
+  }
+
   late final TextEditingController _controlFiltro = TextEditingController(
     text: widget.viewModel.filtro.texto,
   );
@@ -81,7 +99,7 @@ class _BibliotecaViewState extends State<BibliotecaView> {
         body: SafeArea(
           child: Column(
             children: <Widget>[
-              _Avisos(vm: vm),
+              _Avisos(vm: vm, alPulsarBajar: _bajarElPrimero),
               Expanded(
                 child: RefreshIndicator(
                   // Tirar para recargar es lo que hace todo el mundo en un movil, y
@@ -177,9 +195,12 @@ class _BarraSuperior extends StatelessWidget implements PreferredSizeWidget {
 /// contexto. Con veinte avisos se ven los primeros y hay mas, y en una pantalla de
 /// 360 px caben cuatro.
 class _Avisos extends StatelessWidget {
-  const _Avisos({required this.vm});
+  const _Avisos({required this.vm, required this.alPulsarBajar});
 
   final BibliotecaViewModel vm;
+
+  /// Bajar el primer texto que se pueda bajar, que es lo que da sentido al motivo.
+  final VoidCallback alPulsarBajar;
 
   /// Cuanto puede crecer la banda antes de tener scroll propio.
   ///
@@ -190,7 +211,14 @@ class _Avisos extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (vm.avisos.isEmpty) return const SizedBox.shrink();
+    // Y EL MOTIVO CUENTA COMO CONTENIDO DE LA BANDA, y no es un widget aparte en otro
+    // sitio. La banda es la unica parte de la pantalla que **esta pensada** para decir
+    // "aqui tienes algo que saber", con su sitio, su scroll y su separacion de la lista.
+    // Un `Column` con el motivo por delante de la banda dejaria el texto descolocado del
+    // resto, que es justo lo que `AGENTS.md` prohibe con la barra y el cuerpo.
+    if (vm.avisos.isEmpty && vm.motivoDeLaVisita == null) {
+      return const SizedBox.shrink();
+    }
 
     return ContenidoCentrado(
       child: ConstrainedBox(
@@ -204,6 +232,19 @@ class _Avisos extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              // Y EL MOTIVO **PRIMERO**, antes de los avisos del repositorio, y en su
+              // propia caja y no como un aviso mas. Es lo que ha traido a la persona hasta
+              // aqui, y por encima queda lo que le ha pasado al descargar.
+              if (vm.motivoDeLaVisita != null)
+                _CajaDelMotivo(
+                  motivo: vm.motivoDeLaVisita!,
+                  // Y EL PRIMERO **QUE SE PUEDA BAJAR**, y no el primero de la lista: con el
+                  // filtro "solo lo que tengo" puesto, el primero de la lista es uno que
+                  // ya esta aqui y "Bajar el primero" no bajaria nada. Un boton que no hace
+                  // nada por el estado de un filtro que no se ve desde el boton es un boton
+                  // roto.
+                  alPulsarBajar: alPulsarBajar,
+                ),
               for (final aviso in vm.avisos)
                 if (aviso.esProgreso)
                   _BarraDeProgreso(aviso: aviso)
@@ -233,6 +274,107 @@ class _Avisos extends StatelessWidget {
 /// con un icono al lado, sin caja: una caja alrededor de "se esta usando una copia
 /// guardada" lo convierte en visualmente en un fallo, que es exactamente el problema
 /// que se esta arreglando.
+/// El motivo por el que se esta en la biblioteca, y lo que hay que hacer al respecto.
+///
+/// ============================================================================
+/// POR QUE TIENE UN **BOTON** Y NO ES UN AVISO MAS
+/// ============================================================================
+///
+/// Porque un aviso dice lo que ha pasado y un motivo dice **lo que hay que hacer**, y un
+/// texto que dice "no tienes ninguna Biblia descargada" sin mas es un callejon sin salida: la
+/// biblioteca esta **debajo**, en la misma pantalla, y quien lo lee tiene que bajar hasta
+/// ella. Con el boton al lado, lo que se pide es un toque.
+///
+/// Y EL BOTON DICE "Bajar el primero" Y NO "Instalar", por dos motivos que salen de ahi:
+///
+///   - **Instalar** es una palabra de tienda, y esto no es una tienda. Lo que hay es un
+///     `.amod` en un catalogo que alguien ha publicado.
+///   - Y **"el primero"** es concreto: quien no tiene ninguna Biblia no quiere el
+///     catalogo entero, quiere la primera. Un boton que lleva ahi --que esta justo debajo
+///     y con el filtro puesto-- es un boton que hace el trabajo.
+/// Bajar el primer texto que se pueda bajar.
+///
+/// Y SE QUITA EL FILTRO PRIMERO, y no es cosmetico: con el filtro "solo lo que tengo"
+/// puesto, el primer texto de la lista es uno que **ya esta aqui**, y "Bajar el primero"
+/// no bajaria nada. Un boton que no hace nada por el estado de un filtro que el boton no
+/// ensena es un boton roto.
+///
+/// Y ENTRE LOS DESCARGABLES, UNA **BIBLIA** SI LA HAY. El motivo de este boton es el de
+/// "no tienes ningun texto abierto", y lo que hace falta para poder leer es una Biblia: un
+/// comentario sin texto al lado no se puede leer. Si no hay ninguna Biblia en el catalogo --
+/// que con este catalogo no pasa, pero el catalogo lo pone otro-- se baja el primero que
+/// haya, porque un boton que no hace nada es peor que uno que baja lo que sea.
+String? _primerTextoParaBajar(BibliotecaViewModel vm) {
+  final descargables = vm.filas.where((FilaDeModulo f) => f.sePuedeDescargar).toList();
+  if (descargables.isEmpty) return null;
+  return descargables
+      .firstWhere(
+        (FilaDeModulo f) => f.modulo?.tipo == TipoModulo.biblia,
+        orElse: () => descargables.first,
+      )
+      .id;
+}
+
+class _CajaDelMotivo extends StatelessWidget {
+  const _CajaDelMotivo({
+    required this.motivo,
+    required this.alPulsarBajar,
+  });
+
+  final String motivo;
+
+  /// Bajar el primer texto que hay, que es lo que vuelve util este motivo.
+  ///
+  /// Y VIENE DE FUERA, como los otros tres de la pantalla, y por el motivo que ya esta
+  /// escrito en el constructor: **descargar** es cosa de quien tiene el motor de obtencion,
+  /// y la vista no lo tiene y no lo pide. Ponerlo aqui seria meter la descarga en la vista.
+  final VoidCallback alPulsarBajar;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colores;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: c.superficie,
+        borderRadius: BorderRadius.circular(10),
+        // Y UNA REGLA A LA IZQUIERDA EN VEZ DE UN `Border.all`, y no un fondo de color. El
+        // motivo no es un error: es "aqui tienes algo que saber", y un fondo de aviso en
+        // rojo por abrir una aplicacion vacia es gritar donde no pasa nada. La regla dice
+        // "esto es para ti" sin gritar.
+        border: Border(
+          left: BorderSide(color: c.primario, width: 3),
+          top: BorderSide(color: c.linea),
+          right: BorderSide(color: c.linea),
+          bottom: BorderSide(color: c.linea),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            motivo,
+            style: Theme.of(context)
+                .textTheme
+                .bodyLarge
+                ?.copyWith(color: c.texto),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: TextButton.icon(
+              onPressed: alPulsarBajar,
+              icon: const Icon(Icons.download_outlined, size: 18),
+              label: const Text('Bajar el primero'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _LineaAviso extends StatelessWidget {
   const _LineaAviso({required this.aviso, required this.alQuitar});
 
@@ -780,7 +922,16 @@ class _Acciones {
 
   final BibliotecaView _vista;
 
-  void leer(String id) => _vista.alPulsarLeer(id);
+  /// Leer un texto, y **olvidar el motivo** de por que se estaba en la biblioteca.
+  ///
+  /// Y AQUI, Y NO EN EL ENRUTADOR, porque el motivo es estado de **esta** pantalla: el
+  /// enrutador no sabe que hay un motivo quesdividir. Y se olvida aqui porque en cuanto hay
+  /// un texto abierto, decir "no tienes ninguna Biblia" es **falso**, y un texto en pantalla
+  /// que no se corresponde con lo que se ve es la peor forma de avisar.
+  void leer(String id) {
+    _vista.viewModel.olvidarElMotivo();
+    _vista.alPulsarLeer(id);
+  }
   void descargar(String id) => _vista.alPulsarDescargar(id);
   void ficheroLocal(String id) => _vista.alPulsarFicheroLocal(id);
 }

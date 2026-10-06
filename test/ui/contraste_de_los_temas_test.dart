@@ -51,7 +51,11 @@ import 'package:ab/ui/core/tema.dart';
 /// "bonito" sea 0,04: con 0,04, el canal 10 --que es `10/255 = 0,0392`-- cae en la rama
 /// lineal, y el estandar lo pone en la curva. El error es pequeno en un canal y se multiplica
 /// en la luminancia, que es una suma ponderada de tres.
-double _canal(double byte) {
+// Y ESTA ES **PUBLICA** Y NO PRIVADA, y no por comodidad de un fichero vecino: el algoritmo
+// de WCAG tiene que estar en **un** sitio. Duplicarlo en un segundo fichero de pruebas es la
+// forma de que las dos copias midan cosas distintas, que es lo que paso con el `pow` escrito
+// a mano que daba 6,05 donde el valor bueno es 7,33.
+double canal(double byte) {
   final v = byte / 255.0;
   return v <= 0.03928 ? v / 12.92 : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
 }
@@ -62,17 +66,17 @@ double _canal(double byte) {
 /// de la television y los que todo el mundo escribe por costumbre. Con los de television el
 /// azul pesa un 40 % menos y el rojo un 24 % mas, y en un tema donde el rojo de las palabras
 /// de Jesus es el color que mas hay que mirar, el error sale justo ahi.
-double _luminancia(Color c) {
-  final r = _canal(c.r * 255.0);
-  final g = _canal(c.g * 255.0);
-  final b = _canal(c.b * 255.0);
+double luminancia(Color c) {
+  final r = canal(c.r * 255.0);
+  final g = canal(c.g * 255.0);
+  final b = canal(c.b * 255.0);
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
 /// El contraste entre dos colores, de 1 a 21.
-double _contraste(Color a, Color b) {
-  final la = _luminancia(a);
-  final lb = _luminancia(b);
+double contraste(Color a, Color b) {
+  final la = luminancia(a);
+  final lb = luminancia(b);
   final hi = math.max(la, lb);
   final lo = math.min(la, lb);
   return (hi + 0.05) / (lo + 0.05);
@@ -105,44 +109,44 @@ void main() {
         MapEntry('superficie', MapEntry(c.superficie, umbrales['texto']!)),
       ]) {
         expect(
-          _contraste(c.texto, entrada.value.key),
+          contraste(c.texto, entrada.value.key),
           greaterThanOrEqualTo(entrada.value.value),
           reason: 'texto sobre ${entrada.key} del tema $tema',
         );
       }
 
       expect(
-        _contraste(c.textoSuave, c.fondo),
+        contraste(c.textoSuave, c.fondo),
         greaterThanOrEqualTo(aa),
         reason: 'texto suave del tema $tema',
       );
       expect(
-        _contraste(c.textoSuave, c.superficie),
+        contraste(c.textoSuave, c.superficie),
         greaterThanOrEqualTo(aa),
         reason: 'texto suave sobre superficie del tema $tema',
       );
       expect(
-        _contraste(c.acento, c.fondo),
+        contraste(c.acento, c.fondo),
         greaterThanOrEqualTo(aa),
         reason: 'acento del tema $tema',
       );
       expect(
-        _contraste(c.acento, c.superficie),
+        contraste(c.acento, c.superficie),
         greaterThanOrEqualTo(aa),
         reason: 'acento sobre superficie del tema $tema',
       );
       expect(
-        _contraste(c.peligro, c.fondo),
+        contraste(c.peligro, c.fondo),
         greaterThanOrEqualTo(aa),
         reason: 'peligro del tema $tema',
       );
       expect(
-        _contraste(c.peligro, c.superficie),
+        contraste(c.peligro, c.superficie),
         greaterThanOrEqualTo(aa),
         reason: 'peligro sobre superficie del tema $tema',
       );
       expect(
-        _contraste(c.primario, c.fondo),
+        contraste(c.primario, c.fondo),
         greaterThanOrEqualTo(aa),
         reason: 'primario del tema $tema',
       );
@@ -158,7 +162,7 @@ void main() {
         ('superficie', c.superficie),
       ]) {
         expect(
-          _contraste(c.palabraDeJesus, fondo),
+          contraste(c.palabraDeJesus, fondo),
           greaterThanOrEqualTo(aaa),
           reason: 'palabras de Jesus sobre $nombre del tema $tema',
         );
@@ -173,9 +177,9 @@ void main() {
       // Y LOS NUMEROS EXACTOS DEL CLARO, porque son los que estaban escritos en `AGENTS.md`
       // antes de que este fichero existiera, y el cambio **no** los puede mover. Son una
       // cadena: si el claro se mueve, el que decia 16,96:1 deja de ser verdad.
-      expect(_contraste(c.texto, c.fondo), closeTo(16.96, 0.01));
-      expect(_contraste(c.palabraDeJesus, c.fondo), closeTo(7.33, 0.01));
-      expect(_contraste(c.palabraDeJesus, c.superficie), closeTo(7.71, 0.01));
+      expect(contraste(c.texto, c.fondo), closeTo(16.96, 0.01));
+      expect(contraste(c.palabraDeJesus, c.fondo), closeTo(7.33, 0.01));
+      expect(contraste(c.palabraDeJesus, c.superficie), closeTo(7.71, 0.01));
     });
 
     test('el sepia, que es lo de papel', () {
@@ -183,8 +187,8 @@ void main() {
       comprobar(c, 'sepia', umbrales: <String, double>{'texto': aaa});
       comprobarLasPalabrasDeJesus(c, 'sepia');
 
-      expect(_contraste(c.texto, c.fondo), closeTo(11.81, 0.01));
-      expect(_contraste(c.palabraDeJesus, c.fondo), closeTo(7.15, 0.01));
+      expect(contraste(c.texto, c.fondo), closeTo(11.81, 0.01));
+      expect(contraste(c.palabraDeJesus, c.fondo), closeTo(7.15, 0.01));
     });
 
     test('el oscuro, que no es el claro invertido', () {
@@ -192,8 +196,8 @@ void main() {
       comprobar(c, 'oscuro', umbrales: <String, double>{'texto': aaa});
       comprobarLasPalabrasDeJesus(c, 'oscuro');
 
-      expect(_contraste(c.texto, c.fondo), closeTo(15.17, 0.01));
-      expect(_contraste(c.palabraDeJesus, c.fondo), closeTo(8.23, 0.01));
+      expect(contraste(c.texto, c.fondo), closeTo(15.17, 0.01));
+      expect(contraste(c.palabraDeJesus, c.fondo), closeTo(8.23, 0.01));
 
       // Y LO QUE HACE DE ESTE TEMA UN TEMA Y NO UN INVERTIDO: **los tres textos son
       // claros**. Lo invertido da un texto casi blanco y un rojo casi negro, y un rojo casi

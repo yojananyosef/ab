@@ -120,7 +120,33 @@ class MarcoDeEstudio extends StatelessWidget {
   });
 
   final DestinoDeEstudio destino;
-  final void Function(DestinoDeEstudio destino) alElegirDestino;
+
+  /// Elige un destino, **con el contexto de quien lo ha pulsado**.
+  ///
+  /// ================================================================================
+  /// Y EL CONTEXTO EN LA FIRMA, Y NO EN UN PARAMETRO OPCIONAL DEL ENRUTADOR, MEDIDO
+  /// ================================================================================
+  ///
+  /// Antes era `void Function(DestinoDeEstudio)` y el enrutador recibia un `BuildContext?`
+  /// **siempre en null**. Con eso, el destino "Comentarios" --que abre una hoja-- caia en
+  /// su rama de seguridad, que es `irAHome()`, y desde la biblioteca eso es **volver a la
+  /// biblioteca**: la pantalla no cambiaba y no pasaba nada.
+  ///
+  /// Y POR QUE NO LLEGABA EL CONTEXTO Y NO ERA UN OLVIDO DEL ENRUTADOR: el marco era el que
+  /// llamaba, y el marco **no tiene contexto de la pantalla de lectura**, que es quien sabe
+  /// abrir la hoja de comentarios. El que lo tiene es el propio elemento del destino, que
+  /// esta **debajo** del `Navigator` y por eso puede abrir un `showModalBottomSheet`.
+  ///
+  /// Y EL CONTEXTO DEL ELEMENTO DEL DESTINO, Y NO EL DEL MARCO, porque `showModalBottomSheet`
+  /// busca el `Overlay` **hacia arriba**, y hace falta un contexto que este por debajo del
+  /// `Navigator`. El del marco esta al mismo nivel; el del boton esta debajo. Con el del
+  /// marco, `showModalBottomSheet` dariaria
+  ///
+  ///     No Overlay widget found
+  ///
+  /// que es el mismo error del `TextField` sin `Navigator` que ya esta escrito en
+  /// `navegador.dart`.
+  final void Function(DestinoDeEstudio destino, BuildContext contexto) alElegirDestino;
 
   /// Lo que hay en el centro: la pantalla que esta abierta.
   final Widget hijo;
@@ -217,7 +243,7 @@ class _PanelDeHerramientas extends StatelessWidget {
   const _PanelDeHerramientas({required this.destino, required this.alElegir});
 
   final DestinoDeEstudio destino;
-  final void Function(DestinoDeEstudio destino) alElegir;
+  final void Function(DestinoDeEstudio destino, BuildContext contexto) alElegir;
 
   @override
   Widget build(BuildContext context) {
@@ -244,7 +270,8 @@ class _PanelDeHerramientas extends StatelessWidget {
       // sitios no pueden separarse porque son el mismo numero.
       minExtendedWidth: Medidas.anchoDelPanelDeHerramientas,
       selectedIndex: destino.index,
-      onDestinationSelected: (int i) => alElegir(DestinoDeEstudio.values[i]),
+      onDestinationSelected: (int i) =>
+          alElegir(DestinoDeEstudio.values[i], context),
       backgroundColor: colores.surfaceContainerLow,
       destinations: <NavigationRailDestination>[
         for (final d in DestinoDeEstudio.values)
@@ -263,7 +290,7 @@ class _BarraDeAbajo extends StatelessWidget {
   const _BarraDeAbajo({required this.destino, required this.alElegir});
 
   final DestinoDeEstudio destino;
-  final void Function(DestinoDeEstudio destino) alElegir;
+  final void Function(DestinoDeEstudio destino, BuildContext contexto) alElegir;
 
   @override
   Widget build(BuildContext context) {
@@ -289,7 +316,7 @@ class _BarraDeAbajo extends StatelessWidget {
                   icon: Icon(d == destino ? d.iconoElegido : d.icono),
                   selectedIcon: Icon(d.iconoElegido),
                   color: d == destino ? colores.onSurface : colores.outline,
-                  onPressed: () => alElegir(d),
+                  onPressed: () => alElegir(d, context),
                 ),
             ],
           ),

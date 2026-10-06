@@ -261,6 +261,94 @@ extension ColoresDeContexto on BuildContext {
 /// Y RECIBE LA PREFERENCIA Y NO LA BUSCA, porque un tema que va a buscar la preferencia por su
 /// cuenta es un tema que depende del orden de construccion, y el orden de construccion es
 /// justo lo que cambia cuando algo se lee con plazo desde `main`.
+/// Los tamanos del texto de la aplicacion, **con su color**.
+///
+/// ============================================================================
+/// POR QUE ESTA FUNCION Y NO UN `copyWith` EN LA LLAMADA, MEDIDO EL 6 DE OCTUBRE
+/// ============================================================================
+///
+/// La version anterior era:
+///
+///     textTheme: base.textTheme
+///         .apply(bodyColor: c.texto, displayColor: c.texto)
+///         .copyWith(
+///           bodyMedium:  const TextStyle(fontSize: 16, height: 1.45),
+///           titleMedium: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+///           ...
+///         )
+///
+/// Y ESO ESTA **MAL**, y no por un detalle de sintaxis. `TextTheme.copyWith` **sustituye**
+/// el `TextStyle` entero: no le cambia el tamano, le quita el color que el `.apply()` de la
+/// linea de antes acababa de poner. Y un `TextStyle` con la letra `color` a null **no
+/// significa "el del tema"**, significa "el que venga de fuera", que es la cadena de
+/// `DefaultTextStyle` de Material.
+///
+/// Y LO QUE HACE ESA CADENA, MEDIDO, en la biblioteca con el tema oscuro:
+///
+///     titleMedium    #000000 sobre #14110E      1,12:1
+///
+/// **Negro puro sobre fondo casi negro.** Y en la pantalla: el titulo "Biblioteca", el
+/// nombre de cada modulo y las etiquetas de los filtros, todos ilegibles.
+///
+/// Y LO PEOR ES QUE **NO FALLA**: no hay excepcion, no hay `overflow`, no hay aviso. Un
+/// `Text` de 20 px con el color equivocado se pinta **perfectamente**. Un texto ilegible no
+/// es un error de Flutter, es un texto ilegible, y por eso `flutter analyze` estaba limpio,
+/// las 660 pruebas estaban en verde y el fallo se ve **mirando**.
+///
+/// Y LA RAZON DE QUE PASARA CON LA PALETA CORRECTA: `contraste_de_los_temas_test.dart`
+/// mide los nueve colores de `Colores` **entre si**, y esos estan bien --el texto del
+/// oscuro da 15,17:1 sobre su fondo. Ese fichero comprueba que la paleta es buena; este
+/// comprueba que la paleta **llega** al texto. Son dos cosas y hacen falta las dos.
+///
+/// ============================================================================
+/// Y POR QUE UNA FUNCION CON UN `TextStyle` DE FABRICA Y NO SEIS LITERALES
+/// ============================================================================
+///
+/// Porque el fallo era **no acordarse del color** en un `TextStyle` de los seis, y un
+/// `TextStyle` sin color compila, se ve bien en el editor y no se ve raro en el codigo. Con
+/// esta firma es imposible: el color sale por defecto y **anadir** un estilo sin color
+/// requiere escribir `sinColor: true`, que es una cosa que se ve.
+///
+/// Y NO SE USA `apply` PARA LOS COLORES, y es una decision y no una preferencia: `apply` con
+/// `bodyColor` **tambien** pisa el color explicito de `bodySmall` y `labelSmall`, que aqui
+/// son `textoSuave` a proposito. Con el color puesto en cada estilo, cada uno dice el suyo.
+TextTheme _textThemeDe(TextTheme base, Colores c) {
+  TextStyle de(
+    double tamano, {
+    double? alto,
+    FontWeight? peso,
+    Color? color,
+  }) =>
+      TextStyle(
+        fontSize: tamano,
+        height: alto,
+        fontWeight: peso,
+        color: color ?? c.texto,
+      );
+
+  return base.apply(bodyColor: c.texto, displayColor: c.texto).copyWith(
+    // Y TODOS LLEVAN COLOR, sin excepcion, y `textoSuave` donde el estilo es secundario.
+    bodyMedium: de(16, alto: 1.45),
+    bodyLarge: de(17, alto: 1.45),
+    bodySmall: de(14, alto: 1.4, color: c.textoSuave),
+    titleLarge: de(20, peso: FontWeight.w600),
+    titleMedium: de(17, peso: FontWeight.w600),
+    titleSmall: de(15, peso: FontWeight.w600),
+    labelLarge: de(16, peso: FontWeight.w600),
+    labelSmall: de(13, color: c.textoSuave),
+    // Y LOS QUE NO ESTABAN, QUE `apply` NO PUDO TOCAR. Van con su tamano y su color
+    // tambien, porque son los que se usan en `headlineLarge` --el numero de capitulo-- y en
+    // los avisos de la biblioteca, que son los textos mas grandes de la pantalla.
+    displayLarge: de(57, peso: FontWeight.w300),
+    displayMedium: de(45, peso: FontWeight.w400),
+    displaySmall: de(36, peso: FontWeight.w400),
+    headlineLarge: de(32, peso: FontWeight.w600),
+    headlineMedium: de(28, peso: FontWeight.w600),
+    headlineSmall: de(24, peso: FontWeight.w600),
+    labelMedium: de(14, peso: FontWeight.w600),
+  );
+}
+
 ThemeData temaDeAb([PreferenciaDeLectura? preferencia]) {
   final pref = preferencia ?? PreferenciaDeLectura.porDefecto;
   final c = Colores.de(pref.tema);
@@ -286,19 +374,7 @@ ThemeData temaDeAb([PreferenciaDeLectura? preferencia]) {
     // la distincion que hay que tener clara: el 16 de los **campos** lo impone el navegador,
     // y el del **texto de lectura** lo elige quien lee. Si tambien el campo bajara a 15 con
     // la preferencia, escribir en el filtro haria que la pagina se descuelgue.
-    textTheme: base.textTheme.apply(
-      bodyColor: c.texto,
-      displayColor: c.texto,
-    ).copyWith(
-      bodyMedium: const TextStyle(fontSize: 16, height: 1.45),
-      bodyLarge: const TextStyle(fontSize: 17, height: 1.45),
-      bodySmall: TextStyle(fontSize: 14, height: 1.4, color: c.textoSuave),
-      titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-      titleMedium: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-      titleSmall: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-      labelLarge: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-      labelSmall: TextStyle(fontSize: 13, color: c.textoSuave),
-    ),
+    textTheme: _textThemeDe(base.textTheme, c),
     dividerTheme: DividerThemeData(color: c.linea, thickness: 1, space: 1),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
