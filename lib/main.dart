@@ -44,7 +44,7 @@ import 'ui/core/rutas.dart';
 import 'ui/core/tema.dart';
 import 'ui/features/biblioteca/view_models/aviso.dart';
 import 'ui/features/biblioteca/view_models/biblioteca_view_model.dart';
-import 'ui/features/lector/view_models/lector_view_model.dart';
+import 'ui/features/lector/view_models/preferencias_de_lectura.dart';
 
 Future<void> main() async {
   // Los enlaces del motor y de las plataformas se preparan **antes** de la primera
@@ -111,7 +111,13 @@ class _AbAppState extends State<AbApp> {
   late final HttpService _http;
   late final AlmacenamientoDeModulos _modulos;
   late final BibliotecaViewModel _biblioteca;
-  late final LectorViewModel _lector;
+
+  /// Los ajustes de lectura, que son **de la ventana** y no de un texto.
+  ///
+  /// Y NO ES UN `LectorViewModel`, y por eso este change los saco de ahi: con dos textos
+  /// abiertos hay dos view models de lectura y los ajustes tienen que ser los mismos. Ver
+  /// `preferencias_de_lectura.dart`, que tiene escrito el fallo que arregla.
+  late final PreferenciasDeLectura _preferencias;
 
   /// Los resaltados de la persona.
   ///
@@ -134,11 +140,20 @@ class _AbAppState extends State<AbApp> {
     _catalogo = CatalogoRepository(http: _http, almacenamiento: const Preferencias());
     _modulos = crearAlmacenamientoDeModulos();
     _biblioteca = BibliotecaViewModel();
-    // Y CON LAS PREFERENCIAS DEL SISTEMA, que es donde vive la unica preferencia de
-    // lectura --si las palabras de Jesus van en rojo. Es la primera vez que el lector
-    // guarda algo, y es una preferencia y no una nota: `almacenamiento.dart` tiene el
-    // motivo de por que esa diferencia lo es todo.
-    _lector = LectorViewModel(almacenamientoDeLectura: const Preferencias());
+    // Y CON LAS PREFERENCIAS DEL SISTEMA, que es donde viven los ajustes de lectura --la
+    // letra, el alto de linea y si las palabras de Jesus van en rojo. Es la primera vez
+    // que la aplicacion guarda algo, y es una preferencia y no una nota:
+    // `almacenamiento.dart` tiene el motivo de por que esa diferencia lo es todo.
+    //
+    // Y **NO SE LEEN AQUI**, y no por descuido: se leen **al abrir la pantalla de
+    // lectura**, que es la regla que ya esta escrita en `AGENTS.md` --"una preferencia se
+    // lee al abrir la pantalla, y no al arrancar de la aplicacion"--
+    // y el motivo sigue valiendo con mas fuerza ahora que hay paneles: leerla al arrancar
+    // haria que la ventana que se abre en paralelo saliera con el color del panel que se
+    // abrio antes. Y leerla al arrancar colga el arranque entero en el caso medido del
+    // almacenamiento del navegador que no contesta, que es lo que `plazoDeLectura` de
+    // cinco segundos evita, pero mejor no empezar a leer antes de tener algo que leer.
+    _preferencias = PreferenciasDeLectura(almacenamiento: const Preferencias());
 
     // El proveedor de rutas va aqui y no dentro de `MaterialApp.router`, porque es el
     // **mismo** que necesita el enrutador para poder reportarle las rutas. Si cada uno
@@ -164,7 +179,7 @@ class _AbAppState extends State<AbApp> {
 
     _navegador = NavegadorAb(
       biblioteca: _biblioteca,
-      lector: _lector,
+      preferencias: _preferencias,
       resaltados: _resaltados,
       proveedor: _proveedorDeRutas,
       abrir: _abrirModulo,
@@ -274,8 +289,13 @@ class _AbAppState extends State<AbApp> {
     _sonda.escribir(<String, Object?>{
       'paso': 2,
       'resultado': 'pasaje pedido, el modulo esta abierto',
-      'estadoLector': _lector.estado.name,
-      'idDelModulo': _lector.idDelModulo,
+      // Y EL LECTOR DE LA SONDA **ES EL DEL PANEL DE DELANTE**, y no un view model
+      // propio. Con dos textos abiertos hay dos y la comprobacion tiene que mirar el que
+      // se esta viendo, que es el unico del que se puede decir "esto es lo que hay en
+      // pantalla".
+      'estadoLector': _navegador.lector.estado.name,
+      'idDelModulo': _navegador.lector.idDelModulo,
+      'paneles': _navegador.paneles.ids,
     });
 
     // Y SE ESCRIBE UN "PASO 1" ANTES DE MIRAR EL PASAJE. Por que: si el texto no sale,
@@ -318,9 +338,9 @@ class _AbAppState extends State<AbApp> {
     var offeredDownload = false;
     await _sonda.esperarAQue(
       () {
-        if (_lector.pasaje == null) return false;
-        if (_lector.tieneComentario) return true;
-        if (_lector.comentarioPedido == null) return true;
+        if (_navegador.lector.pasaje == null) return false;
+        if (_navegador.lector.tieneComentario) return true;
+        if (_navegador.lector.comentarioPedido == null) return true;
         // Y SOLO UNA VEZ. `esperarAQue` pregunta cada 200 ms, y sin esta bandera se
         // pediria la misma descarga mientras la anterior esta en marcha.
         if (!offeredDownload) {
@@ -341,8 +361,8 @@ class _AbAppState extends State<AbApp> {
       'paso': '0',
       'resultado': 'ruta aplicada, viendo que comentario falta',
       'comentarioEsperado': comentarioEsperado,
-      'comentarioPedido': _lector.comentarioPedido,
-      'tieneComentario': _lector.tieneComentario,
+      'comentarioPedido': _navegador.lector.comentarioPedido,
+      'tieneComentario': _navegador.lector.tieneComentario,
       'ofrecioLaDescarga': offeredDownload,
       'catalogoLoTiene': comentarioEsperado == null
           ? false
@@ -359,7 +379,7 @@ class _AbAppState extends State<AbApp> {
         navegador: _navegador,
         catalogo: _catalogo,
         biblioteca: _biblioteca,
-        lector: _lector,
+        lector: _navegador.lector,
         esperado: esperado,
         estado: res.estadoDelCatalogo,
         comentarioEsperado: comentarioEsperado,
@@ -394,7 +414,7 @@ class _AbAppState extends State<AbApp> {
       navegador: _navegador,
       catalogo: _catalogo,
       biblioteca: _biblioteca,
-      lector: _lector,
+      lector: _navegador.lector,
       esperado: esperado,
       estado: res.estadoDelCatalogo,
     );
@@ -490,18 +510,22 @@ class _AbAppState extends State<AbApp> {
   /// fondo. Un cambio instantaneo y un texto que se mantiene en el sitio.
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: _lector,
+        // Y SE ESCUCHA A LAS **PREFERENCIAS** y no a un view model del lector. El tema de
+        // la aplicacion sale de aqui, y con dos textos abiertos no hay un unico view
+        // model del lector: hay uno por panel, y escuchar a cualquiera de ellos haria que
+        // cambiar la letra en el panel de la izquierda no cambiara el tema de la derecha.
+        listenable: _preferencias,
         builder: (BuildContext context, Widget? hijo) => ConVeloDeAtenuacion(
           // Y EL VELO SE PONE **ENVOLVIENDO** al `MaterialApp.router` entero, y no dentro de
           // una pantalla. Y la razon de que no salga encima de las hojas es la de siempre:
           // `showModalBottomSheet` mete su hoja en el `Overlay` del `Navigator` de dentro
           // del `MaterialApp`, y si el velo esta aqui **afuera**, la hoja se pinta encima y
           // se lee. Un atenuador que apaga el menu que hay que leer no es un atenuador.
-          atenuacion: _lector.preferenciaDeLectura.atenuacion,
+          atenuacion: _preferencias.preferencia.atenuacion,
           hijo: MaterialApp.router(
             title: 'AB',
             debugShowCheckedModeBanner: false,
-            theme: temaDeAb(_lector.preferenciaDeLectura),
+            theme: temaDeAb(_preferencias.preferencia),
             routerDelegate: _navegador,
             routeInformationParser: const AnalizadorDeRuta(),
             routeInformationProvider: _proveedorDeRutas,

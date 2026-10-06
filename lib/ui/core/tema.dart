@@ -385,6 +385,99 @@ class Medidas {
   /// A partir de aqui hay sitio de sobra para poner el filtro al lado del titulo.
   static const double anchoParaDosColumnas = 600;
 
+  /// El ancho de palabra del que hay el divisor en la cuenta de caracteres por linea.
+  ///
+  /// Y ESTE **1** NO ES UN AZAR: es el divisor entre dos paneles. Medido, `NavigationRail`
+  /// con los nombres ocupa **226,5 px**, y al repartir la lectura entre varios paneles cada
+  /// uno pierde un divisor. Sin el, dos columnas de texto pegadas se leen como una linea
+  /// de 1.100 caracteres, y eso es lo que hace que un texto en dos columnas sin separacion
+  /// sea incomodo en vez de comodo.
+  static const double divisorEntrePaneles = 1;
+
+  /// El ancho que mide el panel de herramientas con los nombres, en px.
+  ///
+  /// Y ES **226,5** Y NO 176, y no es un redondeo: `minExtendedWidth` es un **minimo**, no
+  /// un ancho. El panel se ensancha hasta que quepa la etiqueta mas larga, y la mas larga
+  /// de los cinco destinos es "Comentarios". Con 176 puestos ahi el panel se salia de su
+  /// sitio, y el error sale al construir:
+  ///
+  ///     Failed assertion: line 118 pos 15: 'minWidth == null || minWidth > 0'
+  ///
+  /// Y ESTA AQUI Y NO EN `marco_de_estudio.dart`, que es donde vive el `NavigationRail`,
+  /// porque el ancho del panel lo necesita **quien reparte la lectura**: cuantos
+  /// paneles caben sale de restar esto. Con el numero duplicado en los dos sitios, el dia
+  /// que cambie el panel habria que cambiar los dos, y si se cambia solo uno los paneles
+  /// salen mal repartidos sin que ninguna prueba lo note.
+  static const double anchoDelPanelDeHerramientas = 226.5;
+
+  /// El ancho **minimo** que puede tener la columna de texto de un panel.
+  ///
+  /// ============================================================================
+  /// Y EL NUMERO ESTA MEDIDO, Y ES LO QUE DECIDE CUANTOS PANELES CABEN
+  /// ============================================================================
+  ///
+  /// Medido el 6 de octubre de 2026 con Roboto a 18 px --el tamano de letra de partida de
+  /// `PreferenciaDeLectura`-- y contando con la frase de Santa Teresa, que es distinta de
+  /// la de Cervantes con la que se mide el tope, porque medir con la misma seria circular:
+  ///
+  ///     ventana   2 paneles   3 paneles   4 paneles
+  ///     1440 px     68 car.    43 car.    31 car.
+  ///     1920 px     94 car.    63 car.    45 car.
+  ///     2560 px     94 car.    89 car.    65 car.
+  ///
+  /// Y LA COLUMNA DE **420 px**, que son unos **55 caracteres** con letra de 18, es el
+  /// punto en el que una columna de texto deja de leerse comfortablemente: por debajo el
+  /// ojo tiene que saltar cada cinco o seis palabras para encontrar el principio de la
+  /// siguiente, y lo que se esta leyendo es la Escritura.
+  ///
+  /// Y POR QUE UN ANCHO Y NO UN NUMERO DE PANELES. Un "maximo de tres" escrito en el
+  /// codigo seria un numero que miente en cuanto la ventana cambia: a 1920 px caben tres
+  /// **y** quedan 63 caracteres, y a 2560 caben cuatro con 65. El mismo texto cabe en mas
+  /// sitio en una pantalla mas grande, y un limite fijo desperdicia la pantalla en cuanto
+  /// se abre. Con un ancho minimo, quien decide es la cuenta y no un numero escrito, y el
+  /// numero sale solo.
+  ///
+  /// Y NO ES EL MISMO NUMERO QUE [anchoMinimoDeColumna]. Aquel es de **120 px** y existe
+  /// solo para que un `ConstrainedBox` con ancho negativo no lance en una ventana de 120
+  /// px: es una proteccion contra una excepcion, no un criterio de lectura. Este es de 420
+  /// y decide si un panel se puede poner al lado de otro.
+  static const double anchoMinimoDePanelDeLectura = 420;
+
+  /// Cuantos paneles de lectura caben como maximo.
+  ///
+  /// Y EL **TOPE DE TRES**, y no es un capricho sino la cuenta del divisor. Sin el, el
+  /// maximo sale de `ancho / 420`, que a 2560 px son **6 paneles**: seis textos de 22,5
+  /// MiB abiertos a la vez, **135 MiB** de paginas SQLite. Y eso no lo mata el limite de
+  /// ancho, lo mata el movil que hay detras del navegador, y quien abre seis textos en
+  /// paralelo en un movil de gama baja no quiere comparar Juan 3: quiere que la aplicacion
+  /// funcione.
+  ///
+  /// Y SE DICE EL MOTIVO EN EL NUMERO, porque es un limite de **memoria** disfrazado de
+  /// limite de **pantalla**, y el que lo lea sin el motivo va a pensar que el tres es un
+  /// gusto de distribucion.
+  static const int maximoDePanelesDeLectura = 3;
+
+  /// Cuantos paneles de lectura caben en un ancho de lectura dado.
+  ///
+  /// Y LA CUENTA ES **POR EL MAS ESTRECHO**, y no por el promedio: los paneles se reparten
+  /// el ancho a partes iguales, asi que todos miden lo mismo, y el que manda es ese. Un
+  /// "promedio" aqui seria un numero que no corresponde a ningun panel.
+  ///
+  /// Y NUNCA **MENOS DE UNO**, y el motivo es que esta funcion se llama tambien cuando no
+  /// hay ningun panel abierto --al pintar la pantalla de la biblioteca--, y un `max(0)`
+  /// ahi seria un panel de ancho cero.
+  static int panelesDeLecturaQueCaben(double anchoDeLectura) {
+    if (anchoDeLectura <= 0) return 1;
+    var n = 1;
+    while (n < maximoDePanelesDeLectura &&
+        (anchoDeLectura - divisorEntrePaneles * (n + 1)) / (n + 1) >=
+            anchoMinimoDePanelDeLectura) {
+      n++;
+    }
+    return n;
+  }
+
+
   /// El tope de ancho del contenido. Ver arriba el motivo.
   static const double anchoMaximoDeFila = 560;
 

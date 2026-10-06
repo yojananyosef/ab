@@ -44,9 +44,25 @@ void main() {
 
       expect(v.palabrasAnadidas(), <String>['was', 'was']);
       expect(v.anotaciones.where((a) => a.esAnadido), hasLength(2));
-      // Y EL TEXTO SIGUE SIENDO EL DEL MODULO, con su puntuacion y todo.
-      expect(v.texto, endsWith('1.19 Peleg: that is, division'),
-          reason: 'el KJV pega aqui el aparato de variantes, y es parte del texto');
+
+      // Y ESTE VERSICULO TENIA UNA NOTA AL PIE, Y ANTES LA PRUEBA DECIA QUE SE QUEDABA DENTRO.
+      //
+      // Lo que decia era: "el KJV pega aqui el aparato de variantes, y es parte del texto", y
+      // era verdad a medias: la columna `text` la trae pegada, pero el `raw` la marca como
+      // `\f + \fr 1.19 \ft Peleg: that is, division\f*`, o sea que **el propio modulo dice que
+      // es una nota y no un versiculo**. Se estaba ensenando dentro del versiculo, en el
+      // mismo cuerpo y con el mismo color que la Palabra. Medido: 5.844 versiculos con este
+      // caso, el 18,79 % del KJV.
+      //
+      // Y ASI QUE ESTA AFIRMACION HA CAMBIADO DE SIGNIFICADO, y el cambio es el que importa:
+      // el texto **sigue** siendo el del modulo, sin alterar ni una coma, pero ahora sin la
+      // nota dentro, y la nota va en `v.notas`.
+      expect(v.texto, endsWith('and his brother’s name was Joktan.'),
+          reason: 'la nota al pie ya no va pegada al versiculo');
+      expect(v.texto, isNot(contains('division')));
+      expect(v.notas, hasLength(1));
+      expect(v.notas.first.texto, 'Peleg: that is, division');
+      expect(v.notas.first.letra, 'a');
     });
 
     test('Juan 3:16 no tiene ni una palabra del traductor', () {
@@ -143,19 +159,37 @@ void main() {
       // salia el titulo de la barra --"Comentario"-- y la comprobacion comparaba la
       // Escritura con el texto de un boton. En una pantalla donde el titulo es el ultimo
       // `RichText` en construirse, comparar eso no dice nada del versiculo.
+      // Y SE COMPARA CON `startsWith` Y NO CON `==`, porque este versiculo **tiene una nota al
+      // pie** y la letra va pegada al texto: lo pintado es el texto del modulo mas la `a` de
+      // `Joktan.a`. Lo que no puede pasar es que lo pintado sea el texto **mas algo que no sea
+      // una letra de nota**, y eso lo comprueba la linea de abajo.
       final textos = <String>[
         for (final rico in tester.widgetList<RichText>(find.byType(RichText)))
           rico.text.toPlainText(),
       ];
-      expect(textos, contains(delModulo.texto),
-          reason: 'lo pintado tiene que ser el texto del modulo, sin un caracter de mas');
+      expect(
+        textos.any((pintado) => pintado.startsWith(delModulo.texto)),
+        isTrue,
+        reason: 'lo pintado tiene que empezar por el texto del modulo, sin un caracter de mas',
+      );
       // Y ADEMAS QUE NO HAYA NINGUNO **IGUAL** CON UN CARACTER DE MAS O DE MENOS, que es
-      // el fallo que de verdad se quiere cazar: un texto casi correcto.
+      // el fallo que de verdad se quiere cazar: un texto casi correcto. Y aqui se salta el
+      // versiculo por `startsWith` y no por igualdad, porque con la letra de la nota ya no
+      // puede ser igual.
       for (final pintado in textos) {
-        if (pintado == delModulo.texto) continue;
+        if (pintado.startsWith(delModulo.texto)) continue;
         expect(pintado, isNot(contains(delModulo.texto.substring(0, 60))),
             reason: 'otro texto de la pantalla se parece demasiado al versiculo');
       }
+
+      // Y LO QUE SE AÑADE AL VERSICULO ES **SOLO** LA LETRA DE LA NOTA. Este versiculo tiene
+      // una nota --medido, `1.19 Peleg: that is, division`--, asi que lo pintado es el texto
+      // del modulo mas la letra, y nada mas.
+      final conLetra = textos.firstWhere((p) => p.startsWith(delModulo.texto));
+      expect(conLetra.substring(delModulo.texto.length), isNotEmpty,
+          reason: 'la nota al pie tiene que dejar su letra pegada al texto');
+      expect(conLetra.substring(delModulo.texto.length).length, lessThanOrEqualTo(2),
+          reason: 'y solo la letra: la nota entera ya no va dentro del versiculo');
     });
 
     testWidgets('las palabras del traductor salen subrayadas, y solo ellas',
@@ -199,15 +233,24 @@ void main() {
   });
 }
 
-/// Los tramos subrayados del `RichText` cuyo texto es exactamente [texto].
+/// Los tramos subrayados del `RichText` que **empieza** por [texto].
 ///
-/// Y POR TEXTO IGUAL Y NO POR POSICION. El capitulo entero son 21 `RichText` y la
-/// pantalla tiene ademas el campo, el titulo y los terminos; el primero no es el
-/// versiculo. Y con texto igual no hay ambiguedad: dos versiculos distintos no tienen el
-/// mismo texto.
+/// Y POR TEXTO IGUAL Y NO POR POSICION. El capitulo entero son 21 `RichText` y la pantalla
+/// tiene ademas el campo, el titulo y los terminos; el primero no es el versiculo. Y con
+/// texto igual no hay ambiguedad: dos versiculos distintos no tienen el mismo texto.
+///
+/// Y **EMPIEZA POR** Y NO ES IGUAL, y el motivo es la letra de las notas al pie. Un versiculo
+/// con nota se pinta con la letra pegada a la palabra a la que el modulo la engancho --en
+/// 1Cronicas 1:19, una `a` detras de `Joktan.`--, asi que el texto pintado es el del modulo
+/// **mas la letra**. Con `==` no se encontraria el versiculo, y la prueba fallaria
+/// escribiendo que "no se ha encontrado en pantalla el texto", que no dice donde esta el
+/// fallo.
+///
+/// Y `startsWith` SIGUE SIENDO UNA COMPROBACION EXACTA DE LO QUE IMPORTA: dos versiculos
+/// distintos no pueden empezar igual, asi que sigue habiendo una sola coincidencia.
 List<String> _subrayadosDe(WidgetTester tester, String texto) {
   for (final rico in tester.widgetList<RichText>(find.byType(RichText))) {
-    if (rico.text.toPlainText() != texto) continue;
+    if (!rico.text.toPlainText().startsWith(texto)) continue;
     final salida = <String>[];
     _recorrer(rico.text, salida);
     return salida;

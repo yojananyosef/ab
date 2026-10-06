@@ -37,13 +37,18 @@ import 'package:ab/domain/models/preferencia_de_lectura.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/domain/models/terminos.dart';
 
-/// El plazo por defecto para leer una preferencia. Cinco segundos.
+import 'preferencias_de_lectura.dart';
+
+export 'preferencias_de_lectura.dart' show plazoDePreferenciaPorDefecto;
+
+/// Y ESTA CONSTANTE SE REEXPORTA, y no es un capricho: es la misma que antes vivia aqui, y
+/// las pruebas de la pantalla de lectura la nombran desde este fichero. Moverla sin
+/// reexportarla seria cambiar la ruta de un nombre publico por una decision interna que a
+/// quien la importa no le dice nada.
 ///
-/// Y CINCO Y NO UN SEGUNDO, porque el caso medido --el almacenamiento del navegador que
-/// nunca contesta-- no es lento: no contesta. Un plazo corto no lo arregla, solo haria que
-/// una preferencia se perdiera antes. Y cinco segundos es invisible para quien esta
-/// esperando, porque mientras tanto se esta leyendo el texto.
-const Duration plazoDePreferenciaPorDefecto = Duration(seconds: 5);
+/// La clave de las palabras de Jesus **no** se reexporta: esa ya venia de
+/// `almacenamiento.dart`, que es donde viven todas las claves, y aqui no hay nada que
+/// reexportar.
 
 /// Los estados de la pantalla de lectura. Cinco, y ninguno es "cargando para
 /// siempre".
@@ -83,7 +88,37 @@ class LectorViewModel extends ChangeNotifier {
     this._abierto,
     Almacenamiento? almacenamientoDeLectura,
     this.plazoDeLectura = plazoDePreferenciaPorDefecto,
-  }) : _almacenamiento = almacenamientoDeLectura;
+    PreferenciasDeLectura? preferencias,
+  })  : _preferencias = preferencias ??
+            PreferenciasDeLectura(
+              almacenamiento: almacenamientoDeLectura,
+              plazoDeLectura: plazoDeLectura,
+            ),
+        _sonSuyasLasPreferencias = preferencias == null {
+    _preferencias.addListener(_alCambiarLasPreferencias);
+  }
+
+  void _alCambiarLasPreferencias() {
+    if (_disposed) return;
+    notifyListeners();
+  }
+
+  bool _disposed = false;
+
+  /// Los ajustes de lectura, que son **de la ventana** y no de este texto.
+  ///
+  /// Y NO SE CREAN AQUI SI VIENEN, y no por ahorro: quien tiene dos paneles pasa el mismo
+  /// objeto a los dos, y si cada uno se fabricara el suyo tendrian dos letras distintas en
+  /// la misma pantalla. Ver `preferencias_de_lectura.dart`.
+  final PreferenciasDeLectura _preferencias;
+
+  /// Si este view model fabricó las preferencias y le toca destruirlas.
+  ///
+  /// Y NO SE DESTRUYE NUNCA LO QUE NO ES SUYO. Un `dispose` que cerrara unas preferencias
+  /// que otro panel sigue usando deja la pantalla en un `ChangeNotifier` al que ya no le
+  /// avisa nadie, y el resultado es un ajuste que se pulsa y no pasa nada --sin error, sin
+  /// aviso--, que es la forma mas dificil de mirar despues.
+  final bool _sonSuyasLasPreferencias;
 
   /// Cuanto se espera a las preferencias antes de renunciar.
   ///
@@ -97,18 +132,6 @@ class LectorViewModel extends ChangeNotifier {
 
   ModuloAbierto? _abierto;
 
-  /// Donde se guarda si las palabras de Jesus van en rojo.
-  ///
-  /// Y OPCIONAL, y no obligatorio, porque el lector se construye en 24 pruebas que no
-  /// traen almacenamiento y no tienen por que traerlo. Sin almacenamiento el interruptor
-  /// funciona igual y no se guarda: es una preferencia y perderla son dos toques.
-  ///
-  /// Y ES LA INTERFAZ [Almacenamiento] Y NO LAS PREFERENCIAS DEL SISTEMA, por lo mismo que
-  /// en el repositorio del catalogo: una prueba que escribiera en las preferencias de
-  /// verdad dejaria basura entre ejecuciones y fallaria la segunda vez por un motivo que
-  /// no tiene que ver con lo que comprueba.
-  final Almacenamiento? _almacenamiento;
-
   /// Si las palabras que dijo Jesus se pintan en rojo.
   ///
   /// Y **VERDAD** DE PARTIDA, sin preguntar. Dos motivos, y el segundo es el que decide:
@@ -116,115 +139,39 @@ class LectorViewModel extends ChangeNotifier {
   /// 1. Es lo que espera quien abre una app de Biblia en la que el dato esta. Una
   ///    preferencia oculta tras un interruptor apagado es una funcion que no existe.
   /// 2. Medido en el KJV: son 41.284 palabras de 835.159, el **4,94 %** del texto. Es una
-  ///    linea de cada veinte, y no una pantalla en rojo. Si fuera la mitad del canon habria
-  ///    que pensarselo mas; con este numero no hay nada queCV balancing reconsider.
+  ///    linea de cada veinte, y no es una pantalla en rojo.
   ///
   /// Y NO AFECTA AL TEXTO, que es lo unico que no se toca. El color va en el `TextSpan` y
-  /// se quita dejando el texto exactamente igual, y por eso el interruptor se puede
-  /// tocar sin miedo.
-  bool _mostrarPalabrasDeJesus = true;
-  bool get mostrarPalabrasDeJesus => _mostrarPalabrasDeJesus;
+  /// se quita dejando el texto exactamente igual.
+  bool get mostrarPalabrasDeJesus => _preferencias.mostrarPalabrasDeJesus;
 
-  // --- la tipografia y el fondo ---
+  /// Los ajustes de lectura, y **solo** eso: el resto de este view model es de un texto.
+  ///
+  /// Y ESTA DELEGACION **NO** CAMBIA NADA DE LO QUE SE PUEDE LLAMAR. Lo que cambia es de
+  /// donde sale el valor, y eso es justo lo que hace que dos textos abiertos tengan la
+  /// misma letra. Ver `preferencias_de_lectura.dart`.
+  PreferenciaDeLectura get preferenciaDeLectura => _preferencias.preferencia;
 
-  /// Los ajustes de lectura: tamano, alto de linea, espaciado, tema, atenuacion y linea
-  /// enfocada.
+  /// Leer lo que hay guardado.
   ///
-  /// Y ESTAN EN EL **VIEWMODEL DEL LECTOR** Y NO EN UNO PROPIO, y el motivo es que quien
-  /// los necesita es quien pinta el texto y quien construye el tema de la aplicacion, y
-  /// esos dos son este `ChangeNotifier` y `main.dart`. Con un viewmodel aparte habria que
-  /// inyectarlo en los dos, y los dos tendrian que decidir cual de los dos avisa cuando
-  /// cambia un ajuste.
-  ///
-  /// Y EL TEMA SE PINTA **DESDE AQUI** y no desde una preferencia global, porque lo que se
-  /// guarda es lo mismo: un boton, un objeto, una clave.
-  PreferenciaDeLectura _preferencia = PreferenciaDeLectura.porDefecto;
-  PreferenciaDeLectura get preferenciaDeLectura => _preferencia;
-
-  /// Leer la preferencia guardada.
-  ///
-  /// Y SE LEE AL ABRIR Y NO EN CADA `build`, y con la excepcion **atrapada aqui**. Un
-  /// `catch` sin Ventaja en un `Future` que se lanza desde `main` deja la pantalla a
-  /// medias: en el navegador, `SharedPreferences.getInstance()` depende de `localStorage`,
-  /// y hay un caso medido --el del almacenamiento del navegador que nunca contesta-- donde
-  /// esa llamada se queda esperando para siempre. Bloquear la lectura del texto por un
-  /// interruptor de color seria el mismo fallo que el del catalogo, en un sitio donde no
-  /// hace falta.
-  ///
-  /// Y SI FALLA, SE QUEDA EL VALOR DE PARTIDA Y NO SE AVISA. Aqui si se rompe el silencio
-  /// que en el catalogo no se rompe, y el motivo: lo que se ha perdido es una preferencia
-  /// que se vuelve a poner en dos toques, y un aviso de "no se ha podido leer tu
-  /// preferencia de color" en medio de la lectura de Juan 3 no le sirve a nadie.
-  Future<void> cargarPreferencias() async {
-    final a = _almacenamiento;
-    if (a == null) return;
-    try {
-      final guardado = await a.leer(clavePalabrasDeJesus).timeout(plazoDeLectura);
-      _mostrarPalabrasDeJesus = guardado == null || guardado != 'no';
-
-      // Y LA TIPOGRAFIA, CON **LA MISMA** EXCEPCION ATRAPADA Y EL MISMO PLAZO. Que las dos
-      // lecturas compartan el `try` no es ahorre: si la primera lanza, la segunda no se
-      // intenta, y es mejor que las dos campen con los valores de partida que perder el
-      // color y el tamano porque el almacenamiento fallo una vez.
-      _preferencia = PreferenciaDeLectura.deserializar(
-        await a.leer(PreferenciaDeLectura.clave).timeout(plazoDeLectura),
-      );
-    } catch (_) {
-      // Se queda como estaba. Ver el comentario de arriba.
-    }
-    notifyListeners();
-  }
+  /// Y ES UN METODO Y NO UN CAMPO, y el nombre es el de siempre porque quien lo llama --
+  /// `LectorView`, al abrir-- no tiene por que saber que ahora hay un objeto detras. Un
+  /// `void cargarPreferencias()` que no avisa de nada se puede cambiar por lo que haga
+  /// falta sin tocar la pantalla.
+  Future<void> cargarPreferencias() => _preferencias.cargar();
 
   /// Poner las palabras de Jesus en rojo, o dejarlas como estaban.
   ///
-  /// Y **GUARDA**, porque es una preferencia y una preferencia que se pierde al recargar
-  /// es una preferencia que hay que volver a buscar cada vez. Y guardar **no** interrumpe:
-  /// el color cambia al instante y la escritura va por detras. Al reves --esperar a que se
-  /// guarde para pintar-- un interruptor que tarda se siente roto.
-  ///
-  /// Y EL VALOR ES `si` Y `no`, no `true` y `false`: [Almacenamiento] guarda texto, y
-  /// ademas asi se puede leer el fichero de preferencias de un vistazo.
-  void alternarPalabrasDeJesus() {
-    _mostrarPalabrasDeJesus = !_mostrarPalabrasDeJesus;
-    notifyListeners();
-
-    final a = _almacenamiento;
-    if (a == null) return;
-    // Sin `await` y sin `catch`: si la escritura falla, se ha perdido una preferencia y
-    // no un texto. Un `unawaited` con `catch` es lo unico que no avisa de un error que no
-    // tiene consecuencia y hace ruido cuando si la tiene.
-    unawaited(
-      a.escribir(clavePalabrasDeJesus, _mostrarPalabrasDeJesus ? 'si' : 'no')
-          .catchError((Object _) {}),
-    );
-  }
+  /// Y EL `notifyListeners` **NO ESTA AQUI**, y no es que se haya olvidado: lo pone
+  /// [PreferenciasDeLectura], y este view model lo reavisa con [_alCambiarLasPreferencias].
+  /// Si se dejara tambien aqui, cada pulsacion repintaria la pantalla dos veces.
+  void alternarPalabrasDeJesus() => _preferencias.alternarPalabrasDeJesus();
 
   /// Cambiar un ajuste de lectura y guardarlo.
-  ///
-  /// Y ES **UN METODO Y NO SEIS**, y el que decide es [PreferenciaDeLectura]. Quien llama
-  /// dice "quiero esto" y el modelo decide si cabe en el rango, con lo que un numero fuera de
-  /// rango se acota **en el mismo sitio** que se guarda acotado, y no en seis sitios que se
-  /// pueden separarse.
-  ///
-  /// Y AVISA **ANTES** DE GUARDAR, que es lo que hace que un deslizador se sienta
-  /// inmediato, y guarda por detras. Al reves --esperar a que se guarde para pintar-- un
-  /// ajuste que tarda se siente roto, y el guardado va a un `localStorage` que hay un caso
-  /// medido de que no contesta.
-  void cambiarPreferencia(PreferenciaDeLectura nueva) {
-    if (nueva == _preferencia) return;
-    _preferencia = nueva;
-    notifyListeners();
-
-    final a = _almacenamiento;
-    if (a == null) return;
-    unawaited(
-      a.escribir(PreferenciaDeLectura.clave, nueva.serializar())
-          .catchError((Object _) {}),
-    );
-  }
+  void cambiarPreferencia(PreferenciaDeLectura nueva) => _preferencias.cambiar(nueva);
 
   /// Poner los ajustes a los recomendados, en una pulsacion.
-  void restaurarPreferencia() => cambiarPreferencia(_preferencia.restaurar());
+  void restaurarPreferencia() => _preferencias.restaurar();
 
   // --- el comentario que va al lado ---
   //
@@ -641,6 +588,14 @@ class LectorViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    // Y **SOLO** SI SON SUYAS, y es lo que dice [_sonSuyasLasPreferencias]. Con dos paneles
+    // los dos view model escuchan **el mismo** objeto, y el primero que se destruye --que es
+    // el que se cierra al cerrar su pestana-- se llevaria por delante un `ChangeNotifier` al
+    // que el otro sigue escuchando. El ajuste dejaria de funcionar en el panel que queda,
+    // sin error y sin aviso.
+    _preferencias.removeListener(_alCambiarLasPreferencias);
+    if (_sonSuyasLasPreferencias) _preferencias.dispose();
     _cerrarComentario();
     _cerrarSiHabia();
     super.dispose();

@@ -29,7 +29,7 @@ import 'package:ab/ui/core/tema.dart';
 import 'package:ab/ui/features/biblioteca/view_models/biblioteca_view_model.dart';
 import 'package:ab/ui/features/indice/view_models/indice_view_model.dart';
 import 'package:ab/ui/features/indice/views/indice_view.dart';
-import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
+import 'package:ab/ui/features/lector/view_models/preferencias_de_lectura.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -337,11 +337,9 @@ void main() {
 
   group('5. el enrutador', () {
     late BibliotecaViewModel biblioteca;
-    late LectorViewModel lector;
 
     setUp(() {
       biblioteca = BibliotecaViewModel();
-      lector = LectorViewModel();
     });
 
     NavegadorAb montar({required Set<String> descargados}) {
@@ -362,7 +360,7 @@ void main() {
       );
       return NavegadorAb(
         biblioteca: biblioteca,
-        lector: lector,
+        preferencias: PreferenciasDeLectura(),
         resaltados: ResaltadosViewModel(),
         abrir: (id, referencia) async {
           if (!descargados.contains(id)) return null;
@@ -412,7 +410,7 @@ void main() {
       await n.volverDelIndice();
       await tester.pumpAndSettle();
 
-      expect(lector.leyendo, const Referencia('John', 3, 16));
+      expect(n.lector.leyendo, const Referencia('John', 3, 16));
     });
 
     testWidgets('un texto que no esta descarga vuelve a la biblioteca', (tester) async {
@@ -428,7 +426,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(IndiceView), findsNothing);
-      expect(lector.aviso, contains('no esta descargado'));
+      expect(n.lector.aviso, contains('no esta descargado'));
     });
   });
 }

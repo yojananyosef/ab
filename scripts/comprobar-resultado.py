@@ -53,6 +53,11 @@ import sys
 # las dos comprobaciones se enteraria.
 JUAN3 = 36
 
+# Los versiculos que trae Juan 3 **desde el 16**, que es lo que se pide. Y NO ES UN UNO:
+# `ModuloAbierto.leer` usa `verse >= ?` para que abrir un versiculo ensene el capitulo
+# desde ahi. Ver el comentario de la comprobacion y la tabla de `modulo_repository.dart`.
+JUAN3_MENOS_15 = JUAN3 - 15
+
 
 class Comprobacion:
     def __init__(self, etiqueta: str) -> None:
@@ -106,17 +111,30 @@ def comprobar_pasaje(c: Comprobacion, d: dict, juan316: str) -> None:
         f"      esperado: {juan316!r}\n"
         f"      obtenido: {d.get('texto')!r}",
     )
-    # Y EL VERSICULO PEDIDO TRAE UNO, porque es un versiculo. Y ESO NO ES QUE JUAN 3
-    # TENGA UN: es que se ha pedido uno. Por eso el numero de verdad del capitulo va en
-    # `capituloEntero`, y es el que se comprueba contra 36.
+    # Y EL VERSICULO PEDIDO TRAE **21**, que es el capitulo **desde el 16**, y no uno.
     #
-    # La primera version de esta comprobacion miraba `versiculosEnElCapitulo` y pedia 36,
-    # con lo que fallaba siempre con "Juan 3 sale con 1 versiculos". El nombre del campo
-    # era el equivocado y por eso la sonda ahora manda los dos.
+    # ESTA COMPROBACION ESTABA ROTA ANTES DE QUE EXISTIERA EL CHANGE DE LAS PESTANAS, Y POR
+    # ESO EL NUMERO ESTA MEDIDO Y NO ESCOGIDO. Pedia `== 1`, y lo que hace la aplicacion --
+    # y lo que ella misma mide en `modulo_repository.dart`, en la tabla que esta a treinta
+    # lineas de la consulta-- es `verse >= ?` y no `verse = ?`:
+    #
+    #     Juan 3:16      21 versiculos    2.338 caracteres     5,1 ms
+    #     Juan 3         36 versiculos    3.969 caracteres     5,0 ms
+    #
+    # Y el motivo esta escrito en el mismo sitio: uno no abre Juan 3:16 para ver Juan 3:1,
+    # sino para leer desde ahi, y un lector que al abrir un versiculo ensenara **un**
+    # versiculo y tres lineas de terminos no estaria enseñando la Biblia. Medido en una
+    # captura a 360 px: el versiculo era el **16 %** de la pantalla.
+    #
+    # Y EL NUMERO DE VERDAD DEL CAPITULO VA EN `capituloEntero`, y es el que se comprueba
+    # contra 36. Antes esta comprobacion miraba `versiculosEnElCapitulo` y pedia 36, con lo
+    # que fallaba siempre con "Juan 3 sale con 1 versiculos": el nombre del campo era el
+    # equivocado, y por eso la sonda manda los dos.
     c.exigir(
-        d.get("versiculosEnElPasaje") == 1,
-        f"el pasaje pedido trae {d.get('versiculosEnElPasaje')} versiculos y, siendo un "
-        f"versiculo, deberia traer 1",
+        d.get("versiculosEnElPasaje") == JUAN3_MENOS_15,
+        f"el pasaje pedido trae {d.get('versiculosEnElPasaje')} versiculos y deberia "
+        f"traer {JUAN3_MENOS_15}: con un versiculo pedido se lee desde ahi hasta el final "
+        f"del capitulo, y Juan 3 va del 16 al {JUAN3}",
     )
     cap = d.get("capituloEntero") or {}
     c.exigir(

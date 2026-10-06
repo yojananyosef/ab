@@ -86,22 +86,28 @@ import 'package:flutter/scheduler.dart';
 
 import 'package:ab/data/repositories/modulo_repository.dart';
 import 'package:ab/domain/models/indice_de_strong.dart';
+import 'package:ab/domain/models/panel_abierto.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/domain/models/resultado_de_busqueda.dart';
 import 'package:ab/domain/models/tipo_de_contenido.dart';
 import 'package:ab/ui/core/rutas.dart';
 import 'sonda_nativa.dart'
     if (dart.library.js_interop) 'sonda_web.dart' as plataforma;
+import 'package:ab/ui/core/tema.dart';
+import 'package:ab/ui/features/biblioteca/view_models/aviso.dart';
 import 'package:ab/ui/features/biblioteca/view_models/biblioteca_view_model.dart';
 import 'package:ab/ui/features/busqueda/view_models/busqueda_view_model.dart';
 import 'package:ab/ui/features/busqueda/views/busqueda_view.dart';
 import 'package:ab/ui/features/indice/view_models/indice_view_model.dart';
 import 'package:ab/ui/features/indice/views/indice_view.dart';
 import 'package:ab/ui/features/lector/widgets/hoja_de_libros.dart';
-import 'package:ab/ui/features/lector/widgets/marco_de_estudio.dart';
+import 'package:ab/ui/features/lector/widgets/marco_de_estudio.dart' show AnchoDeEstudio, MarcoDeEstudio, DestinoDeEstudio;
+import 'package:ab/ui/features/lector/widgets/fila_de_pestanas.dart';
 import 'package:ab/ui/features/lector/widgets/hoja_de_versiones.dart';
 import 'package:ab/ui/features/biblioteca/views/biblioteca_view.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
+import 'package:ab/ui/features/lector/view_models/paneles_view_model.dart';
+import 'package:ab/ui/features/lector/view_models/preferencias_de_lectura.dart';
 import 'package:ab/ui/features/lector/view_models/resaltados_view_model.dart';
 import 'package:ab/ui/features/lector/views/lector_view.dart';
 import 'package:ab/ui/features/lector/widgets/hoja_de_comentarios.dart';
@@ -197,7 +203,7 @@ class ModuloBuscableReal implements ModuloBuscable {
 class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   NavegadorAb({
     required this.biblioteca,
-    required this.lector,
+    required this.preferencias,
     required this.resaltados,
     required this.abrir,
     this.proveedor,
@@ -212,7 +218,46 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   }
 
   final BibliotecaViewModel biblioteca;
-  final LectorViewModel lector;
+
+  /// Los ajustes de lectura, que son **de la ventana**.
+  ///
+  /// Y ENTRAN POR EL CONSTRUCTOR Y NO SE CREAN AQUI, y el motivo es el mismo que en
+  /// `main.dart`: guardar necesita el almacenamiento del sistema, y el enrutador no lo
+  /// tiene ni deberia. Los recibe y los reparte entre los paneles --cada panel tiene su
+  /// `LectorViewModel`--, y eso es lo que hace que cambiar la letra en un panel se vea en
+  /// el otro.
+  final PreferenciasDeLectura preferencias;
+
+  /// Los paneles abiertos y el que esta delante.
+  ///
+  /// Y SE CREA AQUI Y NO EN `main.dart` por la misma razon que el indice y la busqueda:
+  /// `main.dart` compone lo que hay desde el principio, y en cuanto hay una pantalla mas
+  /// que crear ahi habria un segundo sitio al que volver. El enrutador es el unico que
+  /// sabe que hay una ventana con varios textos.
+  late final PanelesViewModel paneles =
+      PanelesViewModel(preferencias: preferencias);
+
+  /// El view model del panel que esta delante.
+  ///
+  /// Y ES UN **GETTER** Y NO UN CAMPO, y no es una comodidad: el panel de delante cambia
+  /// al pulsar una pestana, y un campo guardado seria el del momento en que se abrio. Todo
+  /// el enrutador habla de "el lector" y con este getter el lector es siempre el del
+  /// panel que se esta viendo, que es lo que quiere decir la palabra.
+  ///
+  /// Y CUANDO NO HAY NINGUN PANEL, DEVUELVE **[lectorSinPaneles]**, y no `null`. Hay
+  /// codigo --la pantalla de la biblioteca, el destino activo-- que pregunta como esta la
+  /// lectura sin que haya nada abierto, y un `null` obligaria a comprobar en veinte
+  /// sitios. El view model sin paneles no tiene modulo abierto y no lo tendra: no lo
+  /// registra nadie.
+  LectorViewModel get lector => paneles.lectorDelante ?? lectorSinPaneles;
+
+  /// El view model que se usa cuando no hay ningun panel abierto.
+  ///
+  /// Y ES UNO SOLO Y NO UNO POR LLAMADA, porque un reader por llamada seria un reader
+  /// distinto en cada pregunta y su estado --la preferencia, el texto escrito en el
+  /// campo-- no se guardaria entre una pantalla y la siguiente.
+  late final LectorViewModel lectorSinPaneles =
+      LectorViewModel(preferencias: preferencias);
 
   /// La pantalla de busqueda.
   ///
@@ -300,7 +345,9 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
     if (comentario == null) return;
     if (lector.idDelComentario == comentario) return;
     if (!biblioteca.idsLocales.contains(comentario)) return;
-    unawaited(_aplicarComentario(comentario));
+    final delComentario = paneles.lectorDelante?.idDelModulo;
+    if (delComentario == null) return;
+    unawaited(_aplicarComentario(delComentario, comentario));
   }
 
   @override
@@ -467,62 +514,25 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
     switch (ruta) {
       case RutaBiblioteca():
         _ruta = ruta;
-        // Se cierra el texto abierto. Volver a la biblioteca con un `.amod` de 57 MiB
-        // abierto es memoria que no vuelve sola en un movil de gama baja, y quien
-        // esta en la biblioteca no esta leyendo.
-        lector.sinModulo();
+        // Se cierran **TODOS** los textos abiertos, y no solo el del panel de delante.
+        // Volver a la biblioteca con un `.amod` de 57 MiB abierto es memoria que no
+        // vuelve sola en un movil de gama baja, y quien esta en la biblioteca no esta
+        // leyendo. Con tres textos abiertos son **67,5 MiB** de paginas SQLite, medido
+        // con los ficheros reales.
+        paneles.cerrarTodos();
 
-      case RutaLectura(:final modulo, :final referencia, :final comentario):
-        // Y SI YA ESTA ABIERTO ESE MISMO TEXTO, NO SE VUELVE A ABRIR. Y no es una
-        // optimizacion: es que pasar de Juan 3 a Juan 4 no necesita volver a leer 22 MiB
-        // del almacenamiento ni volver a pasarles `PRAGMA quick_check`.
-        //
-        // MEDIDO EL 4 DE OCTUBRE DE 2026 al montar la comprobacion en navegador: medir el
-        // historial del navegador son tres cambios de ruta, y con la apertura siempre los
-        // tres tardaban mas que el reloj virtual entero, de modo que la comprobacion se
-        // quedaba a medias sin decir nada. Y lo que se estaba midiendo no era el
-        // historial: era el coste de volver a abrir un texto que ya estaba abierto.
-        //
-        // Y AQUI ESTA EL RIESGO, Y POR QUE SE ACEPTA. Un modulo abierto podria haber
-        // cambiado en el almacenamiento desde que se abrio. Se asume que no: solo cambia
-        // si la aplicacion lo ha vuelto a guardar, y eso lo hace ella misma, y entonces
-        // reabre por el camino de `_descargar`. Un fichero editado por fuera mientras la
-        // aplicacion esta abierta es un caso que no se contempla, y se dice aqui en vez de
-        // dejarlo para que alguien lo descubra.
-        if (lector.idDelModulo == modulo && lector.modulo != null) {
-          _ruta = RutaLectura(modulo, referencia, comentario);
-          lector.leer(referencia);
-          await _aplicarComentario(comentario);
-          break;
-        }
+      case RutaLectura():
+        // Y LA DIRECCION DE ORIGEN SE ESCRIBE DE NUEVO, y no es un rodeo. Lo que se
+        // necesita de ella es el texto con el que se anuncia la ruta de paneles --que lo
+        // lleva tal cual-- y para eso sirve la que se escribiria, que es la misma. La
+        // variable `ruta` del `switch` es la que se aplica, y no [currentConfiguration]:
+        // leer el estado de ahi daria la ruta anterior, que es justo el fallo de "la
+        // direccion no dice que hay dos textos abiertos".
+        final laRuta = ruta;
+        await _aplicarPanel(laRuta, Rutas.escribir(laRuta));
 
-        final abierto = await abrir(modulo, referencia);
-        if (abierto == null) {
-          // El enlace pide un texto que no esta. Se avisa y se vuelve a la biblioteca:
-          // quedarse en una pantalla de lectura sin texto, con la URL diciendo que se
-          // esta leyendo Juan 3, es peor que volver.
-          lector.sinModulo('El texto "$modulo" no esta descargado en este dispositivo.');
-          _ruta = const RutaBiblioteca();
-          break;
-        // ignore: unnecessary_break
-        }
-        // Aqui se asigna la ruta, y **despues** de abrir. Y no antes, por un motivo que
-        // sale de un fallo real: si la ruta se asignara antes de abrir y la apertura
-        // fallara, `build` veria una ruta de lectura con `lector.sinModulo` y
-        // entraria por la rama de la biblioteca --correcto--, pero la ruta y la
-        // pantalla estarian fuera de paso durante ese frame.
-        _ruta = RutaLectura(modulo, referencia, comentario);
-        lector.abrir(
-          abierto,
-          licenciaDelManifiesto: biblioteca.manifiesto.porId(modulo)?.licencia,
-        );
-        lector.leer(referencia);
-        // Y EL COMENTARIO SE ABRE **DESPUES** DE LEER EL PASAJE, y no antes. Al reves,
-        // `abrirComentario` leeria unas notas de un pasaje que todavia no se ha pedido,
-        // y al pedir el pasaje despues se pisarian. Es un orden de dos lineas que no se
-        // ve y que solo falla cuando se abre un texto con comentario desde un enlace --
-        // o sea, lo primero que hace quien recibe el enlace.
-        await _aplicarComentario(comentario);
+      case RutaPaneles(:final principal, :final resto, :final texto):
+        await _aplicarPaneles(principal, resto, texto);
 
       case RutaIndice(:final modulo, :final numero):
         await _aplicarIndice(modulo, numero);
@@ -541,31 +551,242 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Poner en su sitio un panel.
+  ///
+  /// Y ESTO ES LO QUE HACIA ANTES EL `case RutaLectura` DEL `switch`, movido a un metodo
+  /// porque ahora hay dos caminos --un panel y varios-- y con el `switch` growing hacia
+  /// 200 lineas nadie iba a leer lo que hacia.
+  ///
+  /// Y [esPrincipal] DISTINGUE LOS DOS CAMINOS **DENTRO** DEL METODO y no con dos metodos,
+  /// porque "no se ha podido abrir" significa dos cosas distintas segun desde donde se
+  /// venga: para el panel de delante es un fallo de la pantalla entera --no hay nada que
+  /// leer-- y para uno de al lado es un panel de menos. Con dos metodos, el camino largo --
+  /// el que abre el modulo-- estaria escrito dos veces, y la primera que se quede sin
+  /// actualizar seria un "abrir el texto" que solo funciona para el principal.
+  Future<void> _aplicarPanel(
+    Ruta ruta,
+    String textoDeOrigen, {
+    bool esPrincipal = true,
+  }) async {
+    if (ruta is! RutaLectura) return;
+    final modulo = ruta.modulo;
+
+    // Y SI YA ESTA ABIERTO ESE MISMO TEXTO, NO SE VUELVE A ABRIR. Y no es una
+    // optimizacion: es que pasar de Juan 3 a Juan 4 no necesita volver a leer 22 MiB
+    // del almacenamiento ni volver a pasarles `PRAGMA quick_check`.
+    //
+    // MEDIDO EL 4 DE OCTUBRE DE 2026 al montar la comprobacion en navegador: medir el
+    // historial del navegador son tres cambios de ruta, y con la apertura siempre los
+    // tres tardaban mas que el reloj virtual entero, de modo que la comprobacion se
+    // quedaba a medias sin decir nada. Y lo que se estaba midiendo no era el
+    // historial: era el coste de volver a abrir un texto que ya estaba abierto.
+    //
+    // Y AQUI ESTA EL RIESGO, Y POR QUE SE ACEPTA. Un modulo abierto podria haber
+    // cambiado en el almacenamiento desde que se abrio. Se asume que no: solo cambia
+    // si la aplicacion lo ha vuelto a guardar, y eso lo hace ella misma, y entonces
+    // reabre por el camino de `_descargar`. Un fichero editado por fuera mientras la
+    // aplicacion esta abierta es un caso que no se contempla, y se dice aqui en vez de
+    // dejarlo para que alguien lo descubra.
+    final yaAbierto = paneles.lectorDe(modulo);
+    if (yaAbierto != null) {
+      // Y LA RUTA **SE VUELVE A CALCULAR**, y no se copia la que llega. Este es el camino
+      // de "traer un panel al frente" y de "ir a otro pasaje": si aqui se asignara la ruta
+      // de un solo panel que llega, las demas ventanas se quedarian abiertas en pantalla
+      // y **sin estar en la direccion**, y recargar perderia la mitad de lo que se ve.
+      _ruta = _rutaDeLosPaneles(ruta, textoDeOrigen);
+      paneles.ponerAlFrente(modulo);
+      paneles.leerEn(modulo, ruta.referencia);
+      yaAbierto.leer(ruta.referencia);
+      await _aplicarComentario(modulo, ruta.comentario);
+      return;
+    }
+
+    final abierto = await abrir(modulo, ruta.referencia);
+    if (abierto == null && !esPrincipal) {
+      // Y UN PANEL **SECUNDARIO** QUE NO SE PUEDE ABRIR **SE SALTA Y YA ESTA**, y no se
+      // avisa ni se vuelve a la biblioteca. Quien recibe `/leer/A/John.3/y/B/John.3` en un
+      // movil donde B no esta se queda con **A entero** y un panel de menos. Volver a la
+      // biblioteca entera seria romper la lectura del texto por una ventana que no se ha
+      // podido abrir, y es justo lo que este caso no debe hacer.
+      //
+      // Y NO SE AVISA, y el motivo es que la ventana que no se abre no ha comprometido a
+      // nadie: quien la pidio recibe lo que si puede, que es el texto, y el aviso de
+      // "el comentario no esta descargado" --con su boton de bajar-- lo pone el panel que
+      // si esta abierto cuando le piden un comentario.
+      return;
+    }
+    if (abierto == null) {
+      // El enlace pide un texto que no esta. Se avisa y se vuelve a la biblioteca:
+      // quedarse en una pantalla de lectura sin texto, con la URL diciendo que se
+      // esta leyendo Juan 3, es peor que volver.
+      //
+      // Y EL AVISO SE PONE **DESPUES** DE CERRAR LOS PANELES, y no antes. Con dos
+      // paneles abiertos y un enlace a un tercero que no esta, cerrarlos y avisar en el
+      // mismo paso haria que el aviso se quedara en un view model que ya no se esta
+      // viendo: `lector` es el del panel de delante mientras haya paneles, y al cerrar
+      // todos pasa a ser [lectorSinPaneles], que es donde tiene que estar el aviso para
+      // que la biblioteca lo pueda enseñar.
+      paneles.cerrarTodos();
+      _ruta = const RutaBiblioteca();
+      lector.sinModulo('El texto "$modulo" no esta descargado en este dispositivo.');
+      return;
+    }
+
+    // Y QUE ESTE PANEL **NO ESTE DELANTE** SI HAY OTROS, y no siempre. El enrutador
+    // ponia cualquiera delante sin mirar; con un panel da igual, y con dos haria que
+    // `/leer/A/John.3.16/y/B/John.3.16` se abriera con B delante, y la ruta dice que
+    // A es el principal. Ver `registrar` en `paneles_view_model.dart`.
+    final hayAntes = paneles.cuantos > 0;
+    paneles.registrar(
+      PanelAbierto(
+        moduloId: modulo,
+        referencia: ruta.referencia,
+        comentarioId: ruta.comentario,
+        // Y EL TIPO **SE DIJO, NO SE ADIVINO**. Lo sabe el manifiesto, y no lo deduce nadie
+        // de las tablas del fichero: ver `panel_abierto.dart`, que tiene escrito por que
+        // adivinarlo por `sqlite_master` es el fallo que hace que un modulo con tablas
+        // inesperadas deje de distinguirse de una Biblia sin que nadie haya cambiado nada.
+        esComentario: TipoDeContenido.fromModulo(
+                biblioteca.manifiesto.porId(modulo)?.tipo.enElCatalogo) ==
+            TipoDeContenido.comentario,
+      ),
+      LectorViewModel(preferencias: preferencias),
+    );
+    if (hayAntes) paneles.ponerAlFrente(modulo);
+
+    // Aqui se asigna la ruta, y **despues** de abrir. Y no antes, por un motivo que
+    // sale de un fallo real: si la ruta se asignara antes de abrir y la apertura
+    // fallara, `build` veria una ruta de lectura sin texto y entraria por la rama de
+    // la biblioteca --correcto--, pero la ruta y la pantalla estarian fuera de paso
+    // durante ese frame.
+    _ruta = _rutaDeLosPaneles(ruta, textoDeOrigen);
+
+    // Y SE LLAMA `nuevo` Y NO `lector`, porque mas abajo hay un `lector` --el getter-- y
+    // un `final lector` dentro de este mismo metodo taparia al getter: dos cosas con el
+    // mismo nombre en el mismo ambito, y la que se usa es la ultima que se declara. Eso
+    // compila y hace lo que parece, y el aviso se acaba escribiendo en un view model que
+    // no es el del panel.
+    final nuevo = paneles.lectorDe(modulo)!;
+    nuevo.abrir(
+      abierto,
+      licenciaDelManifiesto: biblioteca.manifiesto.porId(modulo)?.licencia,
+    );
+    nuevo.leer(ruta.referencia);
+    // Y EL COMENTARIO SE ABRE **DESPUES** DE LEER EL PASAJE, y no antes. Al reves,
+    // `abrirComentario` leeria unas notas de un pasaje que todavia no se ha pedido,
+    // y al pedir el pasaje despues se pisarian. Es un orden de dos lineas que no se
+    // ve y que solo falla cuando se abre un texto con comentario desde un enlace --
+    // o sea, lo primero que hace quien recibe el enlace.
+    await _aplicarComentario(modulo, ruta.comentario);
+  }
+
+  /// Poner en su sitio varios paneles: el de delante y los que van al lado.
+  ///
+  /// Y **ABRE EL DE DELANTE PRIMERO**, y no en el orden de la lista. Motivo: si el que
+  /// falta es el secundario y se abre despues, durante ese `await` la pantalla ya tiene
+  /// un panel delante y se veria el texto equivocado. Abriendo el principal primero, el
+  /// orden en que se va解决办法ndo es el que se ve.
+  ///
+  /// Y CUANDO FALTA ALGUNO DE LOS SECUNDARIOS **SE AVISA Y SE SIGUE** con los que hay.
+  /// Volver a la biblioteca entero porque el CLARKE --57 MiB-- no esta descargado seria
+  /// romper la lectura del texto por un comentario que es un extra, y ese es un fallo
+  /// medido: ver `mirarLaAplicacion` en `sonda.dart`.
+  Future<void> _aplicarPaneles(
+    RutaLectura principal,
+    List<RutaLectura> resto,
+    String textoDeOrigen,
+  ) async {
+    await _aplicarPanel(principal, textoDeOrigen);
+
+    // Y SI EL PRINCIPAL **NO SE PUDO ABRIR**, `_aplicarPanel` ya ha avisado y ha vuelto a
+    // la biblioteca. Abrir los secundarios en ese caso haria que apareciera un panel al
+    // lado de una pantalla que ya no es de lectura.
+    //
+    // Y SE COMPRUEBA CON [_rutaDeLectura] Y NO CON UN `is`, porque `_ruta` ya es `Ruta` y
+    // un `is RutaLectura` sobre el campo dira siempre lo que el campo ya es. El estado de
+    // la lectura se pregunta a quien lo sabe --[lector.estado]--, que es el unico que
+    // sabe si hay un modulo abierto.
+    if (lector.estado == EstadoLecturaTexto.sinModulo) return;
+
+    for (final r in resto) {
+      await _aplicarPanel(r, textoDeOrigen, esPrincipal: false);
+      // Y EL PRINCIPAL **VUELVE AL FRENTE** DESPUES DE CADA SECUNDARIO. Sin esto,
+      // abrir los secundarios en orden dejaria el ultimo delante, y la URL --que empieza
+      // por el principal-- estaria describiendo una ventana en la que se ve otra cosa.
+      paneles.ponerAlFrente(principal.modulo);
+    }
+
+    _ruta = _rutaDeLosPaneles(principal, textoDeOrigen);
+  }
+
+  /// La ruta que describe los paneles que hay ahora mismo.
+  ///
+  /// Y SE CALCULA DESDE EL ESTADO Y NO SE COPIA LA DE ENTRADA, porque los paneles pueden
+  /// haber cambiado durante la apertura --alguien ha abierto y cerrado uno mientras se
+  /// abria el CLARKE-- y una ruta construida con lo que habia al empezar seria una frase
+  /// que no describe la pantalla.
+  ///
+  /// Y `texto` **ENTRA POR PARAMETRO** y no se lee de [currentConfiguration], porque en el
+  /// momento en que se llama la ruta todavia no esta asignada --se asigna justo despues--,
+  /// y leerla de ahi daria siempre la anterior, que es justo el fallo de "la direccion no
+  /// dice que hay dos textos abiertos".
+  Ruta _rutaDeLosPaneles(RutaLectura principal, String texto) {
+    final ids = paneles.ids;
+    if (ids.length < 2) return principal;
+
+    final delante = principal.modulo;
+    final resto = <RutaLectura>[];
+    for (final id in ids) {
+      if (id == delante) continue;
+      final p = paneles.panelDe(id);
+      if (p == null) continue;
+      final vr = paneles.lectorDe(id);
+      // Y UN PANEL SECUNDARIO **SE ESCRIBE SIN COMENTARIO**, y no es que se le esconda
+      // uno: un panel con comentario lleva el suyo en el `con`, que es lo que se puede
+      // escribir en una direccion. Un secundario con comentario se pondria en la
+      // direccion del principal con `con`, y entonces habria dos comentarios en la misma
+      // direccion y el parser no sabria cual es el de cual.
+      resto.add(RutaLectura(id, vr?.leyendo ?? p.referencia));
+    }
+    if (resto.isEmpty) return principal;
+    return RutaPaneles(texto, principal, resto);
+  }
+
   /// Poner en su sitio el indice de una palabra.
   ///
-  /// Y ABRE EL TEXTO SI NO ESTA ABIERTO, con el mismo camino que el lector y que la
-  /// busqueda, porque `/indice/KJV2006/G2316` es un enlace completo y tiene que funcionar
-  /// en un dispositivo donde el texto este o no este.
+  /// Y ABRE EL TEXTO **COMO UN PANEL** si no lo hay abierto, y no en un view model
+  /// suelto. Antes --con un unico lector-- abrirlo ahi era lo mismo que abrirlo en el
+  /// lector, porque solo habia uno. Con paneles son dos cosas distintas: si el indice
+  /// abriera su `.amod` fuera de un panel, al volver de la pantalla de indice no habria
+  /// ningun panel con ese texto y habria que volver a abrir **22,5 MiB** para leer el
+  /// versiculo del que se salio. Ademas un modulo abierto fuera de un panel **no lo
+  /// cierra nadie**: no hay quien lo registre, y se queda abierto hasta que acabe la
+  /// aplicacion.
   ///
   /// Y **NO SE CIERRA EL PASAJE AL VOLVER**: el indice se llega desde una palabra del
   /// versiculo que se esta leyendo, y al volver hay que estar en ese versiculo. Por eso
   /// vuelve con `lectura.leyendo` y no con "Juan 1".
   Future<void> _aplicarIndice(String modulo, String numero) async {
-    if (lector.idDelModulo != modulo) {
-      final abierto = await abrir(modulo, const Referencia('John', 1));
-      if (abierto == null) {
-        lector.sinModulo('El texto "$modulo" no esta descargado en este dispositivo.');
-        _ruta = const RutaBiblioteca();
-        notifyListeners();
-        return;
-      }
-      lector.abrir(
-        abierto,
-        licenciaDelManifiesto: biblioteca.manifiesto.porId(modulo)?.licencia,
-      );
-    }
+    if (!await _asegurarElPanelDe(modulo)) return;
     _ruta = RutaIndice(modulo, numero);
     await _indice.abrir(_moduloIndiciable(), numero: numero);
+  }
+
+  /// Abre el texto [modulo] como panel si no lo hay, y devuelve si se puede seguir.
+  ///
+  /// Y **ES UN METODO Y NO TRES COPIAS** del mismo camino, y las tres son [_aplicarBusqueda],
+  /// [_aplicarIndice] y [_aplicarPanel]: abrir un texto que no esta abierto es la misma
+  /// operacion en los tres, con la misma comprobacion de "esta en el dispositivo" y el
+  /// mismo aviso. Con tres copias, la primera que se quede sin actualizar --y con este
+  /// proyecto, tarde o temprano-- seria un enlace que no avisa.
+  Future<bool> _asegurarElPanelDe(String modulo) async {
+    if (paneles.panelDe(modulo) != null) return true;
+    final deEntrada = RutaLectura(modulo, const Referencia('John', 1));
+    await _aplicarPanel(deEntrada, Rutas.escribir(deEntrada));
+    // Y SE COMPRUEBA **POR EL MODULO ABIERTO** y no por el tipo de la ruta: si el texto no
+    // se pudo abrir, `_aplicarPanel` ya ha avisado y ha vuelto a la biblioteca, y seguir
+    // aqui abriria un indice **sin modulo**, que es un formulario que no busca nada.
+    return paneles.panelDe(modulo) != null && paneles.lectorDe(modulo)?.modulo != null;
   }
 
   /// El modulo abierto, para el indice.
@@ -615,28 +836,19 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   /// resultados: entrar en un enlace trae 200 lineas de golpe sin que nadie las haya
   /// pedido. Quien solo quiere pulsar "buscar" lo tiene, porque el campo sale escrito.
   Future<void> _aplicarBusqueda(String modulo, String palabra) async {
-    if (lector.idDelModulo != modulo) {
-      final abierto = await abrir(modulo, const Referencia('John', 1));
-      if (abierto == null) {
-        // Y EL MISMO MENSAJE QUE EL LECTOR, y no uno propio de la busqueda. Quien llega
-        // a un enlace de busqueda de un texto que no tiene esta lee lo mismo que quien
-        // llega a un enlace de lectura: "no esta descargado", y donde se puede bajar.
-        lector.sinModulo('El texto "$modulo" no esta descargado en este dispositivo.');
-        _ruta = const RutaBiblioteca();
-        notifyListeners();
-        return;
-      }
-      lector.abrir(
-        abierto,
-        licenciaDelManifiesto: biblioteca.manifiesto.porId(modulo)?.licencia,
-      );
-    }
+    // Y EL MISMO MENSAJE QUE EL LECTOR, y no uno propio de la busqueda. Quien llega
+    // a un enlace de busqueda de un texto que no tiene lee lo mismo que quien llega a un
+    // enlace de lectura: "no esta descargado", y donde se puede bajar. Lo dice
+    // `_asegurarElPanelDe`, que es el camino comun.
+    if (!await _asegurarElPanelDe(modulo)) return;
 
     _ruta = RutaBusqueda(modulo, palabra);
-    // Y EL **MISMO** LECTOR SE QUEDA ABIERTO, y no se cierra. Buscar no es dejar de leer:
+    // Y EL **MISMO** PANEL SE QUEDA ABIERTO, y no se cierra. Buscar no es dejar de leer:
     // quien busca desde Juan 3:16 vuelve a Juan 3:16, y si la busqueda cerrara el texto
     // habria que volver a abrir 22 MiB y volver a pasarle `PRAGMA quick_check`.
-    _busqueda.abrir(ModuloBuscableReal(lector.modulo!), palabra: palabra);
+    final vm = paneles.lectorDe(modulo);
+    if (vm?.modulo == null) return;
+    _busqueda.abrir(ModuloBuscableReal(vm!.modulo!), palabra: palabra);
   }
 
   /// Abrir la pantalla de busqueda del texto abierto, en Juan 3:16.
@@ -698,9 +910,17 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   /// Juan 3:16 del KJV, entero, y un aviso de que al lado no hay nada. Un enrutador que
   /// en ese caso volviera a la biblioteca habria roto la lectura por un comentario que
   /// es un extra.
-  Future<void> _aplicarComentario(String? comentario) async {
+  /// Y EL MODULO DEL PANEL **ENTRA POR PARAMETRO** Y NO SE TOMA DE "EL LECTOR", y el
+  /// motivo es que con dos paneles "el lector" es el de delante, y un comentario pedido
+  /// para el panel del fondo se abriria en el de delante. Un comentario pertenece al
+  /// panel que lo abrio, y eso lo dice el que llama.
+  Future<void> _aplicarComentario(String modulo, String? comentario) async {
+    final del = paneles.lectorDe(modulo);
+    if (del == null) return;
+
     if (comentario == null) {
-      if (lector.tieneComentario) lector.cerrarComentario();
+      if (del.tieneComentario) del.cerrarComentario();
+      paneles.ponerComentario(modulo, null);
       return;
     }
 
@@ -711,8 +931,9 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
     //
     // Sin esta segunda parte, ir de Juan 3 a Juan 5 con el comentario abierto dejaba las
     // notas de Juan 3 encima de Juan 5. Medido, y era justo lo que ensefaba.
-    if (lector.idDelComentario == comentario) {
-      lector.refrescarNotas();
+    if (del.idDelComentario == comentario) {
+      del.refrescarNotas();
+      paneles.ponerComentario(modulo, comentario);
       return;
     }
 
@@ -725,25 +946,28 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
       // y Juan 3:16 entero sin nada al lado. O sea, exactamente el fallo que hace que un
       // enlace con un comentario no sirva de nada: quien lo recibe no tiene forma de
       // CONSEguir el comentario sin dejar de estar leyendo.
-      lector.comentarioNoDisponible(
+      del.comentarioNoDisponible(
         comentario,
         'El comentario $comentario no esta descargado en este dispositivo.',
       );
+      paneles.ponerComentario(modulo, comentario);
       return;
     }
 
-    final abierto = await abrir(comentario, lector.leyendo ?? const Referencia('John', 1));
+    final abierto = await abrir(comentario, del.leyendo ?? const Referencia('John', 1));
     if (abierto == null) {
-      lector.comentarioNoDisponible(
+      del.comentarioNoDisponible(
         comentario,
         'El comentario $comentario esta en el dispositivo pero no se ha podido abrir.',
       );
+      paneles.ponerComentario(modulo, comentario);
       return;
     }
-    lector.abrirComentario(
+    del.abrirComentario(
       abierto,
       licenciaDelManifiesto: biblioteca.manifiesto.porId(comentario)?.licencia,
     );
+    paneles.ponerComentario(modulo, comentario);
   }
 
   // --- elegir comentario ---
@@ -974,6 +1198,10 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   /// ve es la biblioteca, que es la marca descolocada.
   DestinoDeEstudio _destinoDeLaRuta() => switch (_ruta) {
         RutaLectura() => DestinoDeEstudio.biblia,
+        // Y UNA RUTA DE PANELES **MARCA BIBLIA**, porque lo que se ve es lectura. Sin este
+        // caso el `switch` no es exhaustivo y el analisis avisa; con el, la marca no se
+        // inventa: es la misma pantalla con mas de un texto al lado.
+        RutaPaneles() => DestinoDeEstudio.biblia,
         RutaBusqueda() => DestinoDeEstudio.buscar,
         RutaIndice() => DestinoDeEstudio.lexico,
         RutaBiblioteca() => DestinoDeEstudio.biblioteca,
@@ -1028,6 +1256,486 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
     return largo;
   }
 
+  /// Los paneles abiertos, pintados uno al lado de otro, con la fila de pestañas encima.
+  ///
+  /// Y ESTO ESTA EN EL ENRUTADOR Y NO EN UNA VISTA, y es una decision que conviene tener
+  /// escrita: la fila de pestañas va **encima de los dos paneles**, no dentro de ninguno.
+  /// Si viviera en `LectorView`, cada panel pintaria su fila y habria dos filas que no
+  /// controlan nada --que es exactamente el fallo de "dos barras que compiten por el
+  /// ancho", y el enrutador es el unico sitio donde vive la ventana entera.
+  ///
+  /// Y CUANTOS PANELES SE PINTAN NO ES CUANTOS HAY, y la cuenta sale de la medida. Medido
+  /// el 6 de octubre de 2026 con Roboto a 18 px: a 1440 px con el panel de herramientas,
+  /// dos textos en paralelo son **557,8 px** de columna y salen **68 caracteres** por linea;
+  /// tres son **354,5 px** y **43 caracteres**, que ya es el borde; cuatro son **252 px** y
+  /// **31 caracteres**, que no se lee. Y a 1920 px tres son **514,5 px** y **63
+  /// caracteres**, que si se lee.
+  ///
+  /// O sea que **el tope no es un numero de pestanas sino un ancho de columna**, y lo
+  /// decide [Medidas.panelesDeLecturaQueCaben]. Con un "maximo de dos" escrito ahi, en
+  //  una ventana de 1920 se desperdiciaria un tercio de la pantalla, y con "maximo de
+  //  tres" a 1440 se pondria un panel que hay que leer con lupa.
+  Widget _zonaDePaneles(BuildContext context) {
+    return ListenableBuilder(
+      // Y SE ESCUCHA A [paneles] Y NO A CADA LECTOR. El contenido de cada panel se
+      // repinta solo, porque su `LectorView` escucha a su propio view model --esta es una
+      // de las razones por las que hay un view model por panel y no uno compartido--. Lo
+      // que cambia aqui es **cuantos paneles hay y cual esta delante**, y eso solo lo
+      // sabe [PanelesViewModel].
+      listenable: paneles,
+      builder: (BuildContext context, Widget? _) => _pintarPaneles(context),
+    );
+  }
+
+  Widget _pintarPaneles(BuildContext context) {
+    // Y EL ANCHO SE RESTA **ANTES** DE REPARTIR, y no despues. Con el panel de
+    // herramientas al lado, la lectura son `ancho - 226,5` --medido--, y repartir el ancho
+    // de la ventana entre dos y luego restar el panel haria que el segundo panel se
+    // saliera por la derecha. Es la misma cuenta que hace `medir_paneles_test.dart`, y
+    // esta escrita en un sitio para que las dos no diverjan.
+    final marco = AnchoDeEstudio.of(context);
+    final lectura = marco.hayPanelDeHerramientas
+        ? marco.ancho - Medidas.anchoDelPanelDeHerramientas
+        : marco.ancho;
+    final caben = Medidas.panelesDeLecturaQueCaben(lectura);
+
+    // Y **SE PINTAN LOS [caben] PRIMEROS Y EN SU ORDEN**, y no los que estan delante. El
+    // orden es el de apertura, y es estable: si se ordenara por "cual esta delante", cada
+    // vez que se trajera un panel al frente las columnas se moverian de sitio, y quien
+    // esta leyendo comparando dos textos tendria que volver a buscarlos.
+    final todos = paneles.paneles;
+    final aPintar = todos.length <= caben ? todos : todos.sublist(0, caben);
+
+    // ============================================================================
+    // Y LA FILA DE PESTANAS SE PINTA SIEMPRE QUE HAYA **MAS DE UN PANEL ABIERTO**, Y
+    // NO SI LOS QUE CABEN EN LA PANTALLA
+    // ============================================================================
+    //
+    // Y ESTO ES LO QUE ENSENO UNA CAPTURA, Y LA PRIMERA DECISION ESTABA MAL.
+    //
+    // La regla escrita al principio --"por debajo de 1.100 px no hay pestanas"-- salia de un
+    // argumento cierto y de una conclusion falsa. El argumento: a 360 px tres nombres de
+    // texto son tres columnas de 60 px. Cierto. La conclusion: "no hay pestanas". Falsa,
+    // porque Esos 60 px son de las **columnas en paralelo**, no de la fila de pestañas.
+    //
+    // Y MEDIDO el 6 de octubre de 2026 en una captura a 360 px con `/leer/KJV2006/John.3.16/
+    // y/CLARKE/John.3.16`: se ve **un panel**, con su barra y su campo, y el segundo panel
+    // esta abierto --22,5 MiB de paginas SQLite abiertos-- y **no hay ninguna manera de
+    // llegar a el**. Ni pestañas, ni una fila, ni un boton. Quien recibe un enlace de dos
+    // ventanas en el movil se queda mirando la mitad sin saber que hay otra mitad.
+    //
+    // Y ESO ES PEOR QUE UNA PESTANA RECORTADA. Un nombre con puntos suspensivos se sabe
+    // que esta ahi y se puede ir; un panel invisible no existe.
+    final hayPestanas = paneles.cuantos > 1;
+
+    return Column(
+      children: <Widget>[
+        // Y LA FILA DE PESTANAS **SOLO CUANDO HAY MAS DE UNO**. Con uno, el nombre de la
+        // version esta en la barra del panel, que es donde estaba antes de esto, y una
+        // fila con un solo nombre seria el mismo dato en dos sitios. Ver `fila_de_pestanas`.
+        if (hayPestanas)
+          FilaDePestanas(
+            // Y LA FILA RECIBE **TODOS** LOS PANELES ABIERTOS, y no los que tienen columna.
+            //
+            // Y ESTO ES EL MISMO ARREGLO DE ARRIBA, en el otro lado: a 360 px `aPintar` son
+            // los que caben --**uno**-- y pasarle esa lista a la fila daria una fila con un
+            // solo nombre, que es justo lo contrario de lo que hace falta. Quien llega por
+            // un enlace de dos ventanas tiene que ver las **dos** pestanas, y la segunda es
+            // la que se lleva a un panel que no tiene columna.
+            paneles: todos,
+            moduloDelante: paneles.idDelModulo,
+            nombreDe: _nombreDeUnModulo,
+            alFrente: ponerUnPanelAlFrente,
+            alCerrar: cerrarUnPanel,
+            alAbrirOtro: () => abrirOtroPanel(context),
+          ),
+        Expanded(
+          child: Row(
+            children: <Widget>[
+              for (var i = 0; i < aPintar.length; i++) ...<Widget>[
+                if (i > 0)
+                  const VerticalDivider(
+                    width: Medidas.divisorEntrePaneles,
+                    thickness: 1,
+                  ),
+                Expanded(
+                  // Y LA CLAVE **ES EL IDENTIFICADOR DEL MODULO**, y no el indice. Con la
+                  // clave por indice, Flutter reutiliza el estado del panel del indice 0
+                  // para el modulo nuevo que se abre en ese sitio, y el `_TextoDelVersiculo`
+                  // se queda con los gestos de gestor del versiculo del texto anterior
+                  // apuntando a un `TextSpan` que ya no existe. Es un fallo que solo sale
+                  // al abrir y cerrar paneles en un orden que no sea el natural.
+                  key: ValueKey<String>('panel:${aPintar[i].moduloId}'),
+                  child: _lectorDe(aPintar[i].moduloId, hayPestanas, context),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// La pantalla de lectura de un panel.
+  ///
+  /// Y [conPestanas] DICE SI HAY FILA ARRIBA, y no se deduce de la lista: con dos
+  /// paneles abiertos en una ventana de 800 px se ve uno solo y **no hay fila** --por
+  /// debajo de 1100 px no cabe el paralelo--, y el nombre de la version tiene que seguir
+  /// en la barra. Que lo decida "hay mas de uno abierto" dejaria la ventana de 800 px sin
+  /// ningun sitio donde se vea que texto esta abierto.
+  Widget _lectorDe(String moduloId, bool conPestanas, BuildContext contexto) {
+    final vm = paneles.lectorDe(moduloId);
+    if (vm == null) return const SizedBox.shrink();
+
+    return LectorView(
+      viewModel: vm,
+      // Y LA BARRA **SOLO CUANDO NO HAY PESTANAS**, y el criterio es "se ve la fila de
+      // pestañas" y no "hay dos paneles". Con dos paneles en una ventana de 800 px no hay
+      // fila y la barra tiene que seguir ahi; con dos paneles a 1440 hay fila y la barra
+      // sobraria. Ver `mostrarBarraDeAplicacion`.
+      mostrarBarraDeAplicacion: !conPestanas,
+      // Y CADA PANEL **PULSA SUS PROPIAS COSAS**. Un `alPulsarPasaje` que usara
+      // "el modulo del lector" moveria el panel de delante desde el de fondo, y las
+      // flechas de capitulo del panel de la izquierda acabarian llevamos a Juan 5 en el
+      // de la derecha. Ver `irAReferencia`.
+      alPulsarPasaje: (Referencia r) => irAReferencia(moduloId, r),
+      alPedirComentario: () => elegirComentarioDe(moduloId, contexto),
+      alVerIndice: (String numero) => verElIndiceDeEn(moduloId, numero),
+      alAlternarPalabrasDeJesus: vm.alternarPalabrasDeJesus,
+      alBuscar: () => buscarEnElPanelDe(moduloId),
+      alDescargarComentario: _sePuedeDescargar(_ruta) ? descargarComentarioPedido : null,
+      modulosDelCatalogo: biblioteca.manifiesto.modulos,
+      versiones: _versionesDisponibles(),
+      alAbrirLibros: () => elegirLibroDe(moduloId, contexto),
+      alAbrirVersiones: () => abrirLaHojaDeVersiones(moduloId, contexto),
+      resaltados: resaltados,
+      alCambiarDeVersion: (String id) => cambiarDeVersionEn(moduloId, id),
+      alVolver: irAHome,
+    );
+  }
+
+  // --- los paneles: abrir, cerrar y traer al frente ---
+
+  /// El nombre legible de un modulo, tal como lo dice el manifiesto.
+  ///
+  /// Y **CAE AL IDENTIFICADOR** si el manifiesto no lo tiene, y no a cadena vacia. Un
+  /// modulo abierto cuyo nombre no se conoce es el resultado de abrir algo que el
+  /// manifiesto ya no declara --un enlace de un despliegue viejo--, y una pastilla sin
+  /// nombre no dice nada de que hay ahi. Con el identificador se ve cual es, y con el
+  /// identificador se puede comprobar en el catalogo.
+  String _nombreDeUnModulo(String id) => biblioteca.manifiesto.porId(id)?.nombre ?? id;
+
+  /// Poner un panel delante de los demas.
+  ///
+  /// Y **NO ES UN `ajustarA` CON UNA RUTA NUEVA**: es cambiar cual de los que ya estan
+  /// abiertos se ve. Y ES `replaceState`, y no `pushState`, por la misma regla que
+  /// cambiar de version: quien trae un panel al frente quiere seguir leyendo lo mismo, y
+  /// con `pushState` el gesto de atras devolveria al panel anterior --que es lo mismo, en
+  /// otra columna-- en vez de al pasaje anterior.
+  Future<void> ponerUnPanelAlFrente(String moduloId) async {
+    if (!paneles.ponerAlFrente(moduloId)) return;
+    final p = paneles.delante;
+    final vm = paneles.lectorDelante;
+    if (p == null || vm == null) return;
+
+    await ajustarA(_rutaDe(_ruta, principal: RutaLectura(
+      moduloId,
+      vm.leyendo ?? p.referencia,
+      p.comentarioId,
+    )));
+  }
+
+  /// Cerrar un panel.
+  ///
+  /// Y EL ORDEN IMPORTA Y ESTA ES LA RAZON: **primero se quita de la lista y se avisa, y
+  /// despues se destruye su view model.** Al reves, el frame que se pinta entre medias
+  /// muestra un panel abierto cuyo `.amod` ya esta cerrado, y leer de ahi da un
+  /// `SqliteException` en pantalla. Y no es un caso raro: `cerrar` destruye el view model
+  /// **despues** del `notifyListeners` justamente para esto, y este metodo no puede hacer
+  /// al reves sin deshacer esa proteccion.
+  ///
+  /// Y **ES `replaceState`**, y no `pushState`, por la misma regla que abrir un panel: es
+  /// un cambio de como se ve lo mismo, no un sitio nuevo. Con `pushState`, cerrar una
+  /// pestana por error y pulsar atras devolveria la pestana --util-- pero dejaria la
+  /// flecha de atrasINSTANCE consumida por un error, y la siguiente pulsacion ya seria
+  //  "volver al pasaje anterior", que no es lo que se espera.
+  Future<void> cerrarUnPanel(String moduloId) async {
+    final p = paneles.panelDe(moduloId);
+    if (p == null) return;
+
+    // Y LA RUTA SE CALCULA **ANTES** DE CERRAR, y no despues. Es al reves de lo obvio y
+    // el motivo es que la ruta describe los paneles que **quedan**, y despues de cerrar no
+    // quedan los cerrados: construirla despues daria una ruta con el panel que se acaba
+    // de cerrar, y el `build` de esa ruta lo volveria a abrir. Cerrar un panel y que se
+    // vuelva a abrir solo es el peor fallo posible de esta pantalla.
+    final siguiente = paneles.delante?.moduloId == moduloId
+        ? _otroQueQueda(moduloId)
+        : paneles.delante?.moduloId;
+    if (siguiente == null) {
+      await irAHome();
+      return;
+    }
+
+    paneles.cerrar(moduloId);
+    paneles.ponerAlFrente(siguiente);
+
+    final vm = paneles.lectorDelante;
+    final vmDel = vm;
+    if (vmDel == null) return;
+    await ajustarA(_rutaDe(
+      _ruta,
+      principal: RutaLectura(
+        siguiente,
+        vmDel.leyendo ?? paneles.referencia ?? const Referencia('John', 1),
+        paneles.delante?.comentarioId,
+      ),
+    ));
+  }
+
+  /// El identificador de un panel que **no** es [moduloId].
+  ///
+  /// Y DEVUELVE EL **SIGUIENTE** EN LA LISTA Y NO EL PRIMERO, porque quien cierra la
+  //  ventana que esta leyendo quiere ver lo que tenia al lado, no volver al primero por
+  //  orden de apertura.
+  String? _otroQueQueda(String moduloId) {
+    for (final p in paneles.paneles) {
+      if (p.moduloId != moduloId) return p.moduloId;
+    }
+    return null;
+  }
+
+  /// Abrir otro texto al lado del que se esta leyendo.
+  ///
+  /// Y **ES LA HOJA DE VERSIONES, LA MISMA** que abre el nombre de la version en la barra.
+  /// Y es la misma a proposito: abrir "la KJV en otra ventana" y cambiar "a la KJV" son la
+  /// misma pregunta --cual quiero al lado-- y con dos hojas distintas habria dos listas de
+  /// textos del catalogo que se pueden quedar viejas cada una a su ritmo.
+  ///
+  /// Y **NO ABRE UN PANEL SI EL ELEGIDO YA ESTA ABIERTO**: lo trae al frente. Medido: dos
+  /// paneles del mismo `.amod` son **22,5 MiB** de paginas SQLite abiertas dos veces, y en
+  /// un movil de gama baja eso es la diferencia entre que funcione y que no. Ver
+  /// `panel_abierto.dart`.
+  Future<void> abrirOtroPanel(BuildContext contexto) async {
+    final actual = paneles.idDelModulo;
+    final elegida = await mostrarHojaDeVersiones(
+      context: contexto,
+      disponibles: _versionesDisponibles(),
+      abierta: actual,
+    );
+    if (elegida == null) return;
+
+    if (elegida == actual) return;
+    if (paneles.panelDe(elegida) != null) {
+      await ponerUnPanelAlFrente(elegida);
+      return;
+    }
+
+    await abrirPanel(elegida);
+  }
+
+  /// Abrir [moduloId] como un panel mas, con la referencia que se esta leyendo.
+  ///
+  /// Y ES PUBLICA Y NO PRIVADA, y no por comodidad: es lo que hacen las tres cosas que
+  /// pueden abrir un panel --el `+`, cambiar de version desde la hoja de la cabecera, y
+  /// abrir una version en paralelo al recibir un enlace con dos ventanas--, y con tres
+  /// copias del mismo camino la primera que se quede sin actualizar seria un boton que
+  /// abre el panel con la referencia equivocada.
+  ///
+  /// Y **USA LA REFERENCIA DE DELANTE**, y no la del panel en el que se ha pulsado. Con un
+  /// solo panel da igual. Con varios, abrir desde la version selectora de un panel de
+  /// fondo lleva el texto nuevo **al pasaje que se esta viendo**, que es lo que quiere
+  /// quien compara Juan 3 en dos traducciones: el nuevo tiene que salir en Juan 3, no en
+  /// el Juan 7 que ese panel tenga guardado.
+  Future<void> abrirPanel(String moduloId) async {
+    if (moduloId.isEmpty) return;
+
+    // Y SI YA ESTA ABIERTO, **LO TRAE DELANTE Y NO ABRE OTRO**. Medido: dos paneles del
+    // mismo `.amod` son 22,5 MiB de paginas SQLite abiertas dos veces.
+    if (paneles.panelDe(moduloId) != null) {
+      await ponerUnPanelAlFrente(moduloId);
+      return;
+    }
+
+    // Y EL TOPE **NO ES EL NUMERO DE PANELES, ES EL DE COLUMNAS QUE CABEN EN LA
+    // PANTALLA DE AHORA**, y no son dos cosas distintas:
+    //
+    //   - [Medidas.maximoDePanelesDeLectura] --**tres**-- es el tope de **memoria**, y esta
+    //     escrito alli con su motivo: tres textos de 22,5 MiB son 67.633.152 bytes de paginas
+    //     SQLite, y en un movil de gama baja eso es lo que hace que el sistema mate el
+    //     proceso.
+    //
+    //   - El ancho **no** pone un tope de paneles en ninguna ventana, porque las pestañas
+    //     se pintan a cualquier anchura y lo que se recorta son las **columnas**. Medido: a
+    //     360 px caben **una**, y con dos paneles abiertos se ve una y la otra esta en su
+    //     pestaña, a un toque. Y eso es mejor que no abrirlo: abierto y a un toque se ve;
+    //     cerrado se ve que no hay nada al lado, que es tambien una respuesta.
+    //
+    // Y SE COMPRUEBA **ANTES** de abrir, y no despues. Abrir y luego decidir que no cabe
+    // deja el `.amod` abierto, que es exactamente la memoria que este limite existe para no
+    // gastar.
+    if (paneles.cuantos >= Medidas.maximoDePanelesDeLectura) {
+      biblioteca.anadirAviso(
+        'Ya hay ${Medidas.maximoDePanelesDeLectura} textos abiertos al lado. Cada uno '
+        'son unas 22,5 MiB de paginas abiertas a la vez, y por encima de ahi un movil deja '
+        'de responder. Cierra una ventana para abrir otra.',
+        clase: ClaseDeAviso.informacion,
+      );
+      return;
+    }
+
+    final referencia = lector.leyendo ?? const Referencia('John', 1);
+    await irA(_rutaDe(_ruta, principal: RutaLectura(moduloId, referencia)));
+  }
+
+  /// La ruta de lectura con [principal] delante, o ella misma si [actual] no es de paneles.
+  ///
+  /// Y **NO CAMBIA LA RUTA SI [actual] NO TIENE PANELES**, y no es una comodidad: quien
+  /// llama --traer un panel al frente, abrir otro, ir a un pasaje-- no tiene que saber si
+  /// hay demas, y con esta regla solo hay **un sitio** que sabe escribir una ruta con
+  /// paneles. Un `if (hayVarios)` en cada uno de los tres sitios seria tres reglas que se
+  /// pueden separar, y la primera que se separe da una ruta con menos pestanas de las que
+  /// hay --que es el fallo que este metodo existe para que no pase.
+  Ruta _rutaDe(Ruta actual, {required RutaLectura principal}) {
+    if (actual is! RutaPaneles) return principal;
+
+    final otros = <RutaLectura>[];
+    for (final r in actual.resto) {
+      if (r.modulo == principal.modulo) continue;
+      final vm = paneles.lectorDe(r.modulo);
+      if (vm == null) continue;
+      otros.add(RutaLectura(r.modulo, vm.leyendo ?? r.referencia));
+    }
+    if (otros.isEmpty) return principal;
+    return RutaPaneles(actual.texto, principal, otros);
+  }
+
+  /// Ir a otro pasaje **de este panel**, y traerlo delante.
+  ///
+  /// Y **TRAE EL PANEL DELANTE**, y no es un detalle: las flechas de capitulo de un panel
+  /// que no esta delante las estara pulsando quien no lo esta leyendo, y mover un panel de
+  /// fondo mientras se ve otro es una forma de que nadie sepa que se ha movido algo. En
+  /// Logos, tocar un panel de fondo lo trae delante; y por lo demas, es lo unico que hace
+  /// que la columna que se mueve sea la que se ve.
+  Future<void> irAReferencia(String moduloId, Referencia referencia) async {
+    final p = paneles.panelDe(moduloId);
+    if (p == null) return;
+    await irA(_rutaDe(
+      _ruta,
+      principal: RutaLectura(moduloId, referencia, p.comentarioId),
+    ));
+  }
+
+  // --- lo que hace un panel concreto, y no el de delante ---
+
+  /// Elegir el comentario **de este panel**.
+  ///
+  /// Y [elegirComentario] sigue siendo el metodo que abre la hoja, y no se ha
+  /// duplicado: abrir una hoja y elegir un comentario son la misma operacion. Lo que cambia
+  /// es a que panel se le aplica el resultado, y por eso se le dice cual.
+  Future<void> elegirComentarioDe(String moduloId, BuildContext contexto) async {
+    final vm = paneles.lectorDe(moduloId);
+    if (vm == null) return;
+
+    final actuales = _comentariosDisponibles();
+    final elegido = await mostrarHojaDeComentarios(
+      context: contexto,
+      actuales: actuales,
+      abierto: vm.idDelComentario,
+    );
+    if (elegido == null) return;
+
+    final p = paneles.panelDe(moduloId);
+    if (p == null) return;
+    await ajustarA(_rutaDe(
+      _ruta,
+      principal: RutaLectura(moduloId, vm.leyendo ?? p.referencia, elegido),
+    ));
+  }
+
+  /// Ver el indice de una palabra **de este panel**.
+  ///
+  /// Y **NO HACE NADA SI ESE PANEL NO ESTA ABIERTO**, y no mira el de delante. El indice
+  /// es de un texto concreto: la palabra `G2316` que se toca en la columna del CLARKE es la
+  /// de la columna del CLARKE, y si el panel ya no esta --porque se ha cerrado mientras
+  /// estaba el indice abierto-- buscarlo en otro texto daria unos resultados que no son
+  /// los de la palabra que se ha tocado.
+  Future<void> verElIndiceDeEn(String moduloId, String numero) async {
+    if (paneles.lectorDe(moduloId) == null) return;
+    await verElIndiceDe(numero);
+  }
+
+  /// Buscar en **este** panel.
+  ///
+  /// Y **NO HACE NADA SI ESE PANEL NO ESTA ABIERTO**. Y no trae el panel delante, a
+  /// diferencia de las hojas: abrir la busqueda es una pantalla a la que se va y se vuelve,
+  /// y volver tiene que devolver al panel de donde se salio, que es el que se habia
+  /// pedido la busqueda. Traerlo delante --o no-- es lo mismo en cuanto se vuelve, asi que
+  /// no se toca el orden de las pestanas por algo que se deshace solo.
+  Future<void> buscarEnElPanelDe(String moduloId) async {
+    if (paneles.lectorDe(moduloId) == null) return;
+    await buscarEnElTextoAbierto();
+  }
+
+  /// Elegir libro y capitulo **de este panel**.
+  ///
+  /// Y ES EL MISMO CAMINO QUE [elegirLibro] con el modulo del panel. Y **LA RUTA LLEVA EL
+  /// `con` DEL PANEL QUE SE MUEVE**, y no el del de delante: cambiar de libro en el panel
+  /// del fondo no puede quitarle el comentario al del frente.
+  Future<void> elegirLibroDe(String moduloId, BuildContext contexto) async {
+    // Y EL PANEL **SE TRAE DELANTE ANTES DE ABRIR LA HOJA**, y no despues de elegir. La
+    // hoja de libros dice cual es "el que se esta leyendo" con una marca, y esa marca la
+    // pone el view model del panel de delante: si se abriera la hoja con el panel del
+    // fondo delante, el libro que se esta leyendo --que es el del fondo-- saldria sin
+    // marcar, y quien elige creeria que va a cambiar de sitio cuando en realidad ya no
+    // esta ahi.
+    if (moduloId != paneles.idDelModulo) {
+      await ponerUnPanelAlFrente(moduloId);
+    }
+    if (!contexto.mounted) return;
+    await elegirLibro(contexto);
+  }
+
+  /// Abrir el selector de version **de este panel**.
+  ///
+  /// Y ABRE LA HOJA CON **ESTE** PANEL MARCADO COMO ABIERTO, y no con el de delante: si el
+  /// panel del fondo tiene el CLARKE y se abre su hoja de versiones, tiene que verse el
+  /// CLARKE como el que ya esta puesto. Con el de delante marcado, la hoja abriria con la
+  /// KJV marcada y quien pulsara el CLARKE --que ya tiene abierto-- creeria que lo cambia.
+  Future<void> abrirLaHojaDeVersiones(String moduloId, BuildContext contexto) async {
+    final deEste = paneles.lectorDe(moduloId);
+    final deEsteAlAbrir = deEste?.leyendo ?? const Referencia('John', 1);
+
+    if (moduloId != paneles.idDelModulo) {
+      await ponerUnPanelAlFrente(moduloId);
+    }
+    if (!contexto.mounted) return;
+    await elegirVersion(contexto);
+
+    // Y EL VALOR ELEGIDO **ABRE UN PANEL NUEVO** en vez de sustituir: cambiar de version
+    // con dos textos abiertos es lo unico que hace que tener dos textos abiertos tenga
+    // sentido, y sustituir seria volver al caso de un solo texto con un boton.
+    //
+    // Y SE COMPARA CON **[moduloId]**, y no con el de delante: `elegirVersion` deja el
+    // nuevo en el panel de delante, y si se comparara con el de delante --que ahora es
+    // el nuevo-- la comparacion siempre seria cierta y no se abriria nada.
+    final id = paneles.lectorDelante?.idDelModulo;
+    if (id == null || id == moduloId) return;
+    if (paneles.panelDe(id) != null) return;
+    await irA(_rutaDe(_ruta, principal: RutaLectura(id, deEsteAlAbrir)));
+  }
+
+  /// Cambiar de version **desde este panel**, abriendo la otra al lado.
+  Future<void> cambiarDeVersionEn(String moduloId, String id) async {
+    final p = paneles.panelDe(moduloId);
+    final referencia = paneles.lectorDe(moduloId)?.leyendo ??
+        p?.referencia ??
+        const Referencia('John', 1);
+    await irA(_rutaDe(
+      _ruta,
+      principal: RutaLectura(id, referencia, paneles.panelDe(id)?.comentarioId),
+    ));
+  }
+
   // --- abrir un texto desde la biblioteca ---
 
   /// Abrir un texto desde la biblioteca, en Juan 1.
@@ -1072,7 +1780,14 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
     // Y LA BIBLIOTECA SIGUE SIENDO EL "NO HAY TEXTO". Una ruta de busqueda sin texto
     // abierto tambien cae aqui, y por la misma razon que la de lectura: una pantalla de
     // busqueda sin modulo es un campo de texto que no busca nada.
-    final leyendo = _ruta is RutaLectura && lector.estado != EstadoLecturaTexto.sinModulo;
+    // Y LEYENDO **ES** "HAY AL MENOS UN PANEL CON MODULO", y no "la ruta es de lectura".
+    //
+    // Con dos paneles, la ruta es una [RutaPaneles], y si se preguntara por el tipo de la
+    // ruta --como se preguntaba antes-- una ventana con dos textos abiertos se caeria en
+    // la biblioteca. La pregunta correcta es si hay un modulo abierto, y eso lo sabe el
+    // view model del panel de delante.
+    final leyendo =
+        paneles.cuantos > 0 && lector.estado != EstadoLecturaTexto.sinModulo;
 
     // Y EL MARCO ENVUELVE A **CUALQUIER** PANTALLA, y no solo a la de lectura.
     //
@@ -1099,48 +1814,7 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
             alBuscar: buscar,
           )
         : leyendo
-        ? LectorView(
-            viewModel: lector,
-            // Y LA RUTA NUEVA **SE LLEVA EL COMENTARIO DELANTERO**. Sin esto, pasar de
-            // Juan 3 a Juan 4 lo quita y hay que volver a pulsarlo en cada capitulo, y un
-            // comentario que hay que volver a pedir cada capitulo no se usa. Y no es
-            // que se pierda: la ruta lleva el identificador, asi que la URL de Juan 3:17
-            // con el CLARKE al lado se puede copiar y dice lo que es.
-            alPulsarPasaje: (r) => irA(RutaLectura(
-              lector.idDelModulo ?? '',
-              r,
-              lector.idDelComentario,
-            )),
-            // Y LA HOJA SE ABRE CON EL CONTEXTO QUE DA ESTE `build`, que es el unico que
-            // esta vivo mientras hay una pantalla. Guardarlo en un campo del delegado
-            // seria guardar un `BuildContext` mas alla de la vida de su widget, que es
-            // justo lo que `use_build_context_synchronously` avisa de y por lo que
-            // existe.
-            alPedirComentario: () => elegirComentario(context),
-            // Y EL INDICE SE ABRE DESDE LA PALABRA, y no desde un boton: quien quiere
-            // saber donde mas sale `G2316` ya esta leyendo la palabra y la toca. Un boton
-            // en la barra obligaria a escribir el numero, y nadie escribe `G2316`.
-            alVerIndice: verElIndiceDe,
-            alAlternarPalabrasDeJesus: lector.alternarPalabrasDeJesus,
-            // Y LA LUPA ABRE LA BUSQUEDA **DEL TEXTO ABIERTO**, y no una busqueda en
-            // general. No hay una busqueda en general todavia y no la hay a proposito:
-            // ver `buscar-en-el-texto`.
-            alBuscar: buscarEnElTextoAbierto,
-            // Y SOLO HAY BOTON DE BAJAR SI HAY ALGO QUE BAJAR. Si el comentario pedido
-            // no esta en el catalogo --porque el enlace es de otro despliegue-- no hay
-            // nada que ofrecer, y un boton que no hace nada es peor que no tenerlo.
-            alDescargarComentario: _sePuedeDescargar(_ruta) ? descargarComentarioPedido : null,
-            modulosDelCatalogo: biblioteca.manifiesto.modulos,
-            versiones: _versionesDisponibles(),
-            alAbrirLibros: () => elegirLibro(context),
-            alAbrirVersiones: () => elegirVersion(context),
-            // Y LOS RESALTADOS, que son opcionales porque sin almacen no hay nada que marcar
-            // y la pantalla de lectura se lee igual. Que sea opcional hace que los montajes de
-            // prueba no tengan que montar un almacen.
-            resaltados: resaltados,
-            alCambiarDeVersion: cambiarDeVersion,
-            alVolver: irAHome,
-          )
+        ? _zonaDePaneles(context)
         : BibliotecaView(
             viewModel: biblioteca,
             alPulsarLeer: abrirDesdeLaBiblioteca,

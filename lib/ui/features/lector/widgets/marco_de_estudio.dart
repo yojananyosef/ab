@@ -231,7 +231,18 @@ class _PanelDeHerramientas extends StatelessWidget {
       // Con la barra normal el ancho minimo se usa; con la extendida manda
       // `minExtendedWidth`. Poner `minWidth: 0` para "quitar el margen" no quita nada y
       // rompe la asercion.
-      minExtendedWidth: 176,
+      // Y EL MINIMO **ES [Medidas.anchoDelPanelDeHerramientas]**, y no un 176 escrito aqui.
+      //
+      // El motivo es que ese numero no lo usa solo este panel: lo usa **quien reparte la
+      // lectura**, y es decir, el enrutador al decidir cuantos paneles de texto caben. Con un
+      // 176 aqui y un 226,5 en `Medidas`, los dos son el mismo ancho medido en dos sitios, y
+      // el dia que el mas largo --"Comentarios"-- crezca una letra, el panel se ensancha y
+      // **la cuenta de paneles sigue con el numero viejo**: salen tres columnas donde solo
+      // caben dos, y cada una por debajo del ancho de lectura que decide que se puede leer.
+      //
+      // Con el minimo aqui, el panel mide exactamente lo que `Medidas` dice, y los dos
+      // sitios no pueden separarse porque son el mismo numero.
+      minExtendedWidth: Medidas.anchoDelPanelDeHerramientas,
       selectedIndex: destino.index,
       onDestinationSelected: (int i) => alElegir(DestinoDeEstudio.values[i]),
       backgroundColor: colores.surfaceContainerLow,

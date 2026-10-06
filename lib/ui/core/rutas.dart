@@ -185,6 +185,55 @@ class RutaIndice extends Ruta {
   String toString() => 'indice $modulo $numero';
 }
 
+/// Una ruta con **varios paneles**.
+///
+/// Y ES OTRA RUTA Y NO UN PARAMETRO DE [RutaLectura], y la razon es que un enlace con dos
+/// textos abiertos y un enlace con uno son dos sitios distintos, no el mismo sitio con una
+/// lista de cosas:
+///
+///     /leer/KJV2006/John.3.16                      Juan 3:16 del KJV
+///     /leer/KJV2006/John.3.16/con/CLARKE           y el comentario al lado
+///     /leer/KJV2006/John.3.16/y/CLARKE/John.3.16   y el comentario **en otro panel**
+///
+/// Y LA DIFERENCIA ENTRE `con` Y `y` NO ES COSMETICA, es que son dos cosas distintas:
+/// `con` es un comentario **dentro** del panel, que se lee debajo de cada versiculo; `y`
+/// es **otro panel**, con su propia columna y su propia referencia.
+///
+/// Y SI NO SE PUDIERAN EXPRESAR LOS DOS CON UN PARAMETRO, TENDRIAMOS QUE ELEGIR UNO, y
+/// la eleccion seria perder algo: con `con` no hay dos columnas, y con `y` no hay un
+/// comentario debajo del texto. En Logos estan **las dos**, y el que decide de las dos
+/// cosas es quien esta leyendo, no el formato de la direccion.
+///
+/// Y LA LISTA ES **PLANA Y EN ORDEN**, con el panel de delante el primero, porque es una
+/// frase que se copia y se manda: "Juan 3:16 del KJV, y al lado el CLARKE" se entiende
+/// leyendo los segmentos de izquierda a derecha. Y `y` es el operador: es el mismo que
+/// en la frase, y por eso no hace falta saber la sintaxis para deducirla.
+class RutaPaneles extends Ruta {
+  const RutaPaneles(this.texto, this.principal, this.resto);
+
+  /// La direccion tal cual, para el aviso de "no se entiende".
+  final String texto;
+
+  /// El panel que esta delante: el que se ve y el que manda en la URL.
+  final RutaLectura principal;
+
+  /// Los demas, en orden. Nunca vacio en una ruta valida: un solo panel es [RutaLectura].
+  final List<RutaLectura> resto;
+
+  @override
+  bool operator ==(Object other) =>
+      other is RutaPaneles &&
+      other.principal == principal &&
+      other.resto.length == resto.length &&
+      List<int>.generate(resto.length, (int i) => i).every((i) => resto[i] == other.resto[i]);
+
+  @override
+  int get hashCode => Object.hash(principal, Object.hashAll(resto));
+
+  @override
+  String toString() => 'paneles $principal${resto.isEmpty ? '' : ' y ${resto.length} mas'}';
+}
+
 /// Una ruta que no se entiende.
 ///
 /// No es un error: es lo que llega al abrir una direccion escrita a mano con un
@@ -238,14 +287,14 @@ class Rutas {
       return const RutaBiblioteca();
     }
     // Con estrategia de barra y sin prefijo: `/leer/...`.
-    if (ruta.startsWith(prefijoDeLectura)) return _leerPasaje(ruta);
+    if (ruta.startsWith(prefijoDeLectura)) return _leerPanel(ruta);
     if (ruta.startsWith(prefijoDeBusqueda)) return _buscar(ruta);
     if (ruta.startsWith(prefijoDeIndice)) return _indice(ruta);
 
     // Con prefijo de despliegue: `/ab/leer/...`. Se toma la **ultima** aparicion
     // porque un pasaje no lleva barras, asi que la ultima es la buena.
     final corte = ruta.lastIndexOf(prefijoDeLectura);
-    if (corte > 0) return _leerPasaje(ruta.substring(corte));
+    if (corte > 0) return _leerPanel(ruta.substring(corte));
 
     // Y LO MISMO PARA `/buscar/`, con el mismo "ultima aparicion" por el mismo motivo.
     // Sin esta linea, `/ab/buscar/KJV2006/begotten` era una ruta que no se entiende, y en
@@ -259,53 +308,132 @@ class Rutas {
     if (corteDelIndice > 0) return _indice(ruta.substring(corteDelIndice));
 
     // Sin barra inicial, por si llega como `leer/...`.
-    if (ruta.startsWith('leer/')) return _leerPasaje('/$ruta');
+    if (ruta.startsWith('leer/')) return _leerPanel('/$ruta');
     if (ruta.startsWith('buscar/')) return _buscar('/$ruta');
     if (ruta.startsWith('indice/')) return _indice('/$ruta');
 
     return RutaDesconocida(ruta);
   }
 
-  /// La parte que va despues de `/leer/`:
-  ///
-  ///     {modulo}/{libro}.{capitulo}[.{versiculo}][/con/{comentario}]
-  ///
-  /// Y SE CORTA POR **TODAS** LAS BARRAS, Y NO POR LA PRIMERA. La primera version
-  /// tomaba `resto.indexOf('/')` y se llevaba todo lo demas como pasaje, asi que
-  /// `/leer/KJV2006/John.3.16/con/CLARKE` le preguntaba a `Referencia.tryParse` por
-  /// `John.3.16/con/CLARKE`, que no es un pasaje y devolvia null. El error era
-  /// silencioso --una ruta desconocida-- y por eso mismo es el que hay que evitar.
-  ///
-  /// Y CUATRO PARTES COMO MAXIMO. Una quinta no es una ruta de este proyecto, y
-  /// aceptarla seria inventarse una sintaxis que nadie ha escrito.
-  static Ruta _leerPasaje(String ruta) {
-    final resto = ruta.substring(prefijoDeLectura.length);
-    final partes = resto.split('/');
-    if (partes.length < 2 || partes.length > 4) return RutaDesconocida(ruta);
+  /// La parte que va despues de `/leer/`, con uno o varios paneles.
+///
+///     {modulo}/{libro}.{capitulo}[.{versiculo}][/con/{comentario}][/y/{modulo}/{ref}]...
+///
+/// Y SE CORTA POR **TODAS** LAS BARRAS, Y NO POR LA PRIMERA. La primera version
+/// tomaba `resto.indexOf('/')` y se llevaba todo lo demas como pasaje, asi que
+/// `/leer/KJV2006/John.3.16/con/CLARKE` le preguntaba a `Referencia.tryParse` por
+/// `John.3.16/con/CLARKE`, que no es un pasaje y devolvia null. El error era
+/// silencioso --una ruta desconocida-- y por eso mismo es el que hay que evitar.
+///
+/// Y CUATRO PARTES COMO MAXIMO POR PANEL, y cada panel de ahi para adelante son dos mas.
+/// Una quinta sin `y` no es una ruta de este proyecto, y aceptarla seria inventarse una
+/// sintaxis que nadie ha escrito.
+///
+/// Y EL OPERADOR ES **`y`** Y NO OTRO, por una razon que esta medida: el operador tiene que
+/// ser una palabra que quien copia la direccion entiende sin conocer la sintaxis, y `y` es
+/// el conjuncion de "este texto **y** este otro". Con un simbolo habria que saber cual es,
+/// y con `junto` habria que saber que se escribe entero.
+///
+/// Y UNA RUTA CON VARIOS PANELES **NO LLEVA COMENTARIO EN LOS DEMAS**. `/y/CLARKE/.../con/X`
+/// se rechaza, y no por capricho: un panel con comentario lleva su comentario en su propia
+/// parte, y permitir el segundo haria que hubiera dos sitios donde decir lo mismo, y el
+/// parser tendria que decidir cual gana. Rechazarlo es lo que hace que la sintaxis no pueda
+/// decir dos cosas distintas con la misma palabra.
+static Ruta _leerPanel(String ruta) {
+  final resto = ruta.substring(prefijoDeLectura.length);
+  final partes = resto.split('/');
 
-    final modulo = Uri.decodeComponent(partes[0]);
-    if (modulo.isEmpty) return RutaDesconocida(ruta);
+  // ============================================================================
+  // Y EL FINAL DEL PRIMER PANEL **SE CALCULA ANTES DE LEERLO**, Y NO DENTRO
+  // ============================================================================
+  //
+  // El fallo que esto arregla es real y es de este codigo: dentro de [_unPanel] se
+  // preguntaba "el tercer segmento es `con`?" sin mirar **donde se acaba este panel**. Con
+  // un panel solo el tercer segmento es de este panel y la pregunta es correcta. Con
+  // `/leer/KJV2006/John.3.16/y/CLARKE/John.3.16` el tercer segmento es `y`, la pregunta
+  // sale falsa y **la ruta entera se rechazaba**:
+  //
+  //     Rutas.leer('/leer/KJV2006/John.3.16/y/CLARKE/John.3.16')  ->  RutaDesconocida
+  //
+  // O sea que ninguna ruta con dos ventanas se entendia. Y como el sintoma es "no se
+  // entiende" --que es una ruta mal escrita--, el aviso de la aplicacion seria el de un
+  // enlace roto, y no el de que el formato de las ventanas no esta implementado.
+  final hastaPrincipal =
+      partes.length >= 4 && partes[2] == 'con' ? 4 : 2;
 
-    final referencia = Referencia.tryParse(Uri.decodeComponent(partes[1]));
-    if (referencia == null) return RutaDesconocida(ruta);
+  final primero = _unPanel(partes, 0, hastaPrincipal, ruta);
+  if (primero is RutaDesconocida) return primero;
+  final principal = primero as RutaLectura;
 
-    // Y SIN COMENTARIO SI NO HAY MAS PARTES. Y si las hay, tienen que ser exactamente
-    // `con` y un identificador: `/leer/KJV2006/John.3.16/CLARKE` no es una ruta con
-    // comentario, es una ruta mal escrita, y tratarla como lo primero haria que un
-    // enlace con un segmento de mas abriera el texto **sin** comentario y sin decir
-    // nada, que es la forma de que un enlace mal escrito parezca un enlace bueno.
-    String? comentario;
-    if (partes.length >= 3) {
-      if (partes[2] != 'con') return RutaDesconocida(ruta);
-      if (partes.length < 4) return RutaDesconocida(ruta);
-      comentario = Uri.decodeComponent(partes[3]);
-      if (comentario.isEmpty) return RutaDesconocida(ruta);
-    }
+  // Y **UN PANEL Y SOLO UNO** ES UNA RUTA DE LECTURA, no una de paneles. La distincion
+  // importa porque hay codigo que pregunta por el tipo --`if (ruta is RutaLectura)`-- y una
+  // ruta de un panel que fuera [RutaPaneles] haria que ese codigo tomara el camino de
+  // "varios" sin tener varios, que es un panel de mas en la fila de pestanas con un solo
+  // nombre en el.
+  if (partes.length == hastaPrincipal) return principal;
+  if (partes.length < hastaPrincipal) return RutaDesconocida(ruta);
 
-    return RutaLectura(modulo, referencia, comentario);
+  final restoPaneles = <RutaLectura>[];
+  var i = hastaPrincipal;
+  while (i < partes.length) {
+    if (partes[i] != 'y') return RutaDesconocida(ruta);
+    // Y TRES SEGMENTOS POR PANEL SECUNDARIO --`y`, el modulo y la referencia--, y si no
+    // llegan todos es una ruta mal escrita. Con `i + 2 >= partes.length` se acepta un
+    // `y` suelto al final, y `/leer/A/John.3.16/y` abriria un panel sin texto.
+    if (i + 2 >= partes.length) return RutaDesconocida(ruta);
+    final p = _unPanel(partes, i + 1, i + 3, ruta);
+    if (p is RutaDesconocida) return p;
+    final panel = p as RutaLectura;
+    // Y **SIN COMENTARIO EN UN PANEL SECUNDARIO**, con el motivo de la cabecera de este
+    // metodo: permitir el segundo haria que hubiera dos sitios donde decir lo mismo.
+    if (panel.comentario != null) return RutaDesconocida(ruta);
+    restoPaneles.add(panel);
+    i += 3;
   }
 
-  /// `/buscar/{modulo}/{palabra}`.
+  return RutaPaneles(ruta, principal, restoPaneles);
+}
+
+/// Un panel: `{modulo}/{ref}[/con/{comentario}]`, de [desde] hasta [hasta] --sin incluir--.
+///
+/// Y ES UN METODO Y NO UNA FUNCION SUELTA, porque el panel principal y los secundarios se
+/// leen **igual**, y duplicar el recorte --con su validacion de `con` y su decodificacion
+/// del modulo-- seria el sitio donde los dos caminos se separan sin que nadie lo note.
+///
+/// Y **[hasta] ENTRA POR PARAMETRO**, y no se deduce dentro. Es la leccion del fallo que
+/// esta escrito en [_leerPanel]: si el metodo decide por su cuenta donde acaba el panel,
+/// entonces con dos paneles decide mal, porque el tercer segmento ya no es suyo.
+///
+/// Y DEVUELVE **[Ruta]** Y NO [RutaLectura], y no por comodidad sino porque un panel mal
+/// escrito **no es una ruta de lectura**: es una ruta que no se entiende. Devolver
+/// `RutaLectura` obligaria a inventar un modulo vacio o una referencia falsa para el error,
+/// y cualquiera de las dos cosas convierte un error de sintaxis --que hay que avisar-- en
+/// una pantalla en blanco con el texto de una ruta que el usuario no escribio.
+static Ruta _unPanel(List<String> partes, int desde, int hasta, String ruta) {
+  if (partes.length < desde + 2 || partes.length < hasta) return RutaDesconocida(ruta);
+
+  final modulo = Uri.decodeComponent(partes[desde]);
+  if (modulo.isEmpty) return RutaDesconocida(ruta);
+
+  final referencia = Referencia.tryParse(Uri.decodeComponent(partes[desde + 1]));
+  if (referencia == null) return RutaDesconocida(ruta);
+
+  // Y SIN COMENTARIO SI NO HAY MAS SEGMENTOS **DE ESTE PANEL**. Y si los hay, tienen que
+  // ser exactamente `con` y un identificador: `/leer/KJV2006/John.3.16/CLARKE` no es una
+  // ruta con comentario, es una ruta mal escrita, y tratarla como lo primero haria que un
+  // enlace con un segmento de mas abriera el texto **sin** comentario y sin decir nada,
+  // que es la forma de que un enlace mal escrito parezca un enlace bueno.
+  String? comentario;
+  if (hasta >= desde + 4) {
+    if (partes[desde + 2] != 'con') return RutaDesconocida(ruta);
+    comentario = Uri.decodeComponent(partes[desde + 3]);
+    if (comentario.isEmpty) return RutaDesconocida(ruta);
+  }
+
+  return RutaLectura(modulo, referencia, comentario);
+}
+
+/// `/buscar/{modulo}/{palabra}`.
   ///
   /// Y EN SU PROPIO PREFIJO, y no dentro de `/leer/`, porque una busqueda **no** es un
   /// pasaje. Si fuera `/leer/KJV2006/buscar/propitiacion`, entonces `RutaLectura` tendria
@@ -381,6 +509,12 @@ class Rutas {
         RutaLectura(:final modulo, :final referencia, :final comentario) =>
           '$prefijoDeLectura${Uri.encodeComponent(modulo)}/${referencia.paraUrl}'
           '${comentario == null ? '' : '/con/${Uri.encodeComponent(comentario)}'}',
+        // Y LOS PANELES **EMPIEZAN POR EL DE DELANTE**, y no por el primero de la lista.
+        // Es lo que hace que la direccion siga siendo una frase con sentido --"este texto,
+        // y estos otros"-- y no una lista en la que el primero es el que se abrio antes.
+        RutaPaneles(:final principal, :final resto) =>
+          '${escribir(principal)}'
+          '${resto.map((RutaLectura r) => '/y/${escribir(r).substring(prefijoDeLectura.length)}').join()}',
         RutaDesconocida(:final texto) => texto,
       };
 }

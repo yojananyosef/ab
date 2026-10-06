@@ -1,5 +1,6 @@
 // Un versiculo: su numero y su texto.
 //
+import 'nota_al_pie.dart';
 import 'token_de_texto.dart';
 
 // Inmutable y sin metodos de UI. La View decide como se pinta; esto solo lleva
@@ -11,6 +12,7 @@ class Versiculo {
     this.numero,
     this.texto, {
     this.anotaciones = const <AnotacionDePalabra>[],
+    this.notas = const <NotaAlPie>[],
   });
 
   /// Numero dentro del capitulo. Empieza en 1.
@@ -26,6 +28,11 @@ class Versiculo {
   /// el modulo guarda un `raw` con marcas USFM como `\\+w Dios|strong="G2316"`,
   /// y de ahi sale el numero del lexicon y la marca `\\wj`, que es la de las palabras
   /// de Jesus. El texto plano sale del campo `text`, que ya viene limpio.
+  ///
+  /// Y CON UNA EXCEPCION, QUE ES LA UNICA VEZ QUE SE TOCA ESTE TEXTO: las **notas al pie**.
+  /// El `text` las traia pegadas al final --medido, en 5.844 versiculos-- y aqui ya no
+  /// estan; van en [notas]. No se quita nada mas, y que no se quite nada mas lo comprueba
+  /// `test/data/notas_al_pie_test.dart` sobre los **31.102 versiculos** del fichero real.
   final String texto;
 
   /// Lo que el modulo marco de cada palabra, en el mismo orden que las palabras de [texto].
@@ -38,6 +45,18 @@ class Versiculo {
   /// anotaciones hasta la palabra doce y sin nada despues-- pondria el numero del lexicon
   /// de la palabra trece en la doce, y eso no se ve hasta que alguien lo busca.
   final List<AnotacionDePalabra> anotaciones;
+
+  /// Las notas al pie de este versiculo, con la letra que les toca en el capitulo.
+  ///
+  /// Y VAN EN [notas] Y NO DENTRO DE [texto], y es la misma regla que [anotaciones] con la
+  /// diferencia de que aqui lo que va **al lado** es texto que estaba **dentro**. Medido el
+  /// 6 de octubre de 2026 sobre el KJV real: 6.959 notas en 5.844 versiculos, y la columna
+  /// `text` las traia pegadas al final, asi que se estaban pintando como si fueran
+  /// Escritura. Ver `nota_al_pie.dart`.
+  ///
+  /// Y LA LISTA ESTA **VACIA** CUANDO NO HAY, y no tiene un null: 29.258 de los 31.102
+  /// versiculos del KJV no traen ni una nota, y ese es el caso normal.
+  final List<NotaAlPie> notas;
 
   /// Las palabras que puso el traductor, no el modulo.
   ///

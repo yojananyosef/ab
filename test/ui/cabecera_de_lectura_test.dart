@@ -43,6 +43,7 @@ import 'package:ab/domain/models/modulo.dart';
 import 'package:ab/data/repositories/catalogo_repository.dart';
 import 'package:ab/ui/features/biblioteca/view_models/biblioteca_view_model.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
+import 'package:ab/ui/features/lector/view_models/preferencias_de_lectura.dart';
 import 'package:ab/ui/features/lector/views/lector_view.dart';
 import 'package:ab/ui/features/lector/widgets/hoja_de_versiones.dart';
 import 'package:flutter/material.dart';
@@ -411,7 +412,6 @@ void main() {
     // **despues**.
     testWidgets('el nombre de la version aparece cuando llega el manifiesto', (t) async {
       final biblioteca = BibliotecaViewModel();
-      final lector = LectorViewModel();
       // Y SIN `addTearDown` PARA ESOS DOS, porque `NavegadorAb.dispose` ya los cierra: con
       // las dos llamadas, el enrutador los cerraba y despues la prueba los cerraba otra
       // vez, y `ChangeNotifier.dispose` sobre uno ya cerrado lanza.
@@ -426,7 +426,7 @@ void main() {
       // todavia no ha llegado y la pantalla de lectura ya esta montada.
       final n = NavegadorAb(
         biblioteca: biblioteca,
-        lector: lector,
+        preferencias: PreferenciasDeLectura(),
         resaltados: ResaltadosViewModel(),
         abrir: (id, _) async => abierto.modulo,
       );

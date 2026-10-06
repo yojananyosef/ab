@@ -67,6 +67,35 @@ const ESPERA_DESCARGA = Number(process.env.AB_ESPERA_DESCARGA ?? 25000);
 /** Si hay que pasar antes por la biblioteca para que el modulo quede en el `IndexedDB`. */
 const procesados = new Set((process.env.AB_PREPARAR ?? '').split(',').filter(Boolean));
 
+// ============================================================================
+// BAJAR UN MODULO DE LA BIBLIOTECA ANTES DE MIRAR NADA
+// ============================================================================
+//
+// Y POR QUE HACE FALTA, MEDIDO. Para mirar **dos paneles** --que es la pantalla nueva-- hace
+// falta que los dos `.amod` esten en el dispositivo. En el perfil persistente solo estaba el
+// KJV2006, y la captura de `/leer/KJV2006/John.3.16/y/CLARKE/John.3.16` salia con **un solo
+// panel y su barra**, que es exactamente lo que la app debe hacer cuando el segundo modulo no
+// esta --y asi que la captura no miraba nada de lo nuevo.
+//
+// Y POR QUE HAY QUE **PULSAR**, y no bajarlo por la URL. La biblioteca **no baja nada sola**:
+// abrir `/` no descarga el modulo, hay que darle al boton. Y `page.click('text=Descargar')` no
+// encuentra nada, porque Flutter pinta en un `canvas` y el DOM no tiene el texto. Es lo
+// mismo que ya hace `pulsar.mjs`, y por eso las coordenadas estan **medidas sobre una
+// captura** y no calculadas.
+//
+// Y SE ESCRIBE COMO `AB_BAJAR='CLARKE,180,568'`.
+//
+// Y LAS COORDENADAS **SE PASAN POR PARAMETRO** y no estan escritas aqui, porque dependen del
+// ancho y de la altura de cada tarjeta. Con el perfil de este repositorio, a 360 px, medido
+// sobre la captura de la biblioteca del 6 de octubre de 2026 --con la relacion de ironias de
+// la captura, que es 2--:
+//
+//     KJV2006    boton "Leer"       (180,381)
+//     CLARKE     boton "Descargar" (180,568)
+//
+// Y EL ESPERA TRAS EL PULSO ES LARGA, porque son **57 MiB** del comentario, medido.
+const bajar = (process.env.AB_BAJAR ?? '').split(';').filter(Boolean);
+
 /** Un ancho y un alto con nombre, porque "360x760" en una lista no dice nada. */
 const PANTALLAS = {
   movil: { width: 360, height: 760 },
@@ -188,9 +217,39 @@ async function main() {
       // Asi que se abre primero la biblioteca --donde esta el boton de descargar-- y se
       // espera a que el modulo este en el `IndexedDB`. A partir de ahi, la segunda vez, el
       // enlace profundo si abre la lectura y la captura es la que se quiere mirar.
-      if (procesados.has('biblioteca')) {
+      if (procesados.has('biblioteca') || bajar.length > 0) {
         await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(ESPERA_DESCARGA);
+        await page.waitForTimeout(ESPERA);
+
+        for (const uno of bajar) {
+          // Y LOS DOS SEPARADORES SON DISTINTOS A PROPOSITO: `;` separa los modulos y `,` separa
+          // las tres partes de cada uno. Con `,` para los dos, `AB_BAJAR='CLARKE,180,568'`
+          // se rompia en tres trozos --`CLARKE`, `180` y `568`-- y el sintoma era
+          //
+          //     AB_BAJAR: "CLARKE" no tiene las tres partes "id,x,y".
+          //
+          // que al menos nombra la variable. Con `:` para las partes y `,` para la lista
+          // pasaba lo contrario, y el error era del navegador y con un `undefined` en medio:
+          //
+          //     mouse.click: Protocol error (Input.dispatchMouseEvent): Invalid parameters
+          //
+          // que no dice nada de que el numero no era un numero.
+          const [id, ...resto] = uno.split(',');
+          const [x, y] = resto.map(Number);
+          if (!Number.isFinite(x) || !Number.isFinite(y)) {
+            throw new Error(
+              `AB_BAJAR: "${uno}" no tiene las tres partes "id,x,y".`,
+            );
+          }
+          console.log(`  bajando ${id} con el pulso en (${x}, ${y})`);
+          await page.mouse.click(x, y);
+          // Y LA ESPERA ES **POR MODULO** y no una sola para todos: son 57 MiB el primero y
+          // 22 el segundo, y con una espera comun el segundo se pulsaria mientras el primero
+          // baja --y entonces el segundo se perderia, porque la biblioteca no acepta dos
+          // descargas a la vez.
+          await page.waitForTimeout(Number(process.env.AB_ESPERA_DESCARGA ?? 25000));
+        }
+        await page.waitForTimeout(ESPERA);
       }
 
       console.log(`==> ${ruta} a ${medida.width}x${medida.height}`);

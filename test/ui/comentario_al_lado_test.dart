@@ -19,6 +19,7 @@ import 'package:ab/ui/core/rutas.dart';
 import 'package:ab/ui/core/tema.dart';
 import 'package:ab/ui/features/biblioteca/view_models/biblioteca_view_model.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
+import 'package:ab/ui/features/lector/view_models/preferencias_de_lectura.dart';
 import 'package:ab/ui/features/lector/views/lector_view.dart';
 import 'package:ab/ui/features/lector/widgets/hoja_de_comentarios.dart';
 import 'package:flutter/material.dart';
@@ -669,12 +670,15 @@ void main() {
 
   group('5. el enrutador', () {
     late BibliotecaViewModel biblioteca;
-    late LectorViewModel lector;
+    // Y ESTA VARIABLE **NO** ES UN LECTOR, y antes lo era: el enrutador recibia el
+    // `LectorViewModel` por el constructor y este grupo lo miraba a el. Ahora el enrutador
+    // crea un view model por panel y el lector de lo que se esta viendo es `n.lector` --
+    // **el del panel de delante**. Un lector propio que el enrutador no usa daria verde
+    // con cualquier fallo de la pantalla, que es justo lo que este grupo comprueba.
     late List<String> abiertos;
 
     setUp(() {
       biblioteca = BibliotecaViewModel();
-      lector = LectorViewModel();
       abiertos = <String>[];
       // Y NO SE DESCARGA EL LECTOR AQUI, porque `NavegadorAb.dispose` ya lo hace y
       // descargar dos veces el mismo `ChangeNotifier` lanza
@@ -730,7 +734,7 @@ void main() {
 
       return NavegadorAb(
         biblioteca: biblioteca,
-        lector: lector,
+        preferencias: PreferenciasDeLectura(),
         resaltados: ResaltadosViewModel(),
         descargar: puedeDescargar ? aLaBaja : null,
         abrir: (id, referencia) async {
@@ -765,10 +769,10 @@ void main() {
       await n.irA(const RutaLectura('KJV2006', Referencia('John', 3, 16), 'CLARKE'));
       await tester.pumpAndSettle();
 
-      expect(lector.estado, EstadoLecturaTexto.leyendo);
-      expect(lector.idDelModulo, 'KJV2006');
-      expect(lector.idDelComentario, 'CLARKE');
-      expect(lector.notasDe(16), hasLength(1));
+      expect(n.lector.estado, EstadoLecturaTexto.leyendo);
+      expect(n.lector.idDelModulo, 'KJV2006');
+      expect(n.lector.idDelComentario, 'CLARKE');
+      expect(n.lector.notasDe(16), hasLength(1));
       expect(abiertos, <String>['KJV2006', 'CLARKE']);
 
       // Y LA URL DICE LAS DOS COSAS. Es lo que se copia y lo que se manda, y si la
@@ -789,10 +793,10 @@ void main() {
       await n.irA(const RutaLectura('KJV2006', Referencia('John', 3, 16), 'CLARKE'));
       await tester.pumpAndSettle();
 
-      expect(lector.estado, EstadoLecturaTexto.leyendo);
-      expect(lector.pasaje!.versiculo(16)!.texto, startsWith('For God so loved'));
-      expect(lector.idDelComentario, isNull);
-      expect(lector.motivoDelComentario, contains('no esta descargado'));
+      expect(n.lector.estado, EstadoLecturaTexto.leyendo);
+      expect(n.lector.pasaje!.versiculo(16)!.texto, startsWith('For God so loved'));
+      expect(n.lector.idDelComentario, isNull);
+      expect(n.lector.motivoDelComentario, contains('no esta descargado'));
       expect(abiertos, <String>['KJV2006'],
           reason: 'no se intenta abrir lo que no esta');
     });
@@ -822,8 +826,8 @@ void main() {
       // Y LOS NUMEROS ESTAN MEDIDOS: Juan 4 tiene 45 y Juan 5 tiene 43 versiculos con nota.
       // Y Juan 5:1 **no** tiene nota --tampoco Juan 3:1--, asi que comprobar por el 1
       // seria comprobar un caso que no existe.
-      expect(lector.versiculosConNota, isNot(equals(<int>[])));
-      expect(lector.totalDeNotas, 43, reason: 'las notas de Juan 5, no las de Juan 3');
+      expect(n.lector.versiculosConNota, isNot(equals(<int>[])));
+      expect(n.lector.totalDeNotas, 43, reason: 'las notas de Juan 5, no las de Juan 3');
       expect(abiertos, trasAbrir, reason: 'no se vuelve a abrir ningun modulo');
     });
 
@@ -843,7 +847,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Y EL TEXTO ESTA ENTERO, que es lo que no puede romperse.
-      expect(lector.estado, EstadoLecturaTexto.leyendo);
+      expect(n.lector.estado, EstadoLecturaTexto.leyendo);
 
       // Y HAY UN BOTON CON EL TAMANO, que es lo que se decide pulsar.
       // Y CON LA UNIDAD DENTRO, no fuera. El tamano salia del `Modulo.megabytes`, que
@@ -869,7 +873,7 @@ void main() {
       await montarEnPantalla(tester, n);
       await n.irA(const RutaLectura('KJV2006', Referencia('John', 3, 16), 'CLARKE'));
       await tester.pumpAndSettle();
-      expect(lector.idDelComentario, isNull);
+      expect(n.lector.idDelComentario, isNull);
 
       // Y ESTO ES LO QUE PASA AL TERMINAR: la biblioteca actualiza lo que hay.
       biblioteca.actualizarIdsLocales(
@@ -878,10 +882,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(lector.idDelComentario, 'CLARKE');
-      expect(lector.notasDe(16), hasLength(1));
-      expect(lector.estado, EstadoLecturaTexto.leyendo);
-      expect(lector.motivoDelComentario, isNull);
+      expect(n.lector.idDelComentario, 'CLARKE');
+      expect(n.lector.notasDe(16), hasLength(1));
+      expect(n.lector.estado, EstadoLecturaTexto.leyendo);
+      expect(n.lector.motivoDelComentario, isNull);
       // Y LA URL NO CAMBIA. El comentario no es un sitio nuevo: es el mismo pasaje con
       // algo al lado, y quien copie la direccion tiene que poder mandarla.
       expect(Rutas.escribir(n.ruta), '/leer/KJV2006/John.3.16/con/CLARKE');
@@ -900,7 +904,7 @@ void main() {
 
       expect(find.widgetWithText(TextButton, 'Descargar, 54,9 MB'), findsNothing);
       expect(find.textContaining('no esta descargado'), findsOneWidget);
-      expect(lector.estado, EstadoLecturaTexto.leyendo);
+      expect(n.lector.estado, EstadoLecturaTexto.leyendo);
     });
 
     testWidgets('volver a la biblioteca cierra los dos modulos', (tester) async {
@@ -913,13 +917,13 @@ void main() {
       await montarEnPantalla(tester, n);
       await n.irA(const RutaLectura('KJV2006', Referencia('John', 3, 16), 'CLARKE'));
       await tester.pumpAndSettle();
-      expect(lector.tieneComentario, isTrue);
+      expect(n.lector.tieneComentario, isTrue);
 
       await n.irAHome();
       await tester.pumpAndSettle();
 
-      expect(lector.tieneComentario, isFalse);
-      expect(lector.idDelModulo, isNull);
+      expect(n.lector.tieneComentario, isFalse);
+      expect(n.lector.idDelModulo, isNull);
     });
   });
 }

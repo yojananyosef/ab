@@ -58,6 +58,9 @@ import '../widgets/hoja_de_versiones.dart';
 import '../widgets/hoja_de_formato.dart';
 import '../widgets/hoja_de_resaltado.dart';
 import '../view_models/resaltados_view_model.dart';
+import '../widgets/fila_de_menu.dart';
+import '../widgets/hoja_de_notas.dart';
+import '../widgets/notas_al_pie_del_capitulo.dart';
 import '../widgets/terminos_del_modulo.dart';
 
 class LectorView extends StatefulWidget {
@@ -77,7 +80,25 @@ class LectorView extends StatefulWidget {
     this.alBuscar,
     this.modulosDelCatalogo = const <Modulo>[],
     this.versiones = const <VersionDisponible>[],
+    this.mostrarBarraDeAplicacion = true,
   });
+
+  /// Si este panel pinta su propia `AppBar`.
+  ///
+  /// Y **NO ES UN GUSTO**, es lo que evita que dos pestanas muestren dos barras. Con un
+  /// solo panel abierto, la barra es lo unico que dice que texto esta abierto --el nombre
+  /// de la version vive ahi-- y sin ella la pantalla no sabe que se esta leyendo nada.
+  ///
+  /// Y CON DOS PANELES **NO HAY NINGUNA BARRA**, y el motivo es que el nombre de la
+  /// version pasa a estar en la **pestana**, que es donde esta en Logos. Poner las dos
+  /// cosas --la barra en cada panel y el nombre en la pestana-- seria el mismo dato dos
+  /// veces en la parte de arriba de la ventana, y medido a 1440 px son dos lineas de texto
+  /// de las que solo una cambia al cambiar de pestana.
+  ///
+  /// Y POR DEFECTO **SI**, y no porque sea lo de siempre: las 24 pruebas que montan esta
+  /// pantalla sin panel de pestañas tienen que ver lo que ve quien lee con un solo texto
+  /// abierto, que es la barra.
+  final bool mostrarBarraDeAplicacion;
 
   final LectorViewModel viewModel;
 
@@ -256,9 +277,15 @@ class _LectorViewState extends State<LectorView> {
     return _PestanaDeVersion(nombre: nombre, alPulsar: widget.alAbrirVersiones);
   }
 
-  Widget _panelConBarra(LectorViewModel vm) {
-    return Scaffold(
-      appBar: AppBar(
+  /// La barra de arriba, cuando este panel la tiene.
+  ///
+  /// Y EN UN METODO APARTE Y NO EN EL `Scaffold` EN LINEA, por un motivo concreto: con
+  /// pestanas hay dos caminos --con barra y sin barra-- y con todo el `AppBar` escrito en
+  /// linea habia que elegir entre "todo" y "nada", y con lo que habia que poner la barra
+  /// dentro de un `if` de 80 lineas en medio de un `Column`. En un metodo son 80 lineas
+  /// con nombre, y el `body` se lee sin ellas.
+  PreferredSizeWidget _appBar(LectorViewModel vm) {
+    return AppBar(
         titleSpacing: Medidas.margenEstrecho,
         // Y LA BARRA MIDE LOS **56 px** DE MATERIAL, y no mas, porque en ella va **solo**
         // la linea de la version. El campo de la referencia va en su propia fila debajo,
@@ -273,8 +300,8 @@ class _LectorViewState extends State<LectorView> {
         // Antes de este change ese campo vivia **en medio del texto**, y era lo mismo: lo
         // que cambia no es el sitio dentro de la pantalla sino que **deja de competir** con
         // los botones de la barra.
-        // Y EL TITULO **ES** LA CABECERA, y no un `Text` con la referencia. Es la decision
-        // que mas se ve de esta pantalla y la que mas se Habia Tardado: la referencia y la
+        // Y EL TITULO **ES LA CABECERA**, y no un `Text` con la referencia. Es la decision
+        // que mas se ve de esta pantalla y la que mas se habia tardado: la referencia y la
         // version son las dos cosas que mas se usan --una para ir a otro sitio, otra para
         // comparar-- y estaban en un icono y en ningun sitio.
         //
@@ -284,9 +311,9 @@ class _LectorViewState extends State<LectorView> {
         // de memoria, y el pasaje es el que no.
         //
         // Y NO HAY ICONO DE NINGUNO DE LOS DOS. Se **ahorra** un boton, que es el problema
-        // que tenia la barra --cuatro iconos y ninguno util-- en vez de añadir uno mas.
+        // que tenia la barra --cuatro iconos y ninguno util-- en vez de anadir uno mas.
         title: _tituloDeLaBarra(vm),
-        // Y **SIN FLECHA DE VOLVER**, y no por forgotten sino por decision. El panel de
+        // Y **SIN FLECHA DE VOLVER**, y no por olvidado sino por decision. El panel de
         // herramientas **es** el camino de vuelta, y tener las dos cosas --una barra lateral
         // que dice "Biblioteca" y una flecha que tambien vuelve-- es no decidir cual manda.
         // En la captura de Logos no hay flecha de volver en la cabecera del panel, y la
@@ -317,12 +344,15 @@ class _LectorViewState extends State<LectorView> {
             ),
             onPressed: widget.alAlternarPalabrasDeJesus,
           ),
-          // Y EL BOTON DE **FORMATO**, que es el `Formato` de la fila de menu de Logos. Y
-          // antes no estaba, y el motivo --escrito en el spec del marco-- era que un elemento
-          // de barra que no lleva a ninguna parte es ruido con apariencia de producto.
+          // Y EL BOTON DE **FORMATO**, que es el `Formato` de la fila de menu de Logos.
           //
-          // Y AHORA HAY ALGO DETRAS, con lo que el boton es honesto. Y el icono es una `A`
-          // grande y una pequena, que es literalmente lo que es: el formato de las letras.
+          // Y ESTA DUPLICADO CON LA FILA DE MENU **A PROPOSITO**, y hay que decirlo porque
+          // con las dos barras es la pregunta evident. El motivo es que las dos cosas
+          // siguen siendo distintas pantallas: con un solo panel la fila de menu **no se
+          // pinta** --ver `fila_de_menu.dart`, el cromo medido-- y entonces el formato
+          // solo se abre desde el icono; con dos o mas, la barra **no se pinta** y el
+          // formato solo se abre desde la fila. Lo que hay siempre es la funcion, y hay
+          // una sola entrada visible en cada anchura.
           IconButton(
             tooltip: 'Formato de lectura',
             icon: const Icon(Icons.format_size),
@@ -339,7 +369,12 @@ class _LectorViewState extends State<LectorView> {
           ),
           SizedBox(width: Medidas.margenEstrecho / 2),
         ],
-      ),
+      );
+  }
+
+  Widget _panelConBarra(LectorViewModel vm) {
+    return Scaffold(
+      appBar: widget.mostrarBarraDeAplicacion ? _appBar(vm) : null,
       body: SafeArea(
         // Y LA FILA DE LA REFERENCIA VA **DEBAJO** DE LA BARRA Y **ENCIMA** DEL TEXTO, y
         // es una fila propia con su borde. Antes de este change estaba en medio del texto
@@ -351,12 +386,86 @@ class _LectorViewState extends State<LectorView> {
               campoDeReferencia: _campoDeReferencia(vm),
               flechas: _tituloConFlechas(vm),
             ),
+            // Y LA FILA DE MENU **SOLO CUANDO NO HAY BARRA**, y no es una preferencia.
+            //
+            // Con la barra de aplicacion puesta, buscar, formato y comentario ya estan
+            // en ella, y una fila de menu repetiria las tres funciones 40 px mas abajo.
+            // Con varias pestanas hay una fila de pestañas arriba en vez de una barra --
+            // es lo que hace Logos, y es lo que evita que dos barras compitan por el
+            // ancho--, asi que las funciones tienen que estar en algun sitio, y la fila
+            // de menu es el sitio donde las puso Logos.
+            //
+            // Y LA INVERSION ES LA QUE IMPORTA: **la fila aparece cuando desaparece la
+            // barra**, nunca las dos. Medido a 1440 px, la barra son 56 px y la fila 36, y
+            // las dos a la vez son 92 px de cromo por encima del primer versiculo, con la
+            // fila de pestañas y la cabecera por delante. Una columna de 769 px de texto
+            // no necesita eso encima.
+            if (!widget.mostrarBarraDeAplicacion) ...<Widget>[
+              FilaDeMenu(
+                contexto: _contextoDeLaFila(vm),
+                textoDelComentario: vm.idDelComentario,
+                hayComentario: vm.tieneComentario,
+                alBuscar: _buscarEnEstePanel,
+                alNotas: () => _abrirNotasDe(vm),
+                alFormato: () => abrirHojaDeFormato(
+                  context,
+                  preferencia: vm.preferenciaDeLectura,
+                  alCambiar: vm.cambiarPreferencia,
+                  alRestaurar: vm.restaurarPreferencia,
+                ),
+                alComentario: widget.alPedirComentario,
+              ),
+            ],
             Expanded(child: _cuerpo(vm)),
           ],
         ),
       ),
     );
   }
+
+  /// Lo que la fila de menu necesita saber: si este pasaje trae notas al pie.
+  ///
+  /// Y SE CUENTA **CON ANCLA**, y no todas. Una nota sin ancla no tiene letra en el texto
+  /// y esta hoja existe para volver a la nota desde el versiculo: sin letra es un parrafo
+  /// suelto. Medido: el ancla cae dentro del versiculo en **6.956 de 6.959** notas, asi que
+  /// las tres que no son la excepcion y no la regla.
+  ContextoDeLaFila _contextoDeLaFila(LectorViewModel vm) {
+    // Y UN PASAGE **DE NOTAS** NO TIENE NOTAS AL PIE. Un panel de comentario trae notas
+    // de comentario --`Pasaje.notas`-- y no notas al pie, que son cosa de un texto de
+    // Biblia. Preguntar por `versiculos` en un panel de comentario da una lista vacia, y
+    // eso es correcto: en un comentario no hay glosas al pie.
+    final p = vm.pasaje;
+    if (p == null || p.traeNotas) {
+      return const ContextoDeLaFila(
+        hayNotas: false,
+        textoBuscando: false,
+      );
+    }
+    return ContextoDeLaFila.dePasaje(p.versiculos);
+  }
+
+  /// Abrir la hoja con las notas al pie de este pasaje.
+  ///
+  /// Y NO SE ABRE NADA SI NO HAY, y no se avisa: la entrada de la fila no se llega a ver sin
+  //  notas, y si entre medias el pasaje cambia la peticion ya no tiene sentido. Devolver
+  //  un `bool` permite que quien llama lo sepa sin mirar el estado del view model desde
+  //  fuera, que es la regla del proyecto.
+  Future<void> _abrirNotasDe(LectorViewModel vm) async {
+    final p = vm.pasaje;
+    if (p == null) return;
+    await mostrarHojaDeNotas(
+      context: context,
+      versiculos: p.versiculos,
+      titulo: p.referencia.texto,
+    );
+  }
+
+  /// Buscar en este panel, si se puede.
+  ///
+  /// Y **NO HACE NADA SI NO HAY**, en vez de mirar si el callback existe: la entrada se
+  /// pinta solo cuando hay algo detras --ver `fila_de_menu.dart`--, y una entrada que
+  /// aparece sin hacer nada es peor que una entrada que no aparece.
+  void _buscarEnEstePanel() => widget.alBuscar?.call();
 
   /// Marcar o quitar el resaltado de un versiculo.
   ///
@@ -466,6 +575,24 @@ class _LectorViewState extends State<LectorView> {
           MargenDeLectura(hijo: _NumeroDeCapitulo(capitulo: vm.leyendo?.capitulo)),
 
           MargenDeLectura(hijo: _capitulo(vm, estiloVersiculo)),
+
+          // Y LAS NOTAS AL PIE VAN **DESPUES** DEL CAPITULO Y **ANTES** DE LOS TERMINOS.
+          //
+          // Y NO ES COSMETICA: la lista de notas pertenece al capitulo que se acaba de leer,
+          // asi que va pegada a el. Y los terminos del modulo --la licencia, la atribucion-- son
+          // de otra cosa: son del **fichero**, no del capitulo, y van al final de todo. Poner
+          // los terminos antes haria que al bajar al final de Juan 3 apareciera una linea de
+          // licencia antes que las notas de Juan 3, que es justo al reves de como se lee.
+          MargenDeLectura(
+            hijo: NotasAlPieDelCapitulo(
+              // Y SOLO CUANDO EL PASAJE **TRAIGA VERSICULOS**. Un pasaje de comentario no
+              // tiene, y sus notas las pinta `_ColumnaDeNotas` debajo de cada versiculo, con
+              // otra regla: alli la nota va pegada a su versiculo porque es lo unico que hay.
+              versiculos: vm.pasaje?.traeNotas == true
+                  ? const <Versiculo>[]
+                  : vm.pasaje?.versiculos ?? const <Versiculo>[],
+            ),
+          ),
 
           PieDeLectura(
             hijo: MargenDeLectura(
@@ -1435,7 +1562,11 @@ class _TextoDelVersiculoState extends State<_TextoDelVersiculo> {
     final v = widget.versiculo;
     final anotaciones = v.anotaciones;
 
-    if (anotaciones.isEmpty) {
+    // Y ESTA RAMA ES SOLO PARA EL VERSICULO SIN ANOTACIONES **Y SIN NOTAS**. Con notas pero
+    // sin anotaciones --que es el caso de un modulo sin lexicon-- hace falta el camino de
+    // abajo, porque si no la letra de la nota no se veria. Y se ha visto: la primera version
+    // de esto separaba las dos cosas y un versiculo con nota y sin lexicon salia sin letra.
+    if (anotaciones.isEmpty && v.notas.isEmpty) {
       return Text(
         v.texto,
         style: widget.estilo,
@@ -1447,6 +1578,31 @@ class _TextoDelVersiculoState extends State<_TextoDelVersiculo> {
     }
 
     final palabras = v.palabras;
+    // Y LA LETRA DE LA NOTA VA **PEGADA A LA PALABRA**, y por eso se mete en el mismo
+    // `TextSpan` de la palabra y no en una fila aparte: es una letra en superindice al final
+    // de la palabra a la que el modulo la engancho, que es lo que hace Logos y lo que hace
+    // una Biblia impresa.
+    //
+    // Y SI DOS NOTAS CAEN EN LA MISMA PALABRA, SE PONEN LAS DOS SEGUIDAS, y no se pierde
+    // ninguna: hay versiculos con dos notas en la misma palabra y con una sola se ensenaria
+    // media nota sin avisar.
+    final letras = <int, List<String>>{};
+    for (final n in v.notas) {
+      final a = n.ancla;
+      if (a == null) continue;
+      // Y [NotaAlPie.ancla] ES **CUANTAS PALABRAS HAY ANTES** de la nota, no el indice de la
+      // palabra: asi es como se cuenta y asi queda escrito en el parser. La letra se pinta
+      // **despues** de la palabra que va justo antes, o sea en el indice `a - 1`, y con `a == 0`
+      // --una nota antes de la primera palabra-- antes de la primera, que es donde va.
+      //
+      // Y ESO HACE QUE `a` PUEDA VALER EL NUMERO DE PALABRAS, que es lo que significa "la nota
+      // va despues de la ultima palabra". Medido: asi pasa en 1Cronicas 1:6, cuya nota va
+      // detras de `Togarmah.`. Sin esta regla, `letras[a]` con `a` fuera de rango no pintaba
+      // nada y la letra se perdia en silencio.
+      final donde = a == 0 ? 0 : a - 1;
+      (letras[donde] ??= <String>[]).add(n.letra);
+    }
+
     return Text.rich(
       TextSpan(
         style: widget.estilo,
@@ -1460,6 +1616,19 @@ class _TextoDelVersiculoState extends State<_TextoDelVersiculo> {
                   : null,
               style: _estiloDePalabra(anotaciones, i),
             ),
+            // Y LA LETRA CON SU PROPIO ESTILO, porque si herudara el de la palabra --que
+            // puede ser rojo si es de Jesus, o tener el subrayado del resaltado-- la letra
+            // pareciera parte de la palabra. Y VA EN `textoSuave`, que es informacion
+            // secundaria y no Escritura, y le basta el umbral de 4,5:1.
+            for (final letra in letras[i] ?? const <String>[])
+              TextSpan(
+                text: letra,
+                style: widget.estilo.copyWith(
+                  fontSize: widget.estilo.fontSize! * 0.62,
+                  height: 1.0,
+                  color: context.colores.textoSuave,
+                ),
+              ),
           ],
         ],
       ),

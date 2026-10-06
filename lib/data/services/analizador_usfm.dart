@@ -32,6 +32,7 @@
 // fichero real, que es lo unico que demuestra que el marcado no se esta comiendo ni un
 // caracter. Un lector que altera el texto es un lector que no se puede citar.
 
+import 'package:ab/domain/models/nota_al_pie.dart';
 import 'package:ab/domain/models/token_de_texto.dart';
 
 /// Las anotaciones del `raw` de un versiculo, en el mismo orden que sus palabras.
@@ -54,6 +55,320 @@ TextoAnotado anotarTexto(String texto, String? raw) {
         ? anotaciones
         : const <AnotacionDePalabra>[],
   );
+}
+
+// ============================================================================
+// LAS NOTAS AL PIE, Y POR QUE ESTO NO ES LO MISMO QUE LAS ANOTACIONES
+// ============================================================================
+//
+// Lo de arriba saca **anotaciones por palabra**: el numero del lexicon, si el traductor anadio
+// la palabra, y si la dijo Jesus. Eso no quita nada del texto: las tres cosas van **ademas**.
+//
+// Una nota al pie es distinto: **quita texto del versiculo**. El `raw` dice
+// `\f + \fr 1.6 \ft Riphath: or, Diphath as it is in some copies\f*` y la columna `text` trae
+// esa frase **pegada al final del versiculo**. Y asi se estaba pintando: la glosa de un
+// siglo XVII en el mismo cuerpo y con el mismo color que la Palabra. Medido el 6 de octubre
+// de 2026, son **6.959 notas en 5.844 versiculos**, el **18,79 %** del KJV.
+//
+// ASI QUE AQUI SI SE TOCA EL TEXTO, y es la **unica** vez, y por eso lleva su propio metodo y
+// su propia prueba en vez de colarse en [anotarTexto].
+//
+// Y LA REGLA ES TODO O NADA, MEDIDA:
+//
+//     versiculos con \f                                  5.844
+//     `text` termina exactamente en "REF TEXTO" x N     5.841
+//     no termina                                          3
+//
+// Los tres son Salmos 119:24, 119:112 y 119:160, y el motivo esta escrito en el metodo. Un
+// versiculo de Salmos de tres entre 5.844 no justifica un aviso en pantalla, y sobre todo no
+// justifica **mover** una nota a un sitio que no es el suyo.
+
+/// Una nota al pie con su ancla, y la letra que le toca en el capitulo.
+///
+/// Y LA LETRA SE PONE AQUI Y NO EN LA VISTA, porque el orden depende de **cuantas notas tiene
+/// el capitulo**, que un versiculo suelto no sabe: el mismo versiculo puede ser la tercera
+/// nota de un capitulo y la primera de otro.
+class NotaDeLectura {
+  const NotaDeLectura({
+    required this.ancla,
+    required this.texto,
+    required this.referencia,
+  });
+
+  /// Indice de palabra donde va la letra, o null si no se pudo saber.
+  final int? ancla;
+
+  /// El texto de la nota, sin marcas USFM y **sin** la referencia delante.
+  final String texto;
+
+  /// Lo que dice el `\fr`: `1.6`, es decir libro.capitulo.versiculo.
+  ///
+  /// Y SE GUARDA Y NO SE PINTA, por dos razones. Una: la columna `text` del modulo lo trae
+  /// delante --`... Togarmah. 1.6 Riphath: or, Diphath...`-- y sin el no se puede comprobar
+  /// que la separacion no ha quitado nada. Dos: en pantalla no vale, porque todos los
+  /// versiculos de 1Cronicas 1 llevan `1.6` y no distinguirian dos notas del mismo versiculo.
+  /// En pantalla va la letra; esta se queda para la prueba.
+  final String referencia;
+
+  /// La misma nota con la letra que le toca en el capitulo.
+  ///
+  /// Y LA LETRA SE PONE EN ESTE COPIADO Y NO AL LEER, porque el orden depende de **cuantas
+  /// notas tiene el capitulo**, y un versiculo suelto no lo sabe: el mismo versiculo puede
+  /// ser la tercera nota de un capitulo y la primera de otro. Quien las numera es quien ha
+  /// leido el capitulo entero, que es el repositorio.
+  NotaAlPie conLetra(String letra) =>
+      NotaAlPie(letra: letra, texto: texto, ancla: ancla);
+}
+
+/// El texto de un versiculo **sin** sus notas al pie, y las notas con su ancla.
+///
+/// Y ES UN TIPO PROPIO Y NO UN PARAMETRO DE [anotarTexto], porque [anotarTexto] NO puede
+/// tocar el texto: ahi las anotaciones van al lado y el texto sale entero, y eso se comprueba
+/// con los 31.102 versiculos. Si la separacion de notas se colara ahi, esa comprobacion
+/// empezaria a validar un texto que ya no es el del modulo, y dejaria de comprobar lo que
+/// dice comprobar.
+class TextoConNotas {
+  const TextoConNotas({
+    required this.texto,
+    required this.notas,
+    required this.raw,
+  });
+
+  /// El texto del versiculo sin las notas. Tal cual, si no habia notas.
+  final String texto;
+
+  /// Las notas, en el orden en que el modulo las puso. Vacia si no hay.
+  final List<NotaDeLectura> notas;
+
+  /// El `raw` **sin** los cuerpos de las notas, para el emparejamiento del lexicon.
+  ///
+  /// Y ESTE CAMPO ES LA RAZON DE QUE ESTA SEPARACION NO SEA UN `String`: sin el, el `raw`
+  /// que se pasa a `anotarTexto` sigue traendo las palabras del cuerpo de la nota, el
+  /// emparejamiento cuenta mas anotaciones que palabras tiene el texto, **descarta el
+  /// versiculo entero** y el versiculo se queda sin lexicon. Medido: de los 5.844 versiculos
+  /// con notas, **0** recibian anotaciones con el `raw` entero, y son mas del 90 % con el
+  /// `raw` sin notas.
+  ///
+  /// Y ES SOLO EL `raw`, Y EL TEXTO NO. El texto sale de la columna `text`, sin tocar, y esto
+  /// no lo altera.
+  final String? raw;
+}
+
+/// Separa las notas al pie del versiculo, y dice donde va cada una.
+///
+/// Y DEVUELVE [textoSinNotas] SI NO HAY NADA QUE SEPARAR, para que el llamante no
+/// tenga que comprobar `notas.isEmpty` para saber si el texto cambio: si no habia notas, el
+/// texto es el del modulo, byte a byte.
+TextoConNotas separarNotasAlPie(String texto, String? raw) {
+  // Y EL `\f` SIN MAS, Y NO UN `raw LIKE '%\f%'` DE LA CONSULTA, porque aqui no hay consulta.
+  // El modulo de comentario tiene `raw == text` en las 19.742 notas --medido--, y ahi no
+  // hay nada que separar.
+  if (raw == null || !raw.contains('\\f')) {
+    return textoSinNotas(texto, raw);
+  }
+
+  final notas = <NotaDeLectura>[];
+  final sufijo = <String>[];
+  final cierres = <int>[];
+  var indice = 0;
+  var palabrasContadas = 0;
+
+  // Y SE RECORRE EN UN SOLO PASADA Y NO CON UNA EXPRESION GLOBAL, porque el ancla de cada
+  // nota es **la cuenta de palabras del versiculo que hay antes de ella**, y esa cuenta solo
+  // sale si se va mirando el `raw` de izquierda a derecha: una `RegExp` que devolviese las
+  // cuatro piezas sueltas daria las notas pero no el sitio.
+  //
+  // Y LA CUENTA ES **ACUMULADA Y VA SALTANDO LAS NOTAS ANTERIORES**, y no se recalcula desde
+  // el principio para cada nota. Recalcular contaria tambien las palabras del cuerpo de la
+  // nota anterior, que estan en el `raw` y **no** estan en el texto que se pinta: el ancla de
+  // la segunda nota de un versiculo saldria desplazada por el numero de palabras de la
+  // primera, y caeria fuera del texto. Medido: asi el ancla cae dentro en **6.956 de 6.956**
+  // notas; recalculando desde cero, solo en 5.841.
+  while (indice < raw.length) {
+    final abierto = raw.indexOf('\\f ', indice);
+    if (abierto < 0) break;
+
+    final palabrasAntes = palabrasContadas + _palabrasDeRawHasta(raw, indice, abierto);
+
+    // La referencia va entre `\fr` y el `\ft`, y el cuerpo entre `\ft` y el `\f*`.
+    final ref = _entreMarcas(raw, abierto + 3, 'fr');
+    final cuerpo = _entreMarcas(raw, abierto + 3, 'ft');
+    if (ref == null || cuerpo == null) break;
+
+    final cerrado = raw.indexOf('\\f*', abierto);
+    if (cerrado < 0) break;
+
+    final textoLimpio = _sinMarcas(cuerpo);
+    final refLimpia = _sinMarcas(ref);
+    notas.add(
+      NotaDeLectura(
+        ancla: palabrasAntes,
+        texto: textoLimpio,
+        referencia: refLimpia,
+      ),
+    );
+    sufijo.add('$refLimpia $textoLimpio');
+
+    // Y LO QUE SE CUENTA HASTA AQUI ES SOLO LO DEL **VERSICULO**: el tramo desde el cierre de
+    // la nota anterior hasta esta apertura. Las palabras del cuerpo de esta nota todavia no
+    // cuentan, y no contaran nunca, porque no son del versiculo.
+    cierres.add(cerrado);
+    palabrasContadas = palabrasAntes;
+    indice = cerrado + 3;
+  }
+
+  if (notas.isEmpty) return textoSinNotas(texto, raw);
+
+  // Y LA COMPROBACION EXACTA, Y ES LA MITAD DEL TRABAJO. La columna `text` tiene que
+  // terminar **exactamente** en `"REF TEXTO" "REF TEXTO"`, separado por un espacio y en el
+  // mismo orden. Medido: 5.841 de 5.844. Si no, **no se separa nada**: el versiculo se
+  // pinta entero, con la nota dentro, como se ha pintando siempre. Es preferible ensenar
+  // una nota en su sitio a moverla de sitio.
+  final esperado = sufijo.join(' ');
+  final recortado = texto.trimRight();
+  if (!recortado.endsWith(esperado)) {
+    return textoSinNotas(texto, raw);
+  }
+
+  final escritura = recortado.substring(0, recortado.length - esperado.length);
+  final sinEspacios = escritura.trimRight();
+
+  // Y EL ANCLA SE COMPRUEBA CONTRA EL TEXTO YA SIN NOTAS, y no contra el texto entero: con
+  // el texto entero, la palabra 40 de un versiculo con dos notas seria la palabra 40 de un
+  // texto que ya no existe, y la letra caeria a destajo.
+  //
+  // Medido: el ancla cae dentro en 6.956 de 6.959. Las tres que no son de Salmos 119 y el
+  // motivo es el nombre hebreo de la letra. Esas se listan al pie sin letra en el texto: una
+  // letra pegada a la palabra equivocada es peor que una nota sin letra.
+  final total = _cuentaPalabras(sinEspacios);
+  final conAncla = <NotaDeLectura>[
+    for (final n in notas)
+      NotaDeLectura(
+        ancla: (n.ancla != null && n.ancla! <= total) ? n.ancla : null,
+        texto: n.texto,
+        referencia: n.referencia,
+      ),
+  ];
+
+  return TextoConNotas(
+    texto: sinEspacios,
+    notas: conAncla,
+    // Y EL `raw` QUE SE PASA ES EL QUE **NO** TIENE LOS CUERPOS DE LAS NOTAS, y para eso hay
+    // que quitar cada nota entera, del `\f ` de apertura al `\f*` de cierre. Quitar solo el
+    // `\ft` dejaria la referencia y las marcas, y la cuenta seguiria descuadrando.
+    raw: _rawSinCuerposDeNotas(raw, cierres),
+  );
+}
+
+/// El `raw` con las notas al pie enteras fuera, del `\f ` de apertura al `\f*` de cierre.
+///
+/// Y QUITA **TODA** LA NOTA, no solo el cuerpo: si se dejara la referencia --`1.6`-- entre el
+/// `\f` y el `\ft`, y las marcas de por medio, el recuento de palabras del emparejamiento
+/// seguiria teniendo dos palabras de mas por nota y el versiculo se descartaria entero.
+String _rawSinCuerposDeNotas(String raw, List<int> cierres) {
+  if (cierres.isEmpty) return raw;
+  var salida = StringBuffer();
+  var i = 0;
+  for (final cerrado in cierres) {
+    // Y EL `\f ` DE APERTURA SE BUSCA DESDE DONDE TERMINO LA ANTERIOR, no desde el principio,
+    // para que dos notas del mismo versiculo se quiten las dos y no la misma dos veces.
+    final abierto = raw.indexOf('\\f ', i);
+    if (abierto < 0 || abierto >= cerrado) break;
+    salida.write(raw.substring(i, abierto));
+    i = cerrado + 3;
+  }
+  if (i < raw.length) salida.write(raw.substring(i));
+  return salida.toString();
+}
+
+/// El texto tal cual, sin notas, para el caso de que no haya nada que separar.
+///
+/// Y ES UNA FABRICA Y NO UN `const`, porque `texto` viene del modulo y no se puede meter en
+/// una constante.
+TextoConNotas textoSinNotas(String texto, String? raw) =>
+    TextoConNotas(texto: texto, notas: const <NotaDeLectura>[], raw: raw);
+
+/// Cuantas palabras de texto hay, por la misma regla que usa el emparejamiento del lexicon.
+int _cuentaPalabras(String texto) =>
+    texto.split(' ').where((p) => _tieneLetrasNiDigitos(p)).length;
+
+/// El valor de una marca de una nota: lo que va entre `\fr` y `\ft`, o entre `\ft` y `\f*`.
+String? _entreMarcas(String raw, int desde, String cual) {
+  final abre = raw.indexOf('\\$cual', desde);
+  if (abre < 0) return null;
+  var i = abre + cual.length + 2;
+  if (i >= raw.length) return null;
+
+  final cierra = cual == 'fr'
+      ? raw.indexOf('\\ft', i)
+      : raw.indexOf('\\f*', i);
+  if (cierra < 0) return null;
+  return raw.substring(i, cierra);
+}
+
+/// El cuerpo de un `raw` sin las marcas, que es como lo trae la columna `text`.
+///
+/// Y SOLO QUITA LO QUE **NO** ES TEXTO: `\nd` sin divisor, `\nd*`, `+`, `¶` y cualquier
+/// `|atributo="..."`. Un `\w` suelto no aparece en un `\ft`; si apareciera, el texto traeria
+/// una barra invertida y eso si seria un cambio en lo que se lee.
+String _sinMarcas(String s) {
+  var salida = s.replaceAll(RegExp(r'\\\+?nd\*?'), '');
+  salida = salida.replaceAll('\\*', '');
+  salida = salida.replaceAll(RegExp(r'\|[a-zA-Z]+="[^"]*"'), ' ');
+  salida = salida.replaceAll('¶', ' ');
+  salida = salida.replaceAll('+', '');
+  return _colapsarEspacios(salida).trim();
+}
+
+/// Cuantas palabras hay en el `raw` antes de la posicion [hasta].
+///
+/// Y CUENTA IGUAL QUE [anotacionesDe], porque tiene que contar igual: si el lexicon cuenta
+/// una palabra que esta nota cuenta de otra forma, el ancla de la nota y el numero del
+/// lexicon apuntan a palabras distintas y las dos marcas se cruzan.
+///
+/// Y EL RANGO ES `[desde, hasta)` Y NO SOLO `hasta`, porque con el `raw` entero arrastraria las
+/// palabras de las notas que ya se han pasado, y esas no son del versiculo.
+int _palabrasDeRawHasta(String raw, int desde, int hasta) {
+  var cuenta = 0;
+  final buffer = StringBuffer();
+  var i = desde;
+
+  void cerrar() {
+    if (buffer.isEmpty) return;
+    final limpia = _colapsarEspacios(buffer.toString()).trim();
+    buffer.clear();
+    if (limpia.isEmpty) return;
+    for (final palabra in limpia.split(' ')) {
+      if (_tieneLetrasNiDigitos(palabra)) cuenta++;
+    }
+  }
+
+  while (i < hasta && i < raw.length) {
+    final c = raw[i];
+    if (c == '\\' && i + 1 < hasta) {
+      final nombre = _nombreDeMarcaEn(raw, i + 1);
+      if (nombre == null) {
+        buffer.write(c);
+        i++;
+        continue;
+      }
+      var j = i + 1 + nombre.length;
+      if (j < raw.length && raw[j] == '*') j++;
+      cerrar();
+      i = j;
+      continue;
+    }
+    if (c == '\u00b6' || c == '+') {
+      cerrar();
+      i++;
+      continue;
+    }
+    buffer.write(c);
+    i++;
+  }
+  cerrar();
+
+  return cuenta;
 }
 
 /// Las anotaciones de un `raw`, una por palabra de como el modulo las vio.

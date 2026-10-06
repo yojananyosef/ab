@@ -22,6 +22,7 @@ import 'package:ab/data/services/sqlite_service.dart';
 import 'package:ab/data/services/analizador_usfm.dart';
 import 'package:ab/domain/models/indice_de_strong.dart';
 import 'package:ab/domain/models/nota.dart';
+import 'package:ab/domain/models/nota_al_pie.dart';
 import 'package:ab/domain/models/pasaje.dart';
 import 'package:ab/domain/models/resultado_de_busqueda.dart';
 import 'package:ab/domain/models/tipo_de_contenido.dart';
@@ -368,8 +369,15 @@ class ModuloAbierto {
             : 'SELECT verse, text FROM $_tabla';
     final orden = tieneNotas ? ' ORDER BY verse, seq' : ' ORDER BY verse';
     // ============================================================================
-    // Y UN VERSICULO **NO** FILTRA: TRAE EL CAPITULO ENTERO Y MARCA CUAL ES EL QUE SE
-    // PIDIO. Y ESTO SE CAMBIO AL MEDIR, Y EL MOTIVO ES QUE LA PANTALLA NO ENSENABA NADA.
+    // Y UN VERSICULO **NO** FILTRA**: TRAE EL CAPITULO **DESDE EL VERSICULO PEDIDO** Y
+    // MARCA CUAL ES EL QUE SE PIDIO. Y ESTO SE CAMBIO AL MEDIR, Y EL MOTIVO ES QUE LA
+    // PANTALLA NO ENSENABA NADA.
+    //
+    // Y "DESDE EL VERSICULO PEDIDO", y no "el capitulo entero", y la diferencia es de 21
+    // versiculos. Juan 3:16 trae **del 16 al 36**; Juan 3 completo trae del 1 al 36. Esta
+    // tabla, que esta treinta lineas mas abajo, lo dice con numeros: "Juan 3:16  21
+    // versiculos". Y una version anterior de este comentario decia "el capitulo entero", que
+    // no es lo que hace la consulta y no lo que mide la tabla.
     // ============================================================================
     //
     // Medido en una captura de la pantalla de lectura a 360 px, con Juan 3:16 abierto en
@@ -439,21 +447,7 @@ class ModuloAbierto {
       referencia: referencia,
       titulo: referencia.texto,
       versiculoPedido: referencia.versiculo,
-      versiculos: tieneNotas
-          ? const <Versiculo>[]
-          : <Versiculo>[
-              for (final f in filas)
-                Versiculo(
-                  f['verse'] as int,
-                  f['text'] as String,
-                  anotaciones: conRaw
-                      ? anotarTexto(
-                          f['text'] as String,
-                          f['raw'] as String?,
-                        ).anotaciones
-                      : const <AnotacionDePalabra>[],
-                ),
-            ],
+      versiculos: tieneNotas ? const <Versiculo>[] : _versiculosDelPasaje(filas, conRaw),
       // Y LAS NOTAS IDENTICAS SE QUITAN, Y ESTO ES UNA EXCEPCION MEDIDA.
       //
       // El CLARKE publicado tiene 19.742 notas en 19.741 pasajes: **un** versiculo con dos
@@ -486,6 +480,83 @@ class ModuloAbierto {
           : const <Nota>[],
     );
   }
+
+  /// Los versiculos del pasaje, con sus notas al pie ya separadas y numeradas.
+  ///
+  /// Y LA LETRA SE NUMERA **A NIVEL DE CAPITULO**, aqui y no en el versiculo, y el motivo es
+  /// que el orden de las notas depende de cuantas hay en el capitulo y un versiculo suelto
+  /// no lo sabe: Juan 3:36 puede ser la tercera nota de Juan 3 y la primera de Juan 4. Por eso
+  /// el separador devuelve notas sin letra y el que las numera es este metodo, que ha leido
+  /// el capitulo entero.
+  ///
+  /// Y LA CUENTA EMPIEZA EN `a` Y NO EN EL DEL VERSICULO, porque el `.amod` no dice "esta es
+  /// la quinta nota del capitulo": lo dice el orden en que el modulo las puso, y eso es
+  /// justo lo que se respeta.
+  static List<Versiculo> _versiculosDelPasaje(
+    List<Map<String, Object?>> filas,
+    bool conRaw,
+  ) {
+    var letra = 0;
+    return <Versiculo>[
+      for (final f in filas) () {
+        final separacion = separarNotasAlPie(
+          f['text'] as String,
+          conRaw ? f['raw'] as String? : null,
+        );
+        final notas = <NotaAlPie>[
+          for (final n in separacion.notas) n.conLetra(letraDeNota(letra++)),
+        ];
+        return Versiculo(
+          f['verse'] as int,
+          separacion.texto,
+          // Y LAS ANOTACIONES SE SACAN DEL **TEXTO YA SIN NOTAS** Y DEL **`raw` YA SIN LAS
+          // NOTAS**, y las dos mitades por el mismo motivo: el emparejamiento cuenta palabras
+          // de un lado y de otro y descarta el versiculo entero si no cuadran. Con el texto
+          // entero sobrarian palabras, y con el `raw` entero --que trae el cuerpo de la nota--
+          // faltarian. Medido antes de quitar el `raw`: de los 5.844 versiculos con notas,
+          // **ninguno** recibia anotaciones, que es el 0 % que se ve en la prueba.
+          anotaciones: conRaw
+              ? anotarTexto(separacion.texto, separacion.raw).anotaciones
+              : const <AnotacionDePalabra>[],
+          notas: notas,
+        );
+      }(),
+    ];
+  }
+
+  /// La letra que le toca a la nota numero [n] del capitulo.
+  ///
+  /// Y A, B, ... Z Y LUEGO AA, AB, AC, **NO** A, B, ... Z, {, |, }, **QUE ES LO QUE SALIA**.
+  /// Con `String.fromCharCode('a' + n)` la letra 27 es `{`, la 28 es `|` y la 29 es `}`, y eso
+  /// se ve en pantalla: son caracteres, no letras. Medido: el capitulo con mas notas del KJV es
+  /// Daniel 11, con **35**, o sea que hace falta la segunda vuelta en 9 de ellas.
+  ///
+  /// Y LA SEGUNDA VUELTA ES **PREFIJO Y NO LETRA REPETIDA**: la 35 es `ai` y no `ii`. Repetir
+  /// la letra sale de multiplicar un caracter por el numero de vueltas, que es lo que hacia la
+  /// primera version, y `ii` se lee como dos letras iguales y no como "la nota 35 de una
+  /// serie". El esquema de prefijo es el de las columnas de una hoja de calculo, y con 35 notas
+  /// --que es el maximo medido-- cabe en dos signos.
+  ///
+  /// Y ES UNA FUNCION PURA Y NO UNA CADENA CONCATENADA EN EL SITIO, porque la serie aparece en
+  /// dos sitios --el codigo que la pone y la prueba que mira que no se repite-- y una
+  /// constante escrita en cada uno se separa en cuanto una de las dos cambia.
+  static String letraDeNota(int n) {
+    if (n < 0) return '';
+    var salida = '';
+    var restante = n;
+    while (true) {
+      salida = String.fromCharCode(_letraInicial + restante % 26) + salida;
+      restante = restante ~/ 26 - 1;
+      if (restante < 0) return salida;
+    }
+  }
+
+  /// La 'a' de la primera nota del capitulo.
+  ///
+  /// Y ES UNA CONSTANTE Y NO UN `97` en linea, porque el mismo numero aparece en la funcion
+  /// de arriba y en la prueba que mira la letra, y si uno de los dos cambia el otro deja de
+  /// encontrarlo y el fallo dice "0 letras" sin decir de donde.
+  static const int _letraInicial = 0x61;
 
   /// Si esta fila es la repeticion inmediata de la anterior, con el mismo texto.
   ///

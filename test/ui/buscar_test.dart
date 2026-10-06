@@ -21,7 +21,7 @@ import 'package:ab/ui/core/tema.dart';
 import 'package:ab/ui/features/biblioteca/view_models/biblioteca_view_model.dart';
 import 'package:ab/ui/features/busqueda/view_models/busqueda_view_model.dart';
 import 'package:ab/ui/features/busqueda/views/busqueda_view.dart';
-import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
+import 'package:ab/ui/features/lector/view_models/preferencias_de_lectura.dart';
 import 'package:ab/ui/features/lector/views/lector_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -308,12 +308,10 @@ void main() {
 
   group('4. el enrutador', () {
     late BibliotecaViewModel biblioteca;
-    late LectorViewModel lector;
     late List<String> abiertos;
 
     setUp(() {
       biblioteca = BibliotecaViewModel();
-      lector = LectorViewModel();
       abiertos = <String>[];
     });
 
@@ -342,7 +340,7 @@ void main() {
 
       return NavegadorAb(
         biblioteca: biblioteca,
-        lector: lector,
+        preferencias: PreferenciasDeLectura(),
         resaltados: ResaltadosViewModel(),
         // Y `abrir` RESPETA LO DESCARGADO, y no es un detalle del arnes: en la
         // aplicacion es `_abrirModulo`, que devuelve null si el fichero no esta. Un
@@ -375,7 +373,7 @@ void main() {
       await n.irA(const RutaBusqueda('KJV2006', 'begotten'));
       await tester.pumpAndSettle();
 
-      expect(lector.idDelModulo, 'KJV2006');
+      expect(n.lector.idDelModulo, 'KJV2006');
       expect(find.byType(BusquedaView), findsOneWidget);
       // Y LA PALABRA ESTA EN EL CAMPO, escrita, y sin resultados. Quien recibe el enlace
       // ve de que va sin tener que escribirla, y quien no quiere buscarla no gasta
@@ -384,7 +382,7 @@ void main() {
       expect(find.textContaining('coincidencias'), findsNothing);
       // Y EL TEXTO **SIGUE ABIERTO**. Buscar no es dejar de leer: volver de la busqueda
       // no puede costar volver a abrir 22 MiB.
-      expect(lector.modulo, isNotNull);
+      expect(n.lector.modulo, isNotNull);
     });
 
     testWidgets('buscar desde la pantalla pone los resultados y la URL', (tester) async {
@@ -424,14 +422,14 @@ void main() {
       await n.buscarEnElTextoAbierto();
       await tester.pumpAndSettle();
       expect(find.byType(BusquedaView), findsOneWidget);
-      expect(lector.idDelComentario, 'CLARKE', reason: 'no se cierra al buscar');
+      expect(n.lector.idDelComentario, 'CLARKE', reason: 'no se cierra al buscar');
 
       await n.abrirDesdeLaBusqueda(const Referencia('John', 3, 16));
       await tester.pumpAndSettle();
 
       expect(find.byType(LectorView), findsOneWidget);
-      expect(lector.idDelComentario, 'CLARKE');
-      expect(lector.notasDe(16), isNotEmpty);
+      expect(n.lector.idDelComentario, 'CLARKE');
+      expect(n.lector.notasDe(16), isNotEmpty);
     });
 
     testWidgets('un resultado en el comentario busca en el comentario', (tester) async {
@@ -469,7 +467,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(BusquedaView), findsNothing);
-      expect(lector.aviso, contains('no esta descargado'));
+      expect(n.lector.aviso, contains('no esta descargado'));
       expect(n.ruta, isA<RutaBiblioteca>());
       expect(abiertos, isEmpty);
     });
@@ -485,12 +483,12 @@ void main() {
       ));
       await n.irA(const RutaBusqueda('KJV2006', 'begotten'));
       await tester.pumpAndSettle();
-      expect(lector.modulo, isNotNull);
+      expect(n.lector.modulo, isNotNull);
 
       await n.irAHome();
       await tester.pumpAndSettle();
 
-      expect(lector.idDelModulo, isNull);
+      expect(n.lector.idDelModulo, isNull);
     });
   });
 }

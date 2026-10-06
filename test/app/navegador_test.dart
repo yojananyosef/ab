@@ -37,6 +37,7 @@ import 'package:ab/ui/core/tema.dart';
 import 'package:ab/ui/features/biblioteca/view_models/biblioteca_view_model.dart';
 import 'package:ab/ui/features/biblioteca/views/biblioteca_view.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
+import 'package:ab/ui/features/lector/view_models/preferencias_de_lectura.dart';
 import 'package:ab/ui/features/lector/views/lector_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,11 +57,10 @@ NavegadorAb montarNavegador({
   final cuantosSeAbren = abiertos ?? <String>[];
   final sinDescargar = noDescargados ?? <String>[];
   final biblioteca = BibliotecaViewModel();
-  final lector = LectorViewModel();
 
   return NavegadorAb(
     biblioteca: biblioteca,
-    lector: lector,
+    preferencias: PreferenciasDeLectura(),
     resaltados: ResaltadosViewModel(),
     abrir: (id, referencia) async {
       if (sinDescargar.contains(id)) return null;
@@ -250,10 +250,9 @@ void main() {
     test('la ruta que se reporta es la que se puede volver a leer', () async {
       final proveedor = _ProveedorDeMentira();
       final biblioteca = BibliotecaViewModel();
-      final lector = LectorViewModel();
       final n = NavegadorAb(
         biblioteca: biblioteca,
-        lector: lector,
+        preferencias: PreferenciasDeLectura(),
         resaltados: ResaltadosViewModel(),
         abrir: (id, ref) async => null,
         proveedor: proveedor,
