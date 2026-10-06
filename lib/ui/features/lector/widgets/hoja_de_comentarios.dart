@@ -102,7 +102,7 @@ class _HojaDeComentarios extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(Medidas.margenAncho, 0, Medidas.margenAncho, 12),
             child: Text(
               'Las notas se ensenan debajo de cada versiculo, en el mismo texto.',
-              style: t.textTheme.bodySmall?.copyWith(color: Colores.textoSuave),
+              style: t.textTheme.bodySmall?.copyWith(color: context.colores.textoSuave),
             ),
           ),
 
@@ -114,7 +114,7 @@ class _HojaDeComentarios extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(Medidas.margenAncho, 0, Medidas.margenAncho, Medidas.margenAncho),
               child: Text(
                 'No hay ningun comentario descargado. Se bajan en la biblioteca.',
-                style: t.textTheme.bodyMedium?.copyWith(color: Colores.textoSuave),
+                style: t.textTheme.bodyMedium?.copyWith(color: context.colores.textoSuave),
               ),
             ),
 
@@ -125,7 +125,7 @@ class _HojaDeComentarios extends StatelessWidget {
               children: <Widget>[
                 if (abierto != null)
                   ListTile(
-                    leading: const Icon(Icons.close, color: Colores.textoSuave),
+                    leading: Icon(Icons.close, color: context.colores.textoSuave),
                     title: const Text('Quitar el comentario'),
                     subtitle: Text(
                       'Ahora mismo hay $abierto al lado',
@@ -137,7 +137,7 @@ class _HojaDeComentarios extends StatelessWidget {
                   ListTile(
                     leading: Icon(
                       c.id == abierto ? Icons.comment : Icons.comment_outlined,
-                      color: c.id == abierto ? Colores.acento : Colores.textoSuave,
+                      color: c.id == abierto ? context.colores.acento : context.colores.textoSuave,
                     ),
                     title: Text(c.nombre),
                     subtitle: c.subtitulo.isEmpty
@@ -148,7 +148,7 @@ class _HojaDeComentarios extends StatelessWidget {
                     // distingue el que esta mirando la lista para elegir, que es justo el
                     // que no lo sabe.
                     trailing: c.id == abierto
-                        ? const Icon(Icons.check, color: Colores.acento)
+                        ? Icon(Icons.check, color: context.colores.acento)
                         : null,
                     onTap: () => Navigator.of(context).pop(c.id),
                   ),

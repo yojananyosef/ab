@@ -172,7 +172,7 @@ class _IndiceViewState extends State<IndiceView> {
             Text(
               vm.numero,
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: Colores.acento,
+                    color: context.colores.acento,
                     fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
                   ),
             ),
@@ -187,7 +187,7 @@ class _IndiceViewState extends State<IndiceView> {
               style: Theme.of(context)
                   .textTheme
                   .bodyMedium
-                  ?.copyWith(color: Colores.textoSuave),
+                  ?.copyWith(color: context.colores.textoSuave),
             ),
             // Y LA FRASE QUE DICE LO QUE ESTO **NO** ES. Va aqui, arriba y sin adornos, y
             // no en un aviso: es la definicion de la pantalla. Sin ella, quien abre el
@@ -200,7 +200,7 @@ class _IndiceViewState extends State<IndiceView> {
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
-                  ?.copyWith(color: Colores.textoSuave),
+                  ?.copyWith(color: context.colores.textoSuave),
             ),
           ],
         ),
@@ -225,13 +225,13 @@ class _IndiceViewState extends State<IndiceView> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: Colores.acento.withValues(alpha: 0.09),
+                color: context.colores.acento.withValues(alpha: 0.09),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
                 '${forma.key} · ${numeroEnCastellano(forma.value)}',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Colores.acento,
+                      color: context.colores.acento,
                       fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
                     ),
               ),
@@ -246,7 +246,7 @@ class _IndiceViewState extends State<IndiceView> {
               style: Theme.of(context)
                   .textTheme
                   .labelSmall
-                  ?.copyWith(color: Colores.textoSuave),
+                  ?.copyWith(color: context.colores.textoSuave),
             ),
         ],
       ),
@@ -274,7 +274,7 @@ class _FilaDeEntrada extends StatelessWidget {
       subtitle: Text('$veces ${veces == 1 ? "vez" : "veces"}'),
       trailing: Text(
         'cap. ${r.capitulo}',
-        style: t.textTheme.labelSmall?.copyWith(color: Colores.textoSuave),
+        style: t.textTheme.labelSmall?.copyWith(color: context.colores.textoSuave),
       ),
       onTap: () => alPulsar(r),
     );
@@ -300,7 +300,7 @@ class _Explicacion extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Icon(icono, size: 28, color: Colores.textoSuave),
+            Icon(icono, size: 28, color: context.colores.textoSuave),
             const SizedBox(height: 12),
             Text(texto, style: Theme.of(context).textTheme.bodyLarge),
           ],

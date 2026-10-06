@@ -33,6 +33,7 @@ import 'package:ab/domain/models/libro.dart';
 import 'package:ab/domain/models/libros.dart';
 import 'package:ab/domain/models/nota.dart';
 import 'package:ab/domain/models/pasaje.dart';
+import 'package:ab/domain/models/preferencia_de_lectura.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/domain/models/terminos.dart';
 
@@ -124,6 +125,22 @@ class LectorViewModel extends ChangeNotifier {
   bool _mostrarPalabrasDeJesus = true;
   bool get mostrarPalabrasDeJesus => _mostrarPalabrasDeJesus;
 
+  // --- la tipografia y el fondo ---
+
+  /// Los ajustes de lectura: tamano, alto de linea, espaciado, tema, atenuacion y linea
+  /// enfocada.
+  ///
+  /// Y ESTAN EN EL **VIEWMODEL DEL LECTOR** Y NO EN UNO PROPIO, y el motivo es que quien
+  /// los necesita es quien pinta el texto y quien construye el tema de la aplicacion, y
+  /// esos dos son este `ChangeNotifier` y `main.dart`. Con un viewmodel aparte habria que
+  /// inyectarlo en los dos, y los dos tendrian que decidir cual de los dos avisa cuando
+  /// cambia un ajuste.
+  ///
+  /// Y EL TEMA SE PINTA **DESDE AQUI** y no desde una preferencia global, porque lo que se
+  /// guarda es lo mismo: un boton, un objeto, una clave.
+  PreferenciaDeLectura _preferencia = PreferenciaDeLectura.porDefecto;
+  PreferenciaDeLectura get preferenciaDeLectura => _preferencia;
+
   /// Leer la preferencia guardada.
   ///
   /// Y SE LEE AL ABRIR Y NO EN CADA `build`, y con la excepcion **atrapada aqui**. Un
@@ -143,8 +160,15 @@ class LectorViewModel extends ChangeNotifier {
     if (a == null) return;
     try {
       final guardado = await a.leer(clavePalabrasDeJesus).timeout(plazoDeLectura);
-      if (guardado == null) return;
-      _mostrarPalabrasDeJesus = guardado != 'no';
+      _mostrarPalabrasDeJesus = guardado == null || guardado != 'no';
+
+      // Y LA TIPOGRAFIA, CON **LA MISMA** EXCEPCION ATRAPADA Y EL MISMO PLAZO. Que las dos
+      // lecturas compartan el `try` no es ahorre: si la primera lanza, la segunda no se
+      // intenta, y es mejor que las dos campen con los valores de partida que perder el
+      // color y el tamano porque el almacenamiento fallo una vez.
+      _preferencia = PreferenciaDeLectura.deserializar(
+        await a.leer(PreferenciaDeLectura.clave).timeout(plazoDeLectura),
+      );
     } catch (_) {
       // Se queda como estaba. Ver el comentario de arriba.
     }
@@ -174,6 +198,33 @@ class LectorViewModel extends ChangeNotifier {
           .catchError((Object _) {}),
     );
   }
+
+  /// Cambiar un ajuste de lectura y guardarlo.
+  ///
+  /// Y ES **UN METODO Y NO SEIS**, y el que decide es [PreferenciaDeLectura]. Quien llama
+  /// dice "quiero esto" y el modelo decide si cabe en el rango, con lo que un numero fuera de
+  /// rango se acota **en el mismo sitio** que se guarda acotado, y no en seis sitios que se
+  /// pueden separarse.
+  ///
+  /// Y AVISA **ANTES** DE GUARDAR, que es lo que hace que un deslizador se sienta
+  /// inmediato, y guarda por detras. Al reves --esperar a que se guarde para pintar-- un
+  /// ajuste que tarda se siente roto, y el guardado va a un `localStorage` que hay un caso
+  /// medido de que no contesta.
+  void cambiarPreferencia(PreferenciaDeLectura nueva) {
+    if (nueva == _preferencia) return;
+    _preferencia = nueva;
+    notifyListeners();
+
+    final a = _almacenamiento;
+    if (a == null) return;
+    unawaited(
+      a.escribir(PreferenciaDeLectura.clave, nueva.serializar())
+          .catchError((Object _) {}),
+    );
+  }
+
+  /// Poner los ajustes a los recomendados, en una pulsacion.
+  void restaurarPreferencia() => cambiarPreferencia(_preferencia.restaurar());
 
   // --- el comentario que va al lado ---
   //

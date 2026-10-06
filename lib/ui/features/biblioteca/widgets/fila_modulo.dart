@@ -307,11 +307,11 @@ class _Estado extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = switch (fila.estado) {
-      EstadoModulo.descargado => Colores.acento,
-      EstadoModulo.retirado => Colores.textoSuave,
-      EstadoModulo.desactualizado => Colores.primario,
-      EstadoModulo.descargando => Colores.primario,
-      EstadoModulo.disponible => Colores.textoSuave,
+      EstadoModulo.descargado => context.colores.acento,
+      EstadoModulo.retirado => context.colores.textoSuave,
+      EstadoModulo.desactualizado => context.colores.primario,
+      EstadoModulo.descargando => context.colores.primario,
+      EstadoModulo.disponible => context.colores.textoSuave,
     };
     final icono = switch (fila.estado) {
       EstadoModulo.descargado => Icons.check_circle_outline,
@@ -353,7 +353,7 @@ class _Explicacion extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: <Widget>[
-      const Icon(Icons.info_outline, size: 17, color: Colores.peligro),
+      Icon(Icons.info_outline, size: 17, color: context.colores.peligro),
       const SizedBox(width: 6),
       Expanded(
         child: Text(
@@ -361,7 +361,7 @@ class _Explicacion extends StatelessWidget {
           style: Theme.of(context)
               .textTheme
               .bodySmall
-              ?.copyWith(color: Colores.peligro),
+              ?.copyWith(color: context.colores.peligro),
           softWrap: true,
         ),
       ),

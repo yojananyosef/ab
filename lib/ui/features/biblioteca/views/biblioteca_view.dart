@@ -121,7 +121,7 @@ class _BarraSuperior extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) => AppBar(
-    backgroundColor: Colores.fondo,
+    backgroundColor: context.colores.fondo,
     surfaceTintColor: Colors.transparent,
     elevation: 0,
     scrolledUnderElevation: 0,
@@ -216,7 +216,7 @@ class _Avisos extends StatelessWidget {
                     onPressed: vm.quitarErrores,
                     icon: const Icon(Icons.check_circle_outline, size: 18),
                     label: const Text('Quitar los errores'),
-                    style: TextButton.styleFrom(foregroundColor: Colores.peligro),
+                    style: TextButton.styleFrom(foregroundColor: context.colores.peligro),
                   ),
                 ),
             ],
@@ -241,7 +241,7 @@ class _LineaAviso extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = aviso.esError ? Colores.peligro : Colores.textoSuave;
+    final color = aviso.esError ? context.colores.peligro : context.colores.textoSuave;
 
     if (!aviso.esError) {
       return Padding(
@@ -249,7 +249,7 @@ class _LineaAviso extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Icon(Icons.info_outline, size: 17, color: Colores.textoSuave),
+            Icon(Icons.info_outline, size: 17, color: context.colores.textoSuave),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -269,14 +269,14 @@ class _LineaAviso extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
         decoration: BoxDecoration(
-          color: Colores.peligro.withValues(alpha: 0.07),
+          color: context.colores.peligro.withValues(alpha: 0.07),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colores.peligro.withValues(alpha: 0.3)),
+          border: Border.all(color: context.colores.peligro.withValues(alpha: 0.3)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Icon(Icons.error_outline, size: 19, color: Colores.peligro),
+            Icon(Icons.error_outline, size: 19, color: context.colores.peligro),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -295,7 +295,7 @@ class _LineaAviso extends StatelessWidget {
               tooltip: 'Quitar este aviso',
               onPressed: alQuitar,
               visualDensity: VisualDensity.compact,
-              color: Colores.peligro,
+              color: context.colores.peligro,
             ),
           ],
         ),
@@ -331,7 +331,7 @@ class _BarraDeProgreso extends StatelessWidget {
           children: <Widget>[
             Row(
               children: <Widget>[
-                const Icon(Icons.downloading_outlined, size: 17, color: Colores.acento),
+                Icon(Icons.downloading_outlined, size: 17, color: context.colores.acento),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -343,7 +343,7 @@ class _BarraDeProgreso extends StatelessWidget {
                 Text(
                   '${aviso.porcentaje ?? 0} %',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colores.texto,
+                    color: context.colores.texto,
                     fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
                   ),
                 ),
@@ -355,8 +355,8 @@ class _BarraDeProgreso extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: pct,
                 minHeight: 6,
-                backgroundColor: Colores.linea,
-                valueColor: const AlwaysStoppedAnimation<Color>(Colores.acento),
+                backgroundColor: context.colores.linea,
+                valueColor: AlwaysStoppedAnimation<Color>(context.colores.acento),
               ),
             ),
           ],
@@ -590,14 +590,14 @@ class _Desplegable extends StatelessWidget {
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: Colores.superficie,
+        color: context.colores.superficie,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colores.linea),
+        border: Border.all(color: context.colores.linea),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          const Icon(Icons.translate, size: 19, color: Colores.textoSuave),
+          Icon(Icons.translate, size: 19, color: context.colores.textoSuave),
           const SizedBox(width: 8),
           // Sin `Flexible` esto revienta a 360 px con un idioma de nombre largo.
           Flexible(
@@ -608,7 +608,7 @@ class _Desplegable extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 4),
-          const Icon(Icons.arrow_drop_down, size: 22, color: Colores.textoSuave),
+          Icon(Icons.arrow_drop_down, size: 22, color: context.colores.textoSuave),
         ],
       ),
     ),
@@ -745,7 +745,7 @@ class _CajaVacio extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: Medidas.margenEstrecho, vertical: 42),
     child: Column(
       children: <Widget>[
-        Icon(icono, size: 44, color: Colores.textoSuave),
+        Icon(icono, size: 44, color: context.colores.textoSuave),
         const SizedBox(height: 14),
         Text(
           titulo,

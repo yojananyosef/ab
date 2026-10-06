@@ -254,14 +254,14 @@ class _HojaDeLibrosState extends State<_HojaDeLibros> {
       children: <Widget>[
         if (pasaje != null)
           ListTile(
-            leading: const Icon(Icons.arrow_forward, color: Colores.acento),
+            leading: Icon(Icons.arrow_forward, color: context.colores.acento),
             title: Text('Ir a ${pasaje.texto}'),
             subtitle: Text(
               'Referencia completa',
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
-                  ?.copyWith(color: Colores.textoSuave),
+                  ?.copyWith(color: context.colores.textoSuave),
             ),
             onTap: () => Navigator.of(context).pop(pasaje),
           ),
@@ -286,7 +286,7 @@ class _HojaDeLibrosState extends State<_HojaDeLibros> {
           style: Theme.of(context)
               .textTheme
               .labelSmall
-              ?.copyWith(color: Colores.textoSuave, letterSpacing: 0.6),
+              ?.copyWith(color: context.colores.textoSuave, letterSpacing: 0.6),
         ),
       ),
       for (final l in libros)
@@ -301,7 +301,7 @@ class _HojaDeLibrosState extends State<_HojaDeLibros> {
             style: Theme.of(context)
                 .textTheme
                 .labelSmall
-                ?.copyWith(color: Colores.textoSuave),
+                ?.copyWith(color: context.colores.textoSuave),
           ),
           // Y EL LIBRO QUE SE ESTA LEYENDO MARCADO, y con el capitulo actual al lado. Es
           // lo unico que dice donde estas, y abrir la hoja para no perder el sitio es
@@ -312,7 +312,7 @@ class _HojaDeLibrosState extends State<_HojaDeLibros> {
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: Colores.acento),
+                      ?.copyWith(color: context.colores.acento),
                 )
               : null,
           selected: l.id == abierto,
@@ -357,7 +357,7 @@ class _HojaDeLibrosState extends State<_HojaDeLibros> {
               '$n',
               textAlign: TextAlign.right,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: esElQueSeLee ? Colores.acento : Colores.texto,
+                    color: esElQueSeLee ? context.colores.acento : context.colores.texto,
                     fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
                   ),
             ),
@@ -366,7 +366,7 @@ class _HojaDeLibrosState extends State<_HojaDeLibros> {
             frase,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontStyle: frase.isEmpty ? FontStyle.italic : null,
-                  color: frase.isEmpty ? Colores.textoSuave : Colores.texto,
+                  color: frase.isEmpty ? context.colores.textoSuave : context.colores.texto,
                 ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -392,7 +392,7 @@ class _HojaDeLibrosState extends State<_HojaDeLibros> {
           style: Theme.of(context)
               .textTheme
               .bodyMedium
-              ?.copyWith(color: Colores.textoSuave),
+              ?.copyWith(color: context.colores.textoSuave),
         ),
       );
 

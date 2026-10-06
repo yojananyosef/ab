@@ -211,7 +211,7 @@ void main() {
       for (final rico in tester.widgetList<RichText>(find.byType(RichText))) {
         if (rico.text.toPlainText() != textoDelVersiculo) continue;
         final salida = <String>[];
-        _recorrer(rico.text, Colores.palabraDeJesus, salida);
+        _recorrer(rico.text, Colores.claro.palabraDeJesus, salida);
         return salida;
       }
       fail('no se ha encontrado el versiculo en pantalla: "$textoDelVersiculo"');
@@ -291,7 +291,7 @@ void main() {
       );
       expect(boton.tooltip, contains('Palabras de Jesus en rojo: si'));
       expect(tester.widget<Icon>(find.byIcon(Icons.tonality)).color,
-          Colores.palabraDeJesus);
+          Colores.claro.palabraDeJesus);
 
       await tester.tap(find.byIcon(Icons.tonality));
       await tester.pumpAndSettle();
@@ -314,9 +314,9 @@ void main() {
       await pintar(tester, const Referencia('John', 3, 16));
       expect(tester.takeException(), isNull);
 
-      expect(_contraste(Colores.palabraDeJesus, Colores.fondo), greaterThanOrEqualTo(7),
+      expect(_contraste(Colores.claro.palabraDeJesus, Colores.claro.fondo), greaterThanOrEqualTo(7),
           reason: 'sobre el fondo de la pantalla');
-      expect(_contraste(Colores.palabraDeJesus, Colores.superficie),
+      expect(_contraste(Colores.claro.palabraDeJesus, Colores.claro.superficie),
           greaterThanOrEqualTo(7),
           reason: 'sobre una superficie, que es donde esta el versiculo');
     });
@@ -347,24 +347,27 @@ void main() {
     // primera version hacia que "el subrayado ganara" sobre el rojo, y una palabra anadida
     // por el traductor **dentro** de las palabras de Jesus salia negra con subrayado. El
     // rojo se perdia justo en el unico sitio donde mas se nota.
-    const base = TextStyle(fontSize: 16, color: Colores.texto);
+    final base = TextStyle(fontSize: 16, color: Colores.claro.texto);
 
     test('una palabra normal no lleva estilo', () {
       // Y **NULL** Y NO EL ESTILO BASE. Un `TextSpan` con un estilo igual al del padre se
       // parte en otra linea en el motor de texto, y un `RichText` con cuatro `TextSpan` de
       // mas por palabra son cuatro veces mas colocaciones en un capitulo de 36 versiculos.
       expect(estiloDePalabra(const AnotacionDePalabra(strong: 'G2316'), base,
-          mostrarPalabrasDeJesus: true), isNull);
+          mostrarPalabrasDeJesus: true, palabraDeJesus: Colores.claro.palabraDeJesus,
+          textoSuave: Colores.claro.textoSuave), isNull);
 
       // Y CON EL INTERRUPTOR PUESTO TAMBIEN, porque el numero del lexicon no se pinta y no
       // hay que inventarle un estilo.
       expect(estiloDePalabra(const AnotacionDePalabra(), base,
-          mostrarPalabrasDeJesus: true), isNull);
+          mostrarPalabrasDeJesus: true, palabraDeJesus: Colores.claro.palabraDeJesus,
+          textoSuave: Colores.claro.textoSuave), isNull);
     });
 
     test('una palabra del traductor sale subrayada y del color del texto', () {
       final e = estiloDePalabra(const AnotacionDePalabra(esAnadido: true), base,
-          mostrarPalabrasDeJesus: true)!;
+          mostrarPalabrasDeJesus: true, palabraDeJesus: Colores.claro.palabraDeJesus,
+          textoSuave: Colores.claro.textoSuave)!;
 
       expect(e.decoration, TextDecoration.underline);
       // Y EL COLOR ES EL DE TEXTO, no "ninguno". `copyWith(color: null)` en Dart
@@ -372,14 +375,15 @@ void main() {
       // puede hacer sin tener que volver a construir el estilo--, asi que lo que sale es
       // el color del cuerpo. Comprobarlo asi evita escribir una comprobacion que pasaria
       // con cualquier rojo.
-      expect(e.color, Colores.texto);
+      expect(e.color, Colores.claro.texto);
     });
 
     test('una palabra de Jesus sale en rojo y sin subrayado', () {
       final e = estiloDePalabra(const AnotacionDePalabra(esPalabraDeJesus: true), base,
-          mostrarPalabrasDeJesus: true)!;
+          mostrarPalabrasDeJesus: true, palabraDeJesus: Colores.claro.palabraDeJesus,
+          textoSuave: Colores.claro.textoSuave)!;
 
-      expect(e.color, Colores.palabraDeJesus);
+      expect(e.color, Colores.claro.palabraDeJesus);
       expect(e.decoration, isNull);
     });
 
@@ -388,9 +392,11 @@ void main() {
         const AnotacionDePalabra(esAnadido: true, esPalabraDeJesus: true),
         base,
         mostrarPalabrasDeJesus: true,
+          palabraDeJesus: Colores.claro.palabraDeJesus,
+          textoSuave: Colores.claro.textoSuave,
       )!;
 
-      expect(e.color, Colores.palabraDeJesus);
+      expect(e.color, Colores.claro.palabraDeJesus);
       expect(e.decoration, TextDecoration.underline);
     });
 
@@ -403,10 +409,12 @@ void main() {
         const AnotacionDePalabra(esAnadido: true, esPalabraDeJesus: true),
         base,
         mostrarPalabrasDeJesus: false,
+          palabraDeJesus: Colores.claro.palabraDeJesus,
+          textoSuave: Colores.claro.textoSuave,
       )!;
 
       expect(e.decoration, TextDecoration.underline);
-      expect(e.color, Colores.texto, reason: 'y vuelve al color del cuerpo');
+      expect(e.color, Colores.claro.texto, reason: 'y vuelve al color del cuerpo');
     });
 
     test('el tamano de la letra no cambia: es el texto del modulo', () {
@@ -414,7 +422,8 @@ void main() {
       // esta en `tema.dart` --por debajo de 16 px, iOS hace zoom-- y subir el tamano de
       // las palabras de Jesus las haria breaking del texto que se esta leyendo.
       final e = estiloDePalabra(const AnotacionDePalabra(esPalabraDeJesus: true), base,
-          mostrarPalabrasDeJesus: true)!;
+          mostrarPalabrasDeJesus: true, palabraDeJesus: Colores.claro.palabraDeJesus,
+          textoSuave: Colores.claro.textoSuave)!;
 
       expect(e.fontSize, 16);
       expect(e.height, isNull);

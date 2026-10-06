@@ -54,6 +54,7 @@ import '../widgets/campo_de_referencia.dart';
 import '../../busqueda/widgets/columna_de_texto.dart';
 import '../widgets/estilo_de_palabra.dart';
 import '../widgets/hoja_de_versiones.dart';
+import '../widgets/hoja_de_formato.dart';
 import '../widgets/terminos_del_modulo.dart';
 
 class LectorView extends StatefulWidget {
@@ -266,10 +267,26 @@ class _LectorViewState extends State<LectorView> {
               // Y EL COLOR DEL ICONO TAMBIEN DICE EL ESTADO, porque el `tooltip` en movil
               // solo sale si se deja el dedo quieto, y eso casi nadie lo hace.
               color: vm.mostrarPalabrasDeJesus
-                  ? Colores.palabraDeJesus
-                  : Colores.textoSuave,
+                  ? context.colores.palabraDeJesus
+                  : context.colores.textoSuave,
             ),
             onPressed: widget.alAlternarPalabrasDeJesus,
+          ),
+          // Y EL BOTON DE **FORMATO**, que es el `Formato` de la fila de menu de Logos. Y
+          // antes no estaba, y el motivo --escrito en el spec del marco-- era que un elemento
+          // de barra que no lleva a ninguna parte es ruido con apariencia de producto.
+          //
+          // Y AHORA HAY ALGO DETRAS, con lo que el boton es honesto. Y el icono es una `A`
+          // grande y una pequena, que es literalmente lo que es: el formato de las letras.
+          IconButton(
+            tooltip: 'Formato de lectura',
+            icon: const Icon(Icons.format_size),
+            onPressed: () => abrirHojaDeFormato(
+              context,
+              preferencia: vm.preferenciaDeLectura,
+              alCambiar: vm.cambiarPreferencia,
+              alRestaurar: vm.restaurarPreferencia,
+            ),
           ),
           _BotonDeComentario(
             id: vm.idDelComentario,
@@ -297,11 +314,15 @@ class _LectorViewState extends State<LectorView> {
   }
 
   Widget _cuerpo(LectorViewModel vm) {
-    final estiloVersiculo = Theme.of(context).textTheme.bodyLarge!.copyWith(
-          fontSize: 16,
-          height: 1.7,
-          color: Colores.texto,
-        );
+    // Y EL TEXTO DE LECTURA SALE DE LA PREFERENCIA, y no de un `copyWith` con numeros
+    // escritos aqui. Los tres valores --tamano, alto de linea y espaciado-- estan en
+    // `estiloDeLectura`, y el motivo de que no esten aqui es que este `copyWith` era
+    // **inmutable y silencioso**: cambiar el valor por defecto no lo cambiaba, porque el
+    // numero estaba en la linea de al lado y no en ningun sitio al que se pudiera mirar.
+    final estiloVersiculo = estiloDeLectura(
+      Theme.of(context).textTheme,
+      widget.viewModel.preferenciaDeLectura,
+    );
 
     return ColumnaDeTexto(
       estilo: estiloVersiculo,
@@ -575,7 +596,7 @@ class _LectorViewState extends State<LectorView> {
                 style: Theme.of(context)
                     .textTheme
                     .bodyMedium
-                    ?.copyWith(color: Colores.textoSuave),
+                    ?.copyWith(color: context.colores.textoSuave),
               ),
             ],
           ],
@@ -616,7 +637,7 @@ class _ColumnaDeNotas extends StatelessWidget {
       children: <Widget>[
         for (var i = 0; i < numeros.length; i++) ...<Widget>[
           if (i > 0)
-            const Divider(height: 26, thickness: 1, color: Colores.linea),
+            Divider(height: 26, thickness: 1, color: context.colores.linea),
           _EncabezadoDeNota(
             versiculo: numeros[i],
             total: pasaje.notasDe(numeros[i]).length,
@@ -652,14 +673,14 @@ class _EncabezadoDeNota extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color: Colores.acento.withValues(alpha: 0.12),
+            color: context.colores.acento.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(5),
-            border: Border.all(color: Colores.acento.withValues(alpha: 0.35)),
+            border: Border.all(color: context.colores.acento.withValues(alpha: 0.35)),
           ),
           child: Text(
             '$versiculo',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Colores.acento,
+              color: context.colores.acento,
               fontWeight: FontWeight.w600,
               fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
             ),
@@ -704,7 +725,7 @@ class _Nota extends StatelessWidget {
             height: 20,
             margin: const EdgeInsets.only(top: 4, right: 12),
             decoration: BoxDecoration(
-              color: Colores.acento.withValues(alpha: 0.45),
+              color: context.colores.acento.withValues(alpha: 0.45),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -956,8 +977,8 @@ class _MigasDelLibro extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
             child: Row(
               children: <Widget>[
-                const Icon(Icons.menu_book_outlined,
-                    size: 15, color: Colores.textoSuave),
+                Icon(Icons.menu_book_outlined,
+                    size: 15, color: context.colores.textoSuave),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -965,7 +986,7 @@ class _MigasDelLibro extends StatelessWidget {
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
-                        ?.copyWith(color: Colores.textoSuave),
+                        ?.copyWith(color: context.colores.textoSuave),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1010,7 +1031,7 @@ class _NumeroDeCapitulo extends StatelessWidget {
         child: Text(
           '$c',
           style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                color: Colores.textoSuave,
+                color: context.colores.textoSuave,
                 fontWeight: FontWeight.w300,
                 letterSpacing: 2,
               ),
@@ -1052,7 +1073,7 @@ class _BotonDeComentario extends StatelessWidget {
       icon: Icon(
         hay ? Icons.comment : Icons.comment_outlined,
         size: 20,
-        color: hay ? Colores.acento : Colores.textoSuave,
+        color: hay ? context.colores.acento : context.colores.textoSuave,
       ),
       onPressed: alPulsar,
     );
@@ -1094,14 +1115,14 @@ class _AvisoDelComentario extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
       decoration: BoxDecoration(
-        color: Colores.acento.withValues(alpha: 0.07),
+        color: context.colores.acento.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colores.linea),
+        border: Border.all(color: context.colores.linea),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Icon(Icons.info_outline, size: 20, color: Colores.textoSuave),
+          Icon(Icons.info_outline, size: 20, color: context.colores.textoSuave),
           const SizedBox(width: 10),
           Expanded(
             child: Text(texto, style: t.textTheme.bodyMedium),
@@ -1298,6 +1319,10 @@ class _TextoDelVersiculoState extends State<_TextoDelVersiculo> {
       anotaciones[i],
       widget.estilo,
       mostrarPalabrasDeJesus: widget.mostrarPalabrasDeJesus,
+      // Y LOS COLORES DE **AQUI**, que es el unico sitio que tiene contexto. La funcion de
+      // estilo sigue siendo pura, y quien la llama es un widget.
+      palabraDeJesus: context.colores.palabraDeJesus,
+      textoSuave: context.colores.textoSuave,
     );
   }
 }
@@ -1350,15 +1375,15 @@ class _Versiculo extends StatelessWidget {
     // impreso y no le quita nada al texto. Y con el color de acento, que contrasta 7,1:1
     // con el fondo y es el mismo color de los demas enlaces.
     final estiloDelVersiculo = esElPedido
-        ? estilo.copyWith(color: Colores.acento, fontWeight: FontWeight.w500)
+        ? estilo.copyWith(color: context.colores.acento, fontWeight: FontWeight.w500)
         : estilo;
 
     return Padding(
       padding: EdgeInsets.only(bottom: 10, left: esElPedido ? 6 : 0),
       child: DecoratedBox(
         decoration: esElPedido
-            ? const BoxDecoration(
-                border: Border(left: BorderSide(color: Colores.acento, width: 3)),
+            ? BoxDecoration(
+                border: Border(left: BorderSide(color: context.colores.acento, width: 3)),
               )
             : const BoxDecoration(),
         child: Row(
@@ -1377,7 +1402,7 @@ class _Versiculo extends StatelessWidget {
               textAlign: TextAlign.right,
               style: estiloDelVersiculo.copyWith(
                 fontSize: 13,
-                color: Colores.textoSuave,
+                color: context.colores.textoSuave,
                 height: 1.9,
               ),
             ),

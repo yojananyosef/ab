@@ -154,7 +154,7 @@ class _HojaDeVersionesState extends State<_HojaDeVersiones> {
               padding: const EdgeInsets.all(Medidas.margenAncho),
               child: Text(
                 'Ninguna version se llama "$_texto" en este catalogo.',
-                style: t.textTheme.bodyMedium?.copyWith(color: Colores.textoSuave),
+                style: t.textTheme.bodyMedium?.copyWith(color: context.colores.textoSuave),
               ),
             ),
           Flexible(
@@ -166,14 +166,14 @@ class _HojaDeVersionesState extends State<_HojaDeVersiones> {
                   ListTile(
                     leading: Icon(
                       v.descargado ? Icons.menu_book : Icons.download_outlined,
-                      color: v.descargado ? Colores.acento : Colores.textoSuave,
+                      color: v.descargado ? context.colores.acento : context.colores.textoSuave,
                     ),
                     title: Text(v.nombre),
                     subtitle: v.detalle == null
                         ? null
                         : Text(v.detalle!, style: t.textTheme.bodySmall),
                     trailing: v.id == widget.abierta
-                        ? const Icon(Icons.check, color: Colores.acento)
+                        ? Icon(Icons.check, color: context.colores.acento)
                         : null,
                     onTap: () => Navigator.of(context).pop(v.id),
                   ),
@@ -188,7 +188,7 @@ class _HojaDeVersionesState extends State<_HojaDeVersiones> {
                     child: Text(
                       'Solo hay un texto en el catalogo. Comparar versiones aparece '
                       'cuando haya mas de uno.',
-                      style: t.textTheme.bodySmall?.copyWith(color: Colores.textoSuave),
+                      style: t.textTheme.bodySmall?.copyWith(color: context.colores.textoSuave),
                     ),
                   ),
               ],

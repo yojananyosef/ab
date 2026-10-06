@@ -17,7 +17,6 @@
 import 'package:flutter/material.dart';
 
 import 'package:ab/domain/models/token_de_texto.dart';
-import 'package:ab/ui/core/tema.dart';
 
 /// El estilo de una palabra del versiculo [a], sobre [base].
 ///
@@ -29,19 +28,34 @@ import 'package:ab/ui/core/tema.dart';
 /// Y EL ROJO SE PONE **SOLO** SI EL INTERRUPTOR ESTA PUESTO. Que el parametro se lea en
 /// cada llamada y no se guarde en un campo es lo que hace que el cambio se vea en el
 /// siguiente `build` sin acordarse de que hay algo que invalidar.
+///
+/// Y LOS COLORES **SE PASAN**, y no se leen de un `context`.
+///
+/// Y ESTA ES LA RAZON DE QUE ESTA FUNCION SEA PURA, y no la elegancia. Hay una prueba que
+/// decide los dos estilos de palabra --anadida del traductor y palabras de Jesus-- con las
+/// cuatro combinaciones, y esa prueba no monta ninguna pantalla: es una funcion con cuatro
+/// llamadas. Si aqui se leyera `context.colores`, habria que montar un `MaterialApp` para
+/// probar un `copyWith`, y la comprobacion dejaria de ser una tabla de estilos para ser una
+/// prueba de widgets.
+///
+/// Y el primer intento de tra thema consistedia en leer `context.colores` aqui, y el
+/// analizador dijo `Undefined name 'context'` en las dos lineas: que es la forma educada de
+/// decir que la funcion no tiene de donde sacarlo.
 TextStyle? estiloDePalabra(
   AnotacionDePalabra a,
   TextStyle base, {
   required bool mostrarPalabrasDeJesus,
+  required Color palabraDeJesus,
+  required Color textoSuave,
 }) {
   final enRojo = mostrarPalabrasDeJesus && a.esPalabraDeJesus;
 
   if (!a.esAnadido && !enRojo) return null;
 
   return base.copyWith(
-    color: enRojo ? Colores.palabraDeJesus : null,
+    color: enRojo ? palabraDeJesus : null,
     decoration: a.esAnadido ? TextDecoration.underline : null,
-    decorationColor: Colores.textoSuave,
+    decorationColor: textoSuave,
     decorationThickness: 1,
   );
 }

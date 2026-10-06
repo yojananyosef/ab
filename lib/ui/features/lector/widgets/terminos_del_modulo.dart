@@ -90,7 +90,7 @@ class TerminosDelModulo extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const Divider(color: Colores.linea),
+        Divider(color: context.colores.linea),
         const SizedBox(height: 8),
 
         if (visibles.isNotEmpty) ...<Widget>[
@@ -131,7 +131,7 @@ class TerminosDelModulo extends StatelessWidget {
           style: Theme.of(context)
               .textTheme
               .bodySmall
-              ?.copyWith(color: Colores.textoSuave, fontSize: 12),
+              ?.copyWith(color: context.colores.textoSuave, fontSize: 12),
         ),
       ],
     );
@@ -168,7 +168,7 @@ class _Termino extends StatelessWidget {
         style: Theme.of(context)
             .textTheme
             .bodySmall
-            ?.copyWith(color: Colores.textoSuave, height: 1.45),
+            ?.copyWith(color: context.colores.textoSuave, height: 1.45),
       ),
     );
   }
@@ -186,7 +186,7 @@ class _Aviso extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Icon(icono, size: 18, color: Colores.peligro),
+        Icon(icono, size: 18, color: context.colores.peligro),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -194,7 +194,7 @@ class _Aviso extends StatelessWidget {
             style: Theme.of(context)
                 .textTheme
                 .bodySmall
-                ?.copyWith(color: Colores.peligro, height: 1.45),
+                ?.copyWith(color: context.colores.peligro, height: 1.45),
           ),
         ),
       ],
@@ -232,9 +232,9 @@ class AvisoDePasajeInexistente extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colores.fondo,
+        color: context.colores.fondo,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colores.linea),
+        border: Border.all(color: context.colores.linea),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,7 +242,7 @@ class AvisoDePasajeInexistente extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const Icon(Icons.info_outline, size: 18, color: Colores.textoSuave),
+              Icon(Icons.info_outline, size: 18, color: context.colores.textoSuave),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -250,7 +250,7 @@ class AvisoDePasajeInexistente extends StatelessWidget {
                   style: Theme.of(context)
                       .textTheme
                       .bodyMedium
-                      ?.copyWith(color: Colores.texto, height: 1.45),
+                      ?.copyWith(color: context.colores.texto, height: 1.45),
                 ),
               ),
             ],

@@ -24,6 +24,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'app/navegador.dart';
+import 'ui/features/lector/widgets/velo_de_atenuacion.dart';
 import 'app/sonda.dart';
 import 'data/repositories/catalogo_repository.dart';
 import 'data/services/almacenamiento.dart';
@@ -456,15 +457,40 @@ class _AbAppState extends State<AbApp> {
     );
   }
 
+  /// El tema, con la preferencia de lectura que hay **ahora**.
+  ///
+  /// Y CON UN `ListenableBuilder` PORQUE, y no un `setState`: el tema cambia cuando cambia
+  /// un ajuste de lectura, y quien lo cambia es el view model del lector, que es un
+  /// `ChangeNotifier` de los de toda la vida. Con un `setState` propio habria que ir
+  /// escuchando el view model a mano para redibujar la aplicacion entera, que es el mismo
+  /// trabajo que hace esto y con una fuente de verdad mas.
+  ///
+  /// Y NO SE USA `AnimatedTheme`, aunque el cambio de tema tiene sentido animado: en un
+  /// movil de gama baja animar el fondo entero mientras se lee es mas joda que el cambio de
+  /// fondo. Un cambio instantaneo y un texto que se mantiene en el sitio.
   @override
-  Widget build(BuildContext context) => MaterialApp.router(
-    title: 'AB',
-    debugShowCheckedModeBanner: false,
-    theme: temaDeAb(),
-    routerDelegate: _navegador,
-    routeInformationParser: const AnalizadorDeRuta(),
-    routeInformationProvider: _proveedorDeRutas,
-  );
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: _lector,
+        builder: (BuildContext context, Widget? hijo) => ConVeloDeAtenuacion(
+          // Y EL VELO SE PONE **ENVOLVIENDO** al `MaterialApp.router` entero, y no dentro de
+          // una pantalla. Y la razon de que no salga encima de las hojas es la de siempre:
+          // `showModalBottomSheet` mete su hoja en el `Overlay` del `Navigator` de dentro
+          // del `MaterialApp`, y si el velo esta aqui **afuera**, la hoja se pinta encima y
+          // se lee. Un atenuador que apaga el menu que hay que leer no es un atenuador.
+          atenuacion: _lector.preferenciaDeLectura.atenuacion,
+          hijo: MaterialApp.router(
+            title: 'AB',
+            debugShowCheckedModeBanner: false,
+            theme: temaDeAb(_lector.preferenciaDeLectura),
+            routerDelegate: _navegador,
+            routeInformationParser: const AnalizadorDeRuta(),
+            routeInformationProvider: _proveedorDeRutas,
+          ),
+        ),
+        // Y EL `builder` DE UN `MaterialApp` ES EL UNICO LUGAR DONDE SE PUEDE ENVOLVER TODO
+        // SIN TENER QUE MONTAR OTRO `Navigator`, que es lo que habria que hacer si el velo
+        // fuera un hijo de la pantalla.
+      );
 
   // --- acciones ---
   //

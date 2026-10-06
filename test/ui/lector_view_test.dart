@@ -710,7 +710,7 @@ Future<void> _bajarALosTerminos(WidgetTester t) async {
   //
   // `find.byType(Scrollable).first` cogia el del campo, el arrastre no hacia nada, y la
   // comprobacion decia "los terminos no han salido" cuando en realidad no se habia movido
-  // nada. Un fallo que blames a la pantalla por no haber迨 algo que la prueba no hizo.
+  // nada. Un fallo que culpa a la pantalla de algo que la prueba no hizo.
   final lista = find
       .descendant(of: find.byType(ListView), matching: find.byType(Scrollable))
       .first;

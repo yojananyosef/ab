@@ -267,7 +267,7 @@ class _BusquedaViewState extends State<BusquedaView> {
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
-                    ?.copyWith(color: Colores.textoSuave),
+                    ?.copyWith(color: context.colores.textoSuave),
               ),
             ],
             const SizedBox(height: 6),
@@ -282,7 +282,7 @@ class _BusquedaViewState extends State<BusquedaView> {
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
-                  ?.copyWith(color: Colores.textoSuave),
+                  ?.copyWith(color: context.colores.textoSuave),
             ),
           ],
         ),
@@ -309,7 +309,7 @@ class _FilaResultado extends StatelessWidget {
       // la propia referencia, no en una tabla.
       trailing: Text(
         'cap. ${r.capitulo}',
-        style: t.textTheme.labelSmall?.copyWith(color: Colores.textoSuave),
+        style: t.textTheme.labelSmall?.copyWith(color: context.colores.textoSuave),
       ),
       isThreeLine: true,
       onTap: () => alPulsar(r),
@@ -336,7 +336,7 @@ class _Explicacion extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Icon(icono, size: 28, color: Colores.textoSuave),
+            Icon(icono, size: 28, color: context.colores.textoSuave),
             const SizedBox(height: 12),
             Text(texto, style: Theme.of(context).textTheme.bodyLarge),
           ],
