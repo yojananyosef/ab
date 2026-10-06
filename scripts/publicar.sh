@@ -231,7 +231,52 @@ test -f "$STAGE/404.html"
 # y las siguientes died "sin marca" -- porque `publicado.txt` no existia en la rama, que era
 # otra cosa. **Las dos respuestas eran la verdad**: la primera por casualidad y la segunda
 # por el motivo correcto.
-git -C "$STAGE" push --force "$ORIGEN" "HEAD:refs/heads/$RAMA"
+# =============================================================================
+# Y EL `http.postBuffer`, Y LOS TRES INTENTOS, MEDIDO EL 6 DE OCTUBRE DE 2026
+# =============================================================================
+#
+# La publicacion del 6 de octubre fallo en **este** `push`, con el remoto diciendo:
+#
+#     error: RPC fallo; HTTP 408 curl 22 The requested URL returned error: 408
+#     send-pack: unexpected disconnect while reading sideband packet
+#     fatal: el remoto se colgo de manera inesperada
+#
+# Un 408 es un **tiempo de espera agotado**, y es transitorio. Y este paquete son 41 ficheros
+# con dos grandes --`main.dart.js` de 2,7 MB y `sqlite3.wasm` de 750 KB-- que se suben
+# **enteros en cada publicacion**, porque el repositorio del escenario se crea de cero a
+# proposito. Es decir: cada publicacion manda varios megas por HTTP, y un solo intento es
+# una apuesta a que la conexion aguanta.
+#
+# Y LO QUE PASABA DESPUES, QUE ES LO PEOR: el `push` fallo, el script **siguio** --porque
+# solo lleva `set -u` y no `set -e`-- y se paro en el paso 6 sin llegar al 7. Lo que no
+# hizo, y es lo importante, es **dar por publicado**: la comprobacion del paso 7 no llego a
+# correr, asi que no llego a decir "ok" por accidente. Un fallo ruidoso.
+#
+# `http.postBuffer` se pone alto porque el valor por defecto --1 MB-- hace que git mande el
+# paquete a base de trozos y con una peticion de control por cada uno. Con 500 MB lo manda
+# en una peticion, que es justo lo que GitHub acepta sin cortar.
+SUBIDO=no
+for intento in 1 2 3; do
+  if git -C "$STAGE" -c http.postBuffer=524288000 push --force "$ORIGEN" \
+       "HEAD:refs/heads/$RAMA"; then
+    SUBIDO=si
+    break
+  fi
+  echo "          intento $intento: el push ha fallado; se espera y se repite"
+  sleep 20
+done
+
+# Y SI TRES VECES NO, SE PARA AQUI Y NO SE SIGUE. Un paso 7 sobre un push que no ha ido
+# compara el sitio contra un commit que no esta ahi, y solo puede dar una de dos respostas
+# malas: "el sitio no sirve esta publicacion" --que es verdad-- o, si el marcador viejo
+# coincidiera por casualidad, "ok" sin haber subido nada. Lo segundo es la clase de fallo
+# que `AGENTS.md` prohibe: **una comprobacion que puede pasar sin comprobar lo nuevo**.
+if [ "$SUBIDO" != si ]; then
+  echo "          ERROR: el contenido NO se ha subido a la rama $RAMA."
+  echo "          No se sigue: el paso 7 compararia el sitio contra un commit que"
+  echo "          no esta subido, y no puede decir la verdad."
+  exit 1
+fi
 
 echo "==> 7/7  comprobar que el sitio sirve ESTE build"
 # Y LA COMPROBACION ES DE CONTENIDO Y NO DE CODIGO. Un `curl` que devuelve 200 con la pagina
