@@ -37,6 +37,7 @@ import 'package:ab/ui/core/numeros.dart';
 import 'package:ab/ui/core/rutas.dart';
 import 'package:ab/ui/core/tema.dart';
 import 'package:ab/app/navegador.dart';
+import 'package:ab/ui/features/lector/view_models/resaltados_view_model.dart';
 import 'package:ab/domain/models/manifiesto.dart';
 import 'package:ab/domain/models/modulo.dart';
 import 'package:ab/data/repositories/catalogo_repository.dart';
@@ -426,6 +427,7 @@ void main() {
       final n = NavegadorAb(
         biblioteca: biblioteca,
         lector: lector,
+        resaltados: ResaltadosViewModel(),
         abrir: (id, _) async => abierto.modulo,
       );
       addTearDown(n.dispose);

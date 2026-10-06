@@ -45,6 +45,7 @@ import 'package:ab/domain/models/nota.dart';
 import 'package:ab/domain/models/token_de_texto.dart';
 import 'package:ab/domain/models/pasaje.dart';
 import 'package:ab/domain/models/referencia.dart';
+import 'package:ab/domain/models/resaltado.dart';
 import 'package:ab/domain/models/versiculo.dart';
 import 'package:ab/ui/core/numeros.dart';
 import 'package:ab/ui/core/tema.dart';
@@ -55,6 +56,8 @@ import '../../busqueda/widgets/columna_de_texto.dart';
 import '../widgets/estilo_de_palabra.dart';
 import '../widgets/hoja_de_versiones.dart';
 import '../widgets/hoja_de_formato.dart';
+import '../widgets/hoja_de_resaltado.dart';
+import '../view_models/resaltados_view_model.dart';
 import '../widgets/terminos_del_modulo.dart';
 
 class LectorView extends StatefulWidget {
@@ -69,6 +72,7 @@ class LectorView extends StatefulWidget {
     required this.alAlternarPalabrasDeJesus,
     required this.alAbrirLibros,
     required this.alAbrirVersiones,
+    this.resaltados,
     this.alDescargarComentario,
     this.alBuscar,
     this.modulosDelCatalogo = const <Modulo>[],
@@ -102,6 +106,15 @@ class LectorView extends StatefulWidget {
   /// informacion no la tiene. Un `null` es lo que dice "no hay nada que ofrecer", y la
   /// pantalla no pinta boton y ya esta.
   final VoidCallback? alDescargarComentario;
+
+  /// Los resaltados de la persona, para pintar las marcas y para marcar.
+  ///
+  /// Y ES **OPCIONAL**, y no por comodidad de las pruebas: sin almacen de resaltados no hay
+  /// nada que marcar, y una pantalla de lectura sin ese dato **se lee igual**. Que sea
+  /// opcional hace que los montajes de prueba no tengan que montar un almacen, y que no se
+  /// misture "no hay resaltados" con "no se pueden leer los resaltados", que son dos cosas
+  /// distintas y la segunda tiene un aviso.
+  final ResaltadosViewModel? resaltados;
 
   /// Los modulos que dice el catalogo, para poner el tamano en el boton de descargar.
   ///
@@ -163,6 +176,25 @@ class _LectorViewState extends State<LectorView> {
     super.initState();
     _control = TextEditingController();
     widget.viewModel.addListener(_alCambiarElEstado);
+    // Y LOS RESALTADOS TAMBIEN, y no solo el view model de la lectura.
+    //
+    // ============================================================================
+    // MEDIDO EL 5 DE OCTUBRE DE 2026 EN UNA CAPTURA, Y NO EN UNA PRUEBA
+    // ============================================================================
+    //
+    // Marcar un versiculo **no se veia**. La hoja se abria, se elegia un estilo, la hoja se
+    // cerraba y el versiculo seguia sin fondo: twenty y cinco pruebas del view model en verde,
+    // el modelo correcto, el almacenamiento correcto, y **la pantalla no se repintaba**.
+    //
+    // El motivo: `LectorView` escuchaba a `LectorViewModel` y solo a el, y marcar llama a
+    // `notifyListeners` de `ResaltadosViewModel`, que es **otro** `ChangeNotifier`. Nada le
+    // decia a la pantalla que el fondo de un versiculo habia cambiado.
+    //
+    // Y POR QUE NINGUNA PRUEBA LO HABRIA VISTO. Las de este change usan `vm.marcar(...)` y
+    // comprueban `vm.de(...)`: el modelo. Para ver el fallo haria falta una prueba que
+    // **monte la pantalla**, marque por el dedo y mire el color de fondo de un `DecoratedBox` --
+    // y esa prueba es la que toca hacer ahora, y no antes.
+    widget.resaltados?.addListener(_alCambiarElEstado);
     // Y LA PREFERENCIA SE LEE AL ABRIR LA PANTALLA, y no al arrancar la app. Es una
     // lectura, es idempotente, y el momento en que puede haber cambiado es justo este: si
     // se leyera al arrancar, abrir una pestana nueva --que es como se lee en el escritorio,
@@ -173,8 +205,21 @@ class _LectorViewState extends State<LectorView> {
   @override
   void dispose() {
     widget.viewModel.removeListener(_alCambiarElEstado);
+    widget.resaltados?.removeListener(_alCambiarElEstado);
     _control.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(LectorView anterior) {
+    super.didUpdateWidget(anterior);
+    // Y SI CAMBIA EL VIEWMODEL DE RESALTADOS, se cambia la escucha. Con `resaltados`
+    // opcional, un `build` puede montarlo y otro no, y sin esto la pantalla se queda
+    // escuchando al viejo --o, peor, sin escuchar a ninguno-- y marcar deja de verse.
+    if (anterior.resaltados != widget.resaltados) {
+      anterior.resaltados?.removeListener(_alCambiarElEstado);
+      widget.resaltados?.addListener(_alCambiarElEstado);
+    }
   }
 
   void _alCambiarElEstado() {
@@ -313,6 +358,41 @@ class _LectorViewState extends State<LectorView> {
     );
   }
 
+  /// Marcar o quitar el resaltado de un versiculo.
+  ///
+  /// Y ABRE LA HOJA DE ESTILOS Y **ESPERA A QUE SE ELIJA UNO**, y no pone nada antes: elegir
+  /// el estilo **es** marcar. Y si vuelve null, es que se ha cerrado sin elegir o se ha
+  /// pulsado "quitar", y entonces lo que se hace es quitar.
+  Future<void> _marcar(
+    LectorViewModel vm,
+    String libro,
+    int capitulo,
+    int versiculo,
+  ) async {
+    final r = widget.resaltados;
+    if (r == null) return;
+
+    final actual = r.de(libro, capitulo, versiculo);
+    final elegido = await elegirEstilo(
+      context,
+      estilos: r.estilos,
+      estiloActual: actual?.estilo,
+      hayResaltado: actual != null,
+    );
+    if (!mounted) return;
+
+    // Y LAS **TRES** SALIDAS, y la de cerrar sin hacer nada **no toca nada**. Ver la nota de
+    // `EleccionDeResaltado`: con un unico `null` para "cerrar" y para "quitar", un toque de
+    // mas fuera de la hoja te borraba el resaltado que tenias.
+    if (elegido == null) return;
+
+    if (elegido.quita) {
+      await r.quitar(libro, capitulo, versiculo);
+      return;
+    }
+    await r.marcar(libro, capitulo, versiculo, elegido.estilo!.id);
+  }
+
   Widget _cuerpo(LectorViewModel vm) {
     // Y EL TEXTO DE LECTURA SALE DE LA PREFERENCIA, y no de un `copyWith` con numeros
     // escritos aqui. Los tres valores --tamano, alto de linea y espaciado-- estan en
@@ -323,6 +403,7 @@ class _LectorViewState extends State<LectorView> {
       Theme.of(context).textTheme,
       widget.viewModel.preferenciaDeLectura,
     );
+
 
     return ColumnaDeTexto(
       estilo: estiloVersiculo,
@@ -456,6 +537,26 @@ class _LectorViewState extends State<LectorView> {
   // --- el capitulo ---
 
   Widget _capitulo(LectorViewModel vm, TextStyle estilo) {
+    // Y LOS ESTILOS DE LOS RESALTADOS DE ESTE CAPITULO, **UNA VEZ**, y no uno por versiculo.
+    //
+    // El view model puede tener miles de resaltados y el capitulo tiene 36 versiculos:
+    // recorrer la lista entera por cada versiculo que se pinta son 36 mil comparaciones por
+    // capitulo abierto, y eso es lo que hace que el lector vaya lento sin que se note el
+    // motivo. Con el mapa ya hecho, es una busqueda por numero de versiculo.
+    //
+    // Y LA RAZON DE QUE ESTE **AQUI** Y NO EN EL `build`: este metodo es el que pinta el
+    // capitulo, y antes estaba en el `build` de la vista, que se ejecuta tambien al abrir la
+    // hoja de formato y al cambiar el tema. Calcular el mapa en el `build` es hacerlo treinta
+    // veces por cada cambio de tema.
+    final estilosDelCapitulo = <int, EstiloDeResaltado>{};
+    final referencia = vm.leyendo;
+    final vmResaltados = widget.resaltados;
+    if (referencia != null && vmResaltados != null) {
+      estilosDelCapitulo.addAll(
+        vmResaltados.estilosDelCapitulo(referencia.libro, referencia.capitulo),
+      );
+    }
+
     switch (vm.estado) {
       case EstadoLecturaTexto.sinModulo:
         return _nadaPintado(
@@ -529,6 +630,10 @@ class _LectorViewState extends State<LectorView> {
                 // de donde se salio. Sin esto, un enlace a un versiculo abre un capitulo
                 // y no dice nada de cual era.
                 esElPedido: p.esElPedido(v.numero),
+                // Y EL ESTILO DEL RESALTADO DE ESE VERSICULO, que llega ya resuelto desde
+                // `estilosDelCapitulo`: una vez por capitulo abierto, no una vez por versiculo.
+                estiloDelResaltado: estilosDelCapitulo[v.numero],
+                alMarcar: () => _marcar(vm, p.referencia.libro, p.referencia.capitulo, v.numero),
               ),
               if (conNotas) ..._notasDe(vm, v.numero, estilo),
             ],
@@ -776,6 +881,48 @@ class _Nota extends StatelessWidget {
 /// Y CUANDO NO HAY VERSION NO SE PINTA LA LINEA, y no un hueco. Un modulo sin manifiesto al
 /// que pertenece deja la cabecera a una linea y no con un espacio vacio que empuja el
 /// texto hacia abajo.
+/// La decoracion de un versiculo: el fondo del resaltado, su contorno y la marca del pedido.
+///
+/// Y EN UN SITIO Y NO EN EL CUATRO `BorderSide` EN LINEA, y no por legibilidad.
+///
+/// La primera version de esto escribia los cuatro lados uno a uno, cada uno con su
+/// condicional de "si hay resaltado", que son **cuatro** copias de la misma pregunta y
+/// cuatro sitios donde equivocarse. Y con el error de la linea de pelo: un `BorderSide` de
+/// ancho `0` con `BorderRadius` distinto de cero **no se puede pintar**, y el framework avisa
+/// al pintar, que es despues de que todas las pruebas de construccion hayan pasado.
+BoxDecoration _decoracionDelResaltado({
+  required Color? color,
+  required Color contorno,
+  required double grosor,
+  required Color acento,
+  required bool esElPedido,
+}) {
+  final marcaDelPedido = BorderSide(color: acento, width: 3);
+  final ladoDelResaltado = grosor > 0
+      ? BorderSide(color: contorno, width: grosor)
+      // Y SIN UN BORDE EN LUGAR DE UNO DE ANCHO CERO. Un `BorderSide.none` **no** es una
+      // linea de pelo: no pide pintar nada, y con el radio no hay problema.
+      : BorderSide.none;
+
+  return BoxDecoration(
+    color: color,
+    borderRadius: BorderRadius.circular(4),
+    border: Border(
+      left: esElPedido ? marcaDelPedido : ladoDelResaltado,
+      top: ladoDelResaltado,
+      right: ladoDelResaltado,
+      bottom: ladoDelResaltado,
+    ),
+  );
+}
+
+/// La clave del fondo del resaltado de un versiculo, para las pruebas.
+///
+/// Y ES PUBLICA Y ES UNA CONSTANTE, y no un literal escrito en la prueba, porque aparece en dos
+/// sitios --la vista que lo pinta y la prueba que lo busca-- y si uno de los dos cambia el
+/// nombre, el otro deja de encontrarlo y el fallo dice "0 widgets" sin decir de donde.
+const Key claveDelFondoDelResaltado = ValueKey<String>('fondoDelResaltado');
+
 /// La clave del numero de un versiculo, para las pruebas.
 ///
 /// Y ES UNA CONSTANTE PUBLICA Y NO UN LITERAL EN CADA PRUEBA, porque el mismo numero
@@ -1185,10 +1332,22 @@ class _TextoDelVersiculo extends StatefulWidget {
     required this.alVerIndice,
     required this.mostrarPalabrasDeJesus,
     required this.esElPedido,
+    required this.estiloDelResaltado,
+    required this.alMarcar,
   });
 
   final Versiculo versiculo;
   final TextStyle estilo;
+
+  /// El estilo con el que esta marcado, o null si no esta marcado.
+  ///
+  /// Y LLEGA **YA RESUELTO** y no el [Resaltado] entero, porque el versiculo solo necesita
+  /// saber el color y la forma; y llega resuelto porque la busqueda del estilo por id es la
+  /// que hace el view model, una vez por capitulo, y no una vez por versiculo.
+  final EstiloDeResaltado? estiloDelResaltado;
+
+  /// Tocar el numero para marcar o quitar.
+  final VoidCallback alMarcar;
 
   /// Si este es el versiculo que se pidio en la URL.
   ///
@@ -1347,10 +1506,22 @@ class _Versiculo extends StatelessWidget {
     required this.alVerIndice,
     required this.mostrarPalabrasDeJesus,
     required this.esElPedido,
+    required this.estiloDelResaltado,
+    required this.alMarcar,
   });
 
   final Versiculo versiculo;
   final TextStyle estilo;
+
+  /// El estilo con el que esta marcado, o null si no esta marcado.
+  ///
+  /// Y LLEGA **YA RESUELTO** y no el [Resaltado] entero, porque el versiculo solo necesita
+  /// saber el color y la forma; y llega resuelto porque la busqueda del estilo por id es la
+  /// que hace el view model, una vez por capitulo, y no una vez por versiculo.
+  final EstiloDeResaltado? estiloDelResaltado;
+
+  /// Tocar el numero para marcar o quitar.
+  final VoidCallback alMarcar;
 
   /// Si este es el versiculo que se pidio en la URL.
   ///
@@ -1378,20 +1549,76 @@ class _Versiculo extends StatelessWidget {
         ? estilo.copyWith(color: context.colores.acento, fontWeight: FontWeight.w500)
         : estilo;
 
+    // Y EL FONDO DEL **RESALTADO**, y va en el `DecoratedBox` de fuera del texto y **no** en
+    // el `TextSpan`. Que el color vaya por delante del texto haria la Escritura ilegible con
+    // un resaltado fuerte, y un resaltado que no deja leer es un resaltado que estorba: por eso
+    // va detras, y por eso el numero y el texto quedan **dentro** del `DecoratedBox`.
+    //
+    // Y CUANDO NO HAY NADA QUE PINTAR, **NO HAY DECORACION**. Un `BorderSide` de ancho 0 con
+    // unas esquinas redondeadas no se puede pintar, y el framework avisa al pintar:
+    //
+    //     A hairline border like `BorderSide(width: 0.0, style: BorderStyle.solid)` can only
+    //     be drawn when BorderRadius is zero or null.
+    //
+    // La primera version de esto ponia los cuatro `BorderSide` siempre, con `width: 0` cuando
+    // no tocaba, y con `BorderRadius.circular(4)` siempre. Son las dos mitades de un mismo
+    // error: un borde de ancho **cero** es una linea de pelo, y una linea de pelo con radio
+    // no se dibuja. Y el fallo sale **al pintar**, que es despues de que todas las pruebas de
+    // construccion hayan pasado.
+    final estiloResaltado = estiloDelResaltado;
+    final decoracionDelResaltado = esElPedido || estiloResaltado != null
+        ? _decoracionDelResaltado(
+            color: estiloResaltado == null ? null : colorDeFondo(estiloResaltado),
+            // Y EL `?? Colors.transparent` Y NO UN `?:` CON NULL, porque `contorno` es
+            // `Color` y no `Color?`. Un null aqui seria un borde de color desconocido, y lo
+            // que se quiere es "sin contorno", que es `grosor == 0`, y eso lo decide el
+            // `grosor` de abajo.
+            contorno: estiloResaltado == null
+                ? Colors.transparent
+                : colorDeContorno(estiloResaltado) ?? Colors.transparent,
+            grosor: estiloResaltado == null ? 0 : grosorDeContorno(estiloResaltado) ?? 0,
+            acento: context.colores.acento,
+            esElPedido: esElPedido,
+          )
+        : const BoxDecoration();
+
     return Padding(
       padding: EdgeInsets.only(bottom: 10, left: esElPedido ? 6 : 0),
       child: DecoratedBox(
-        decoration: esElPedido
-            ? BoxDecoration(
-                border: Border(left: BorderSide(color: context.colores.acento, width: 3)),
-              )
-            : const BoxDecoration(),
+        // Y LA CLAVE, PORQUE SIN ELLA LA PRUEBA DEL FONDO NO SE PUEDE ESCRIBIR.
+        //
+        // Con `find.ancestor` hay que adivinar cual de los `DecoratedBox` de la fila es el
+        // del resaltado, y hay varios: el del texto con los numeros del lexicon, el del
+        // versiculo pedido. Adivinar da una prueba que **pasa comprobando el decorado
+        // equivocado**, que es lo mismo que paso con `claveDelNumeroDeVersiculo` y el 3 de mas
+        // que salia como versiculo.
+        key: claveDelFondoDelResaltado,
+        decoration: decoracionDelResaltado,
         child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
+          // Y EL NUMERO ES UN **BOTON** Y EL TEXTO NO, y esa es la distincion que hace que
+          // marcar no rompa seleccionar.
+          //
+          // Con el texto en un `Text` normal, tocarlo lo selecciona --que es lo que quiere
+          // quien copia un versiculo-- y no abre la hoja. Con el numero en un boton, tocarlo
+          // marca. Los dos gestos usan el dedo y van a sitios distintos, y no se pisan.
           SizedBox(
             width: 34,
-            child: Text(
+            child: TextButton(
+              onPressed: alMarcar,
+              // Y SIN ESTILO DE BOTON. Un `TextButton` pinta fondo y tinta, y un numero de
+              // versiculo con fondo al pulsarse parece un versiculo seleccionado. Se deja el
+              // fondo transparente y solo se cambia el color al pulsarse, que es lo unico que
+              // hace falta para que el dedo sepa donde ha tocado.
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                foregroundColor: context.colores.textoSuave,
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(34, 34),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
               '${versiculo.numero}',
               // Y LA CLAVE, PORQUE SIN ELLA LAS PRUEBAS RECOGEN EL NUMERO DEL CAPITULO.
               // El numero de capitulo que ahora va antes de los versiculos tambien es un
@@ -1406,6 +1633,7 @@ class _Versiculo extends StatelessWidget {
                 height: 1.9,
               ),
             ),
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -1415,6 +1643,13 @@ class _Versiculo extends StatelessWidget {
               alVerIndice: alVerIndice,
               mostrarPalabrasDeJesus: mostrarPalabrasDeJesus,
               esElPedido: esElPedido,
+              // Y ESTOS DOS VAN AQUI Y NO EN LA LLAMADA DE ARRIBA, y el motivo es que
+              // `_TextoDelVersiculo` es el que **pinta las palabras** y es quien sabe si un
+              // versiculo lleva una palabra con numero de lexicon pulsable. Pasarselos por
+              // el `TextSpan` haria que se tuvieran que resolver aqui, en un sitio donde no
+              // hay contexto de lectura.
+              estiloDelResaltado: estiloDelResaltado,
+              alMarcar: alMarcar,
             ),
           ),
         ],

@@ -102,6 +102,7 @@ import 'package:ab/ui/features/lector/widgets/marco_de_estudio.dart';
 import 'package:ab/ui/features/lector/widgets/hoja_de_versiones.dart';
 import 'package:ab/ui/features/biblioteca/views/biblioteca_view.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
+import 'package:ab/ui/features/lector/view_models/resaltados_view_model.dart';
 import 'package:ab/ui/features/lector/views/lector_view.dart';
 import 'package:ab/ui/features/lector/widgets/hoja_de_comentarios.dart';
 
@@ -197,6 +198,7 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   NavegadorAb({
     required this.biblioteca,
     required this.lector,
+    required this.resaltados,
     required this.abrir,
     this.proveedor,
     this.descargar,
@@ -226,6 +228,14 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
   /// `main.dart` compone lo que existe desde el principio, y ahi seria un segundo sitio al
   /// que volver cuando se anada la siguiente pantalla.
   final IndiceViewModel _indice = IndiceViewModel();
+  /// Los resaltados de la persona.
+  ///
+  /// Y VA POR PARAMETRO Y NO SE CREA AQUI, porque los resaltados **no son de una pantalla**:
+  /// son de la persona y los ven la lectura, la busqueda y el indice. Si los creara el
+  /// enrutador, el indice tendria que ir a buscarlos al enrutador, y con el indice abierto el
+  /// enrutador no es quien esta vivo.
+  final ResaltadosViewModel resaltados;
+
   final AperturaDeModulo abrir;
 
   /// Lo que hace la biblioteca que el enrutador no sabe hacer: descargar, abrir un
@@ -1124,6 +1134,10 @@ class NavegadorAb extends RouterDelegate<Ruta> with ChangeNotifier {
             versiones: _versionesDisponibles(),
             alAbrirLibros: () => elegirLibro(context),
             alAbrirVersiones: () => elegirVersion(context),
+            // Y LOS RESALTADOS, que son opcionales porque sin almacen no hay nada que marcar
+            // y la pantalla de lectura se lee igual. Que sea opcional hace que los montajes de
+            // prueba no tengan que montar un almacen.
+            resaltados: resaltados,
             alCambiarDeVersion: cambiarDeVersion,
             alVolver: irAHome,
           )

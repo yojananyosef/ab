@@ -76,6 +76,25 @@ async function main() {
   await page.waitForTimeout(ESPERA);
   await capturar(page, 'gui-03-lectura');
 
+  console.log('==> marcando un versiculo');
+  // Y EL NUMERO DEL VERSICULO ES UN BOTON, y no el texto: es lo unico de la fila que es un
+  // boton. El 16 esta en la columna de 34 px, que a 360 px de ancho esta en x 34-48, y a la
+  // altura de la primera linea de texto.
+  await page.mouse.click(40, 205);
+  await page.waitForTimeout(1500);
+  await capturar(page, 'gui-10-hoja-de-resaltado');
+
+  // Y EL PRIMER ESTILO, "Amarillo". La fila va de y 460 a 526 en la captura de 760, con lo
+  // que su centro esta en **492**, y no en el 250 que se puso la primera vez.
+  //
+  // Y EL 250 ABRIO LA HOJA Y LA CERRÓ EN EL MISMO GESTO: el toque cae en el area
+  // **atenuada de fuera**, que en una hoja modal significa "cierra". Y una hoja que se cierra
+  // sola parece una hoja que no funciona, cuando lo que paso es que el dedo no llego a ningun
+  // boton.
+  await page.mouse.click(180, 492);
+  await page.waitForTimeout(1200);
+  await capturar(page, 'gui-11-marcado');
+
   console.log('==> y la hoja de formato');
   // Y EL ICONO DE FORMATO ES EL **TERCERO POR LA DERECHA** en la barra: buscar, letras rojas,
   // formato, comentario. A 360 px el grupo empieza en 300 y cada icono son 28 px de captura

@@ -16,6 +16,7 @@
 //     listar 200 filas                        2 ms
 
 import 'package:ab/app/navegador.dart';
+import 'package:ab/ui/features/lector/view_models/resaltados_view_model.dart';
 import 'package:ab/data/repositories/catalogo_repository.dart';
 import 'package:ab/data/repositories/modulo_repository.dart';
 import 'package:ab/domain/models/indice_de_strong.dart';
@@ -362,6 +363,7 @@ void main() {
       return NavegadorAb(
         biblioteca: biblioteca,
         lector: lector,
+        resaltados: ResaltadosViewModel(),
         abrir: (id, referencia) async {
           if (!descargados.contains(id)) return null;
           final apertura = ModuloAbierto.abrir(rutaBibliaReal, id: id);

@@ -9,6 +9,7 @@
 // texto y 32 con nota, y Juan 3:1 **sin** nota.
 
 import 'package:ab/app/navegador.dart';
+import 'package:ab/ui/features/lector/view_models/resaltados_view_model.dart';
 import 'package:ab/data/repositories/catalogo_repository.dart';
 import 'package:ab/data/repositories/modulo_repository.dart';
 import 'package:ab/domain/models/manifiesto.dart';
@@ -730,6 +731,7 @@ void main() {
       return NavegadorAb(
         biblioteca: biblioteca,
         lector: lector,
+        resaltados: ResaltadosViewModel(),
         descargar: puedeDescargar ? aLaBaja : null,
         abrir: (id, referencia) async {
           final ruta = id == 'CLARKE' ? rutaComentarioReal : rutaBibliaReal;

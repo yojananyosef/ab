@@ -9,6 +9,7 @@
 // CLARKE, y Juan 3:16 son 141 caracteres.
 
 import 'package:ab/app/navegador.dart';
+import 'package:ab/ui/features/lector/view_models/resaltados_view_model.dart';
 import 'package:ab/data/repositories/catalogo_repository.dart';
 import 'package:ab/data/repositories/modulo_repository.dart';
 import 'package:ab/domain/models/manifiesto.dart';
@@ -342,6 +343,7 @@ void main() {
       return NavegadorAb(
         biblioteca: biblioteca,
         lector: lector,
+        resaltados: ResaltadosViewModel(),
         // Y `abrir` RESPETA LO DESCARGADO, y no es un detalle del arnes: en la
         // aplicacion es `_abrirModulo`, que devuelve null si el fichero no esta. Un
         // arnés que abre el fichero siempre haria pasar el caso de "el texto no esta

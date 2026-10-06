@@ -20,10 +20,13 @@
 // - **Un enrutador.** La primera pantalla es una y no hay por donde navigating. El
 //   enrutador llega con el grupo 7, cuando haya un pasaje al que ir.
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'app/navegador.dart';
+import 'ui/features/lector/view_models/resaltados_view_model.dart';
 import 'ui/features/lector/widgets/velo_de_atenuacion.dart';
 import 'app/sonda.dart';
 import 'data/repositories/catalogo_repository.dart';
@@ -109,6 +112,13 @@ class _AbAppState extends State<AbApp> {
   late final AlmacenamientoDeModulos _modulos;
   late final BibliotecaViewModel _biblioteca;
   late final LectorViewModel _lector;
+
+  /// Los resaltados de la persona.
+  ///
+  /// Y SE CREAN **ANTES** DEL ENRUTADOR y no dentro de el, porque el enrutador los lleva a la
+  /// pantalla de lectura y si los creara el mismo serian un `ChangeNotifier` que nace en cada
+  /// reconstruccion.
+  late final ResaltadosViewModel _resaltados;
   late final PlatformRouteInformationProvider _proveedorDeRutas;
   late final NavegadorAb _navegador;
 
@@ -150,9 +160,12 @@ class _AbAppState extends State<AbApp> {
       ),
     );
 
+    _resaltados = ResaltadosViewModel();
+
     _navegador = NavegadorAb(
       biblioteca: _biblioteca,
       lector: _lector,
+      resaltados: _resaltados,
       proveedor: _proveedorDeRutas,
       abrir: _abrirModulo,
       descargar: (id) => _descargar(id),
@@ -449,6 +462,13 @@ class _AbAppState extends State<AbApp> {
   /// y que no se puede mirar contando los avisos, porque los de la descarga estan siempre.
   Future<ResultadoDelArranque> _cargar() async {
     if (!mounted) return arranqueVacio();
+
+    // Y LOS RESALTADOS SE LEEN **EN PARALELO** con el catalogo y **SIN** esperarlos: el
+    // arranque no puede depender de ellos, porque si el almacenamiento no contesta la pantalla
+    // de lectura tiene que salir igualmente --con su aviso--, no quedarse en blanco esperando
+    // unos resaltados que no son Sagrada Escritura.
+    unawaited(_resaltados.cargar());
+
     return arrancarBiblioteca(
       leerCatalogo: _catalogo.leer,
       almacenamiento: _modulos,

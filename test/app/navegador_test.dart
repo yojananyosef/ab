@@ -28,6 +28,7 @@
 // linea.
 
 import 'package:ab/app/navegador.dart';
+import 'package:ab/ui/features/lector/view_models/resaltados_view_model.dart';
 import 'package:ab/data/repositories/modulo_repository.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/ui/core/rutas.dart';
@@ -60,6 +61,7 @@ NavegadorAb montarNavegador({
   return NavegadorAb(
     biblioteca: biblioteca,
     lector: lector,
+    resaltados: ResaltadosViewModel(),
     abrir: (id, referencia) async {
       if (sinDescargar.contains(id)) return null;
       final apertura = ModuloAbierto.abrir(rutaBibliaReal, id: id);
@@ -252,6 +254,7 @@ void main() {
       final n = NavegadorAb(
         biblioteca: biblioteca,
         lector: lector,
+        resaltados: ResaltadosViewModel(),
         abrir: (id, ref) async => null,
         proveedor: proveedor,
       );

@@ -22,6 +22,7 @@ import 'package:ab/data/repositories/modulo_repository.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/ui/core/tema.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
+import 'package:ab/ui/features/lector/view_models/resaltados_view_model.dart';
 import 'package:ab/ui/features/lector/views/lector_view.dart';
 import 'package:ab/ui/features/busqueda/widgets/columna_de_texto.dart';
 import 'package:flutter/material.dart';
@@ -80,6 +81,12 @@ Future<LectorViewModel> montarLector(
   void Function(LectorViewModel vm, Referencia r)? alPulsarPasaje,
   VoidCallback? alVolver,
   void Function(String)? alCambiarDeVersion,
+  /// Los resaltados de la persona, para las pruebas que marcan.
+  ///
+  /// Y ES **OPCIONAL**, y no por comodidad: sin el, la pantalla se lee igual y las pruebas
+  /// que no miran resaltados no tienen que montar un almacen en cada una. Y en la vista es
+  /// opcional por el mismo motivo.
+  ResaltadosViewModel? resaltados,
 }) async {
   final apertura = ModuloAbierto.abrir(ruta ?? rutaBibliaReal, id: id);
   if (apertura is! Abierto) {
@@ -106,6 +113,7 @@ Future<LectorViewModel> montarLector(
       alAbrirVersiones: () {},
       alCambiarDeVersion: alCambiarDeVersion ?? (_) {},
       alVolver: alVolver ?? () {},
+      resaltados: resaltados,
     ),
   ));
   return vm;
