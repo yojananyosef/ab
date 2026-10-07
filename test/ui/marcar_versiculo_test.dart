@@ -40,10 +40,10 @@ void main() {
       vm.leer(const Referencia('John', 3, 16));
       await t.pumpAndSettle();
 
-      expect(_colorDeFondo(t), isNull, reason: 'sin marcar, no hay fondo');
+      expect(colorDeFondoDelVersiculoPedido(t), isNull, reason: 'sin marcar, no hay fondo');
 
       // Y SE MARCA **POR EL DEDO**, que es lo que fallaba.
-      await t.tap(_numeroDelVersiculo(t, 16));
+      await t.tap(numeroDelVersiculo(t, 16));
       await t.pumpAndSettle();
       await t.tap(find.text('Amarillo'));
       await t.pumpAndSettle();
@@ -52,7 +52,7 @@ void main() {
       expect(find.text('Marcar este versiculo'), findsNothing,
           reason: 'elegir el estilo es marcar: marcar es una accion de un paso');
 
-      expect(_colorDeFondo(t), isNotNull, reason: 'y ahora si se ve');
+      expect(colorDeFondoDelVersiculoPedido(t), isNotNull, reason: 'y ahora si se ve');
       expect(resaltados.total, 1);
       expect(resaltados.de('John', 3, 16)!.estilo, 'amarillo');
     });
@@ -98,13 +98,13 @@ void main() {
       vm.leer(const Referencia('John', 3, 16));
       await t.pumpAndSettle();
 
-      await t.tap(_numeroDelVersiculo(t, 16));
+      await t.tap(numeroDelVersiculo(t, 16));
       await t.pumpAndSettle();
       await t.tap(find.text('Amarillo'));
       await t.pumpAndSettle();
-      expect(_colorDeFondo(t), isNotNull);
+      expect(colorDeFondoDelVersiculoPedido(t), isNotNull);
 
-      await t.tap(_numeroDelVersiculo(t, 16));
+      await t.tap(numeroDelVersiculo(t, 16));
       await t.pumpAndSettle();
       // Y EL BOTON DE QUITAR **SOLO** CUANDO LO HAY. Un "Quitar" en un versiculo sin marcar es
       // un boton que no hace nada, y en Juan 3 eso son 35 botones de mas en pantalla.
@@ -120,12 +120,12 @@ void main() {
       await t.pumpAndSettle();
 
       expect(resaltados.total, 0, reason: 'y el almacen se queda vacio');
-      expect(_colorDeFondo(t), isNull,
+      expect(colorDeFondoDelVersiculoPedido(t), isNull,
           reason: 'quitar es quitar del todo, tambien de la pantalla');
       // Y ADEMAS QUE NINGUNO, y no solo el 16. Un "quitar" que borra del almacen y deja el
       // fondo puesto en pantalla es un fallo que no sale en la prueba de arriba.
       for (final v in <int>[1, 2, 15, 16, 17, 18, 35]) {
-        expect(_colorDeFondo(t, v), isNull, reason: 'el versiculo \$v');
+        expect(colorDeFondoDelVersiculoPedido(t, v), isNull, reason: 'el versiculo $v');
       }
     });
 
@@ -142,21 +142,21 @@ void main() {
       vm.leer(const Referencia('John', 3, 16));
       await t.pumpAndSettle();
 
-      await t.tap(_numeroDelVersiculo(t, 16));
+      await t.tap(numeroDelVersiculo(t, 16));
       await t.pumpAndSettle();
       await t.tap(find.text('Amarillo'));
       await t.pumpAndSettle();
       expect(resaltados.total, 1);
 
       // Y ABRIR Y CERRAR SIN PULSAR NADA.
-      await t.tap(_numeroDelVersiculo(t, 16));
+      await t.tap(numeroDelVersiculo(t, 16));
       await t.pumpAndSettle();
       await t.tapAt(t.getTopLeft(find.text('Marcar este versiculo')));
       await t.pumpAndSettle();
 
       expect(resaltados.total, 1,
           reason: 'cerrar sin elegir no quita nada');
-      expect(_colorDeFondo(t), isNotNull, reason: 'y sigue marcado');
+      expect(colorDeFondoDelVersiculoPedido(t), isNotNull, reason: 'y sigue marcado');
     });
 
     testWidgets('volver a marcar cambia de estilo, y no añade un segundo', (t) async {
@@ -167,12 +167,12 @@ void main() {
       vm.leer(const Referencia('John', 3, 16));
       await t.pumpAndSettle();
 
-      await t.tap(_numeroDelVersiculo(t, 16));
+      await t.tap(numeroDelVersiculo(t, 16));
       await t.pumpAndSettle();
       await t.tap(find.text('Amarillo'));
       await t.pumpAndSettle();
 
-      await t.tap(_numeroDelVersiculo(t, 16));
+      await t.tap(numeroDelVersiculo(t, 16));
       await t.pumpAndSettle();
       await t.tap(find.text('Verde'));
       await t.pumpAndSettle();
@@ -218,7 +218,7 @@ void main() {
       vm.leer(const Referencia('John', 3, 16));
       await t.pumpAndSettle();
 
-      final boton = _numeroDelVersiculo(t, 16);
+      final boton = numeroDelVersiculo(t, 16);
       expect(t.getSize(boton).width, lessThanOrEqualTo(36),
           reason: 'la columna del numero es de 34 y el boton no la engorda');
       expect(t.getSize(boton).height, greaterThanOrEqualTo(30),
@@ -259,7 +259,7 @@ void main() {
 }
 
 /// El numero del versiculo, que es un boton.
-Finder _numeroDelVersiculo(WidgetTester t, int numero) =>
+Finder numeroDelVersiculo(WidgetTester t, int numero) =>
     find.ancestor(
       of: find.byKey(claveDelNumeroDeVersiculo).first,
       matching: find.byType(TextButton),
@@ -277,7 +277,7 @@ Finder _numeroDelVersiculo(WidgetTester t, int numero) =>
 /// equivocado **no se ve**: el primer versiculo no tiene fondo, la comprobacion da verde, y
 /// el versiculo 16 sale amarillo sin que nadie lo sepa. Que es exactamente lo que paso, y el
 /// motivo de que ahora el numero del versiculo sea parte de la busqueda.
-Color? _colorDeFondo(WidgetTester t, [int numero = 16]) {
+Color? colorDeFondoDelVersiculoPedido(WidgetTester t, [int numero = 16]) {
   for (final e in find.byKey(claveDelNumeroDeVersiculo).evaluate()) {
     if ((e.widget as Text).data != '$numero') continue;
     final caja = find

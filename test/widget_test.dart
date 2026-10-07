@@ -24,16 +24,41 @@
 // fallaria siempre en un runner sin Internet. Eso es lo que comprueba
 // `test/red/sitio_real_test.dart`, en su propio paso.
 
+import 'package:ab/data/services/almacenamiento_de_resaltados.dart';
 import 'package:ab/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+/// La app entera con un almacen de resaltados **que no toca el disco**.
+///
+/// Y POR QUE HACE FALTA UN AYUDANTE Y NO CAMBIAR LAS CUATRO LLAMADAS A PELA. La app real
+/// pide su almacen con `crearAlmacenamientoDeResaltados()`, y en nativo eso llama a
+/// `getApplicationSupportDirectory()`, que necesita un motor de plataformas y **no lo hay** en
+/// la maquina de Dart: se queda esperando a un canal que nadie responde. Ese `Future` colgado
+/// deja vivo el `Timer` del plazo de cinco segundos, y la prueba falla con
+///
+///     A Timer is still pending even after the widget tree was disposed.
+///
+/// que no menciona ni el almacen ni los resaltados. Por eso el parametro existe en `AbApp`.
+/// El almacen en memoria de las pruebas de la app entera.
+///
+/// Y ES **UNO SOLO** PARA LAS CUATRO PRUEBAS y no uno por prueba, y no por savescribir: cada
+/// uno tendria que llamar a `dispose` en su `tearDown`, y un `dispose` olvidado en un `tearDown`
+/// es una prueba que se lleva por delante las siguientes. Ademas, sharing significa que las
+/// cuatro pruebas MIRAN LO MISMO, que es lo que hace comparables.
+final AlmacenamientoDeResaltados almacenDeResaltadosDeLaPrueba =
+    AlmacenamientoDeResaltadosEnMemoria();
+
+/// La app entera, con un almacen de resaltados que no toca el disco.
+AbApp abAppDePrueba() =>
+    AbApp(almacenamientoDeResaltados: almacenDeResaltadosDeLaPrueba);
 
 /// El movil mas estrecho que se usa hoy.
 const Size anchoEstrecho = Size(360, 640);
 
 void main() {
   testWidgets('la app arranca y se identifica', (tester) async {
-    await tester.pumpWidget(const AbApp());
+    await tester.pumpWidget(abAppDePrueba());
     await tester.pump();
 
     // Antes de este grupo, esta misma prueba comprobaba "AB todavia no lee".
@@ -49,7 +74,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(const AbApp());
+    await tester.pumpWidget(abAppDePrueba());
     // Tres `pump`: el primero monta, el segundo deja correr el `initState` que pide
     // el catalogo, y el tercero deja pintar el resultado. Sin el tercero, la
     // pantalla sale a medio construir y la prueba pasa sin comprobar lo que dice
@@ -63,7 +88,7 @@ void main() {
   });
 
   testWidgets('sin catalogo ensena un aviso y NO una pantalla en blanco', (tester) async {
-    await tester.pumpWidget(const AbApp());
+    await tester.pumpWidget(abAppDePrueba());
     await tester.pump();
     await tester.pump();
     await tester.pump();
@@ -81,7 +106,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(const AbApp());
+    await tester.pumpWidget(abAppDePrueba());
     await tester.pump();
     await tester.pump();
 

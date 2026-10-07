@@ -76,9 +76,38 @@ Future<EleccionDeResaltado?> elegirEstilo(
   return showModalBottomSheet<EleccionDeResaltado>(
     context: contexto,
     showDragHandle: true,
+    // ========================================================================
+    // Y `isScrollControlled`, QUE ES LO QUE HACE QUE LA HOJA **CREZCA**
+    // ========================================================================
+    //
+    // MEDIDO EL 6 DE OCTUBRE DE 2026, con la hoja ya dentro de un `SingleChildScrollView`:
+    //
+    //     ventana de  900 px   la hoja mide   145 px
+    //     ventana de 1200 px   la hoja mide   145 px
+    //
+    // Los **mismos 145 px** en las dos. Y con `isScrollControlled: false` --lo de por
+    // defecto-- el alto maximo de la hoja es una fraccion de la pantalla, pero aqui el
+    // contenido es un `SingleChildScrollView`, que **no pide** su alto natural: lo pide
+    // infinito y se conforma con lo que le den. Con lo que le dan son 145 px, y el titulo
+    // mas el subtitulo se llenan y **los cinco estilos quedan debajo del pliegue**.
+    //
+    // O sea: el `SingleChildScrollView` arreglo el `RenderFlex overflowed by 216 pixels` y
+    // **tapo** el sintoma, pero dejo la hoja inservible: los estilos no se ven y con el dedo
+    // no se llega. Es el fallo de tapar una excepcion sin mirar lo que hay debajo, que ya
+    // esta escrito en `AGENTS.md`.
+    //
+    // Con `isScrollControlled: true` la hoja pide su alto natural, y el `maxHeight` del
+    // `ConstrainedBox` de abajo es lo que la impide comerse la pantalla entera en una ventana
+    // baja: cinco estilos mas el boton de quitar son unos 380 px, que en 640 px de alto no
+    // caben y en 1200 si.
+    isScrollControlled: true,
     builder: (BuildContext contexto) => SafeArea(
       top: false,
-      child: Padding(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(contexto).height * 0.8,
+        ),
+        child: Padding(
         padding: const EdgeInsets.fromLTRB(
           Medidas.margenAncho,
           0,
@@ -142,6 +171,7 @@ Future<EleccionDeResaltado?> elegirEstilo(
               ),
             ],
           ),
+        ),
         ),
       ),
     ),

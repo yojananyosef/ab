@@ -26,6 +26,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'app/navegador.dart';
+import 'data/services/almacenamiento_de_resaltados.dart';
 import 'ui/features/lector/view_models/resaltados_view_model.dart';
 import 'ui/features/lector/widgets/velo_de_atenuacion.dart';
 import 'app/sonda.dart';
@@ -100,7 +101,27 @@ Future<void> prepararPlataforma() async {
 
 /// La app.
 class AbApp extends StatefulWidget {
-  const AbApp({super.key});
+  const AbApp({
+    super.key,
+    this.almacenamientoDeResaltados,
+  });
+
+  /// El almacen de los resaltados de la persona.
+  ///
+  /// Y ES **OPCIONAL** Y NO UN PARAMETRO DE TODO, y por un motivo concreto: en la maquina de
+  /// Dart no hay `path_provider` --no hay motor de plataformas-- y el almacen nativo se queda
+  /// esperando a un canal que nadie responde. Como se queda esperando, el `Timer` del plazo de
+  /// cinco segundos sigue vivo cuando la prueba termina, y `flutter_test` falla con
+  ///
+  ///     A Timer is still pending even after the widget tree was disposed.
+  ///
+  /// que no dice nada de que el problema sea el almacen de los resaltados. Con este
+  /// parametro, la prueba pasa uno suyo y el fallo sale en el sitio que lo ha causado.
+  ///
+  /// Y **NO** ES UN PARAMETRO PARA LOS MODULOS, y la razon es que el de modulos ya tiene su
+  /// fabrica y su forma de probarse; este se acaba de anadir y a la vez se ha visto que sin
+  /// punto de inyeccion no se puede probar.
+  final AlmacenamientoDeResaltados? almacenamientoDeResaltados;
 
   @override
   State<AbApp> createState() => _AbAppState();
@@ -175,7 +196,24 @@ class _AbAppState extends State<AbApp> {
       ),
     );
 
-    _resaltados = ResaltadosViewModel();
+    // ================================================================================
+    // Y AQUI ESTA LA LINEA QUE FALTABA, MEDIDO EL 6 DE OCTUBRE DE 2026
+    // ================================================================================
+    //
+    // Era `ResaltadosViewModel()` a secas, y eso cae en `AlmacenamientoDeResaltadosEnMemoria`:
+    // marcar un versiculo se veia, no daba error, no avisaba... y se perdia al cerrar. Es la
+    // peor clase de fallo de este repositorio, porque **parece** que funciona, y porque lo
+    // escrito en `AGENTS.md` es que perder lo que ha escrito la persona es el peor fallo
+    // posible.
+    //
+    // Y NO SE PUEDE PONER EL ALMACEN **DENTRO** DEL VIEW MODEL, y no por comodidad: un view
+    // model que se construye solo con su estado es un view model que se puede construir sin
+    // almacen en cualquier sitio, y el primero que se construye sin almacen es el de `main`,
+    // que es el que no tiene a nadie mirandolo.
+    _resaltados = ResaltadosViewModel(
+      almacenamiento:
+          widget.almacenamientoDeResaltados ?? crearAlmacenamientoDeResaltados(),
+    );
 
     _navegador = NavegadorAb(
       biblioteca: _biblioteca,

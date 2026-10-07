@@ -50,6 +50,10 @@ import 'dart:async';
 
 import 'package:ab/domain/models/resaltado.dart';
 
+import 'almacenamiento_de_resaltados_nativo.dart'
+    if (dart.library.js_interop) 'almacenamiento_de_resaltados_web.dart'
+    as impl;
+
 /// Lo que devuelve el almacenamiento de resaltados.
 class ResultadoDeResaltados {
   const ResultadoDeResaltados({
@@ -331,3 +335,14 @@ EstiloDeResaltado estiloConEseId(
   }
   return estilos.isEmpty ? estilosDePartida.first : estilos.first;
 }
+
+/// UN SOLO PUNTO DE ENTRADA Y DOS FICHEROS, y el motivo esta escrito en el de los modulos:
+///
+///     Si aparece una tercera plataforma, se anade aqui y en ningun otro sitio.
+///
+/// Y EL QUE SE DEVUELVE **NO ES EL DE MEMORIA**, y esa es la linea que faltaba. Antes se
+/// construia el view model sin almacen y caia aqui dentro de la implementacion en memoria,
+/// que no falla nunca, no avisa y **pierde todo al cerrar**. La diferencia entre un almacen en
+/// memoria y uno de verdad es invisible hasta que alguien marca algo y recarga, que es
+/// exactamente el momento en que no se puede arreglar nada.
+AlmacenamientoDeResaltados crearAlmacenamientoDeResaltados() => impl.crearAlmacenamiento();
