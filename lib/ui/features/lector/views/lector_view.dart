@@ -532,7 +532,22 @@ class _LectorViewState extends State<LectorView> {
     return LineaEnfocada(
       lineas: widget.viewModel.preferenciaDeLectura.lineaEnfocada,
       altoDeLinea: _altoDeUnaLinea(estiloVersiculo),
-      hijo: ColumnaDeTexto(
+      // Y LA SELECCION, QUE **NO EXISTIA**.
+      //
+      // MEDIDO EL 6 DE OCTUBRE DE 2026: un `grep` de `SelectionArea`, `SelectableRegion` y
+      // `SelectableText` en toda la aplicacion no devuelve **nada**. No hay forma de
+      // seleccionar un versiculo. Y el codigo de aqui mismo, treinta lineas mas abajo, dice
+      //
+      //     tocarlo lo selecciona --que es lo que quiere quien copia un versiculo--
+      //
+      // O sea: el comentario describe una capacidad que no esta implementada, y el que lo
+      // leeria creeria que seleccionar funciona. Con este `SelectionArea` por fin es verdad.
+      //
+      // Y VA **UNO** ALREDEDOR DE TODA LA COLUMNA Y NO UNO POR VERSICULO, porque si no no se
+      // puede seleccionar a caballo de dos versiculos --«...en el principio... / ...creo la
+      // tierra»-- que es justo lo que se copia.
+      hijo: SelectionArea(
+      child: ColumnaDeTexto(
       estilo: estiloVersiculo,
       hijo: ListView(
         // `shrinkWrap` con un `ListView` dentro de un `Column` no hace falta: el
@@ -622,6 +637,7 @@ class _LectorViewState extends State<LectorView> {
             ),
           ),
         ],
+      ),
       ),
       ),
     );
@@ -1543,7 +1559,7 @@ class _TextoDelVersiculoState extends State<_TextoDelVersiculo> {
   /// Y LA LISTA MIDE LAS PALABRAS DEL VERSICULO Y NO LAS QUE TIENEN NUMERO, y por eso es
   /// una lista y no un mapa: el indice de la palabra es el mismo numero que ocupa la
   /// palabra, y buscar en un mapa en cada `build` seria trabajo por palabra por repintado.
-  List<TapGestureRecognizer?>? _gestores;
+  List<LongPressGestureRecognizer?>? _gestores;
 
   @override
   void initState() {
@@ -1570,21 +1586,46 @@ class _TextoDelVersiculoState extends State<_TextoDelVersiculo> {
   }
 
   void _cerrarGestores() {
-    for (final g in _gestores ?? const <TapGestureRecognizer?>[]) {
+    for (final g in _gestores ?? const <LongPressGestureRecognizer?>[]) {
       g?.dispose();
     }
     _gestores = null;
   }
 
-  List<TapGestureRecognizer?>? _crearGestores(Versiculo v) {
+  List<LongPressGestureRecognizer?>? _crearGestores(Versiculo v) {
     if (v.anotaciones.isEmpty) return null;
-    return <TapGestureRecognizer?>[
+    return <LongPressGestureRecognizer?>[
       for (var i = 0; i < v.palabras.length; i++)
         if (i < v.anotaciones.length && v.anotaciones[i].strong != null)
           // Y UN GESTOR POR PALABRA **CON NUMERO**, y no por palabra. Una palabra sin
           // numero no es pulsable porque no hay nada a que ir: el indice es de numeros.
-          TapGestureRecognizer()
-            ..onTap = () => widget.alVerIndice(v.anotaciones[i].strong!),
+          //
+          // ========================================================================
+          // Y ES **PULSACION LARGA** Y NO UN TOQUE, y este cambio sale de un fallo medido
+          // ========================================================================
+          //
+          // MEDIDO EL 6 DE OCTUBRE DE 2026: un `grep` de `SelectionArea` y `SelectableRegion`
+          // en toda la aplicacion no devuelve nada, y a la vez tocar una palabra se iba al
+          // indice de golpe. Son **el mismo problema** visto de dos maneras, y no por casual:
+          // el lexicon del KJV tiene **348.884 ocurrencias en 31.102 versiculos**, o sea que
+          // casi todas las palabras tienen numero. Con un toque por palabra, tocar el texto
+          // es casi siempre abrir el indice.
+          //
+          // Y CON UN `TapGestureRecognizer` SOBRE EL TEXTO SELECCIONABLE, EL TOCO SE LLEVA LA
+          // SELECCION. Es el gesto que pide el dedo al tocar, asi que el framework lo resuelve
+          // para el que gana, y el que gana no es el de seleccionar. Quien quiere copiar un
+          // versiculo no puede ni empezar: toca, y se va al indice.
+          //
+          // Y LA PULSACION LARGA ES EL GESTO **LIBRE** DE LA SELECCION: en Flutter es lo que
+          // arranca el selection de un texto, con el dedo o con el raton. Con el indice en la
+          // pulsacion larga, los dos gestos dejan de pelear y ademas se parecen a lo que hace
+          // la gente en los otros lectores, donde la palabra se revela al mantenerla pulsada.
+          //
+          // Y NO SE PIERDE NADA: la pulsacion larga tambien era el gesto de seleccionar. Lo
+          // que se hace es decidir, de los dos gestos que ya existian, cual de los dos
+          // **nombres** el indice --que es una accion de lectura-- y cual selecciona.
+          LongPressGestureRecognizer()
+            ..onLongPress = () => widget.alVerIndice(v.anotaciones[i].strong!),
     ];
   }
 

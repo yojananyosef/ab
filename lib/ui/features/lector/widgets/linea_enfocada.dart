@@ -55,6 +55,13 @@ import 'package:ab/ui/core/tema.dart';
 /// misma clave los dos, `find.byKey` devuelve uno solo y cualquier prueba que mida el hueco
 /// entre ellos sale **negativo**, porque no hay dos. Una clave repetida entre hermanos es un
 /// duplicado, y el framework no avisa.
+///
+/// Y UNA TERCERA, LA DE LA **COLUMNA ENTERA**, que es la que necesitan las pruebas que
+/// preguntan «caben los velos dentro». Medir la columna con la clave de un velo da el alto de
+/// **un** velo y lo compara consigo mismo, que siempre cuadra: asi se pasa una prueba con la
+/// apertura saliendose de la columna, que es justo lo que hay que cazar.
+const Key claveDeLaColumnaEnfocada = ValueKey<String>('columnaEnfocada');
+
 const Key claveDelVeloDeArriba = ValueKey<String>('veloDeLaApertura-arriba');
 const Key claveDelVeloDeAbajo = ValueKey<String>('veloDeLaApertura-abajo');
 
@@ -86,6 +93,19 @@ class LineaEnfocada extends StatelessWidget {
     // alto, que es la columna entera velada, que es leer a oscuras.
     if (lineas <= 0) return hijo;
 
+    // Y LA BANDA SE **AJUSTA A LA COLUMNA**, y no al reves. Medido el 6 de octubre de 2026:
+    // con cinco lineas pedidas y una columna de 380 px, cinco lineas de 65,8 px son 329 y
+    // caben, pero con una columna mas baja --o con letra mas grande-- son mas que la columna,
+    // y entonces `porArriba` sale **negativo** y con el `clamp(0.0, ...)` se queda en 0: la
+    // banda se va **al tope de la columna** y de ahi no se mueve.
+    //
+    // Y ESO ES EXACTAMENTE LO QUE VIO QUIEN LO PROBO: la banda fija arriba y sin hacer nada
+    // por mas que se mueva el texto. No era que no siguiera al scroll: era que estaba
+    // empujada fuera de la columna y el `clamp` la dejo pegada al borde de arriba.
+    //
+    // Y SE ACOTA A LA **ALTURA DE LA COLUMNA**, y no se recorta el numero de lineas: con una
+    // banda mas alta que la columna no hay forma de tenerla centrada, y recortar las lineas
+    // seria mentir otra vez sobre lo que el conmutador dice.
     final banda = (lineas * altoDeLinea).clamp(altoDeLinea, double.infinity);
 
     return LayoutBuilder(
@@ -95,8 +115,12 @@ class LineaEnfocada extends StatelessWidget {
         // mal en cuanto el alto no es multiplo del de linea: el borde sale a medio pixel y se
         // ensena una linea gris que no esta en el texto.
         final alto = c.maxHeight;
-        final porArriba = ((alto - banda) / 2).clamp(0.0, double.infinity);
-        final porAbajo = (alto - banda - porArriba).clamp(0.0, double.infinity);
+        // Y SI LA BANDA ES MAS ALTA QUE LA COLUMNA, LA BANDA **ES** LA COLUMNA. Sin esto,
+        // `porArriba` sale negativo y el `clamp` lo deja en cero, con lo que los dos velos
+        // miden cero y no se ve **ninguno**: la apertura desaparece en vez de abrirse.
+        final bandaReal = banda > alto ? alto : banda;
+        final porArriba = (alto - bandaReal) / 2;
+        final porAbajo = alto - bandaReal - porArriba;
 
         // Y LA CLAVE, PORQUE SIN ELLA LA PRUEBA NO SE PUEDE ESCRIBIR. Un `ColoredBox` en la
         // pantalla de lectura hay varios --el fondo del velo, el de las barras, el de los
@@ -107,6 +131,7 @@ class LineaEnfocada extends StatelessWidget {
         final oscuro = Theme.of(contexto).brightness == Brightness.dark;
 
         return Stack(
+          key: claveDeLaColumnaEnfocada,
           children: <Widget>[
             hijo,
             if (porArriba > 0)

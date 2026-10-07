@@ -70,10 +70,14 @@
 
 ## 7. **PENDIENTE Y SIN RESOLVER**, escrito aqui para que no se pierda
 
-- [ ] 7.1 **La altura de la hoja a 1440 px.** Con el paquete nuevo y el servidor correcto,
-      medido en el navegador a 1440 x 900, la hoja mide **145 px** y los cinco estilos quedan
-      **debajo del pliegue**: se ven el titulo y el subtitulo y nada mas. Y a 360 px, en las
-      pruebas de widget, los cinco caben a 640, a 900 y a 1200.
+- [ ] 7.1 **La altura de la hoja a 1440 px. SIN RESUELTO Y CON MAS DATOS QUE EL 6 DE
+      OCTUBRE.** Medido en el navegador a 1440 x 900 con el paquete nuevo y el servidor
+      correcto: la hoja mide **unos 140 px** y los cinco estilos quedan **debajo del pliegue**:
+      se ven el titulo y el subtitulo y nada mas.
+      Y **no se reproduce en Dart**: cinco pruebas lo miran a 360, a 768 y a 1440 de ancho, con
+      la ventana a 640, a 900 y a 1200 de alto, y **dentro del marco de estudio** --que es como
+      se ve de verdad a 1440 px-- y en todos los casos los cinco caben. Esta en
+      `seleccionar-y-la-linea-que-sigues/tasks.md`, 6.2 y 6.3.
 - [ ] 7.2 Lo que **no** se ha explicado es la diferencia entre los dos anchos. La hoja mide
       145 px con los dos anchos, con lo que no es que el ancho la encoja. La sospecha que no
       se ha podido comprobar es el `useRootNavigator` de por defecto: la hoja se abre desde el

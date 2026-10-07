@@ -25,6 +25,7 @@ import 'package:ab/ui/core/tema.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
 import 'package:ab/ui/features/lector/view_models/resaltados_view_model.dart';
 import 'package:ab/ui/features/lector/views/lector_view.dart';
+import 'package:ab/ui/features/lector/widgets/marco_de_estudio.dart';
 import 'package:ab/ui/features/busqueda/widgets/columna_de_texto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -90,6 +91,14 @@ Future<LectorViewModel> montarLector(
   ResaltadosViewModel? resaltados,
   /// La preferencia de lectura, para las pruebas que cambian el formato.
   PreferenciaDeLectura? preferenciaDeLectura,
+
+  /// Montar la lectura **dentro del marco de estudio**, que es como se ve a 1440 px.
+  ///
+  /// Y ES UN PARAMETRO Y NO UN MONTAJE DISTINTO, porque a 1440 px la pantalla de lectura
+  /// SIEMPRE va dentro del marco y sin el ninguna prueba mide lo que se ve en el navegador.
+  /// Y el marco es el unico punto donde las dos cosas se separan: sin marco la hoja de estilos
+  /// cabe, y con marco los estilos quedan bajo el pliegue.
+  bool dentroDelMarco = false,
 }) async {
   final apertura = ModuloAbierto.abrir(ruta ?? rutaBibliaReal, id: id);
   if (apertura is! Abierto) {
@@ -109,9 +118,10 @@ Future<LectorViewModel> montarLector(
   t.view.devicePixelRatio = 1.0;
   addTearDown(t.view.reset);
 
-  await t.pumpWidget(MaterialApp(
-    theme: temaDeAb(),
-    home: LectorView(
+  // Y EL MARCO ENVUELVE A LA LECTURA CUANDO SE PIDE, y no hay un `if` por widget: el marco
+  // es lo que envuelve, y poner el `if` dentro haria que el arbol de una prueba fuera
+  // distinto del de la otra por un detalle que no es lo que se quiere medir.
+  Widget lectura = LectorView(
       viewModel: vm,
       alPulsarPasaje: (r) => (alPulsarPasaje ?? (_, ref) => vm.leer(ref))(vm, r),
       alPedirComentario: () {},
@@ -122,7 +132,20 @@ Future<LectorViewModel> montarLector(
       alCambiarDeVersion: alCambiarDeVersion ?? (_) {},
       alVolver: alVolver ?? () {},
       resaltados: resaltados,
-    ),
+    );
+  if (dentroDelMarco) {
+    lectura = Scaffold(
+      body: MarcoDeEstudio(
+        destino: DestinoDeEstudio.biblia,
+        alElegirDestino: (_, _) {},
+        hijo: lectura,
+      ),
+    );
+  }
+
+  await t.pumpWidget(MaterialApp(
+    theme: temaDeAb(),
+    home: lectura,
   ));
   return vm;
 }
