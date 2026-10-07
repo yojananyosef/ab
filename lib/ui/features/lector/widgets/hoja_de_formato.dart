@@ -30,6 +30,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:ab/domain/models/preferencia_de_lectura.dart';
+import 'package:ab/domain/models/tipografia_de_lectura.dart';
 import 'package:ab/ui/core/tema.dart';
 
 /// Abre la hoja de formato.
@@ -223,6 +224,15 @@ class _HojaDeFormatoState extends State<_HojaDeFormato> {
               },
             ),
 
+            const SizedBox(height: 8),
+            _Tipografia(
+              elegida: _borrador.tipografia,
+              alElegir: (TipografiaDeLectura v) {
+                setState(() => _borrador = _borrador.cambiarTipografia(v));
+                widget.alCambiar(_borrador);
+              },
+            ),
+
             const _Separador(),
 
             OutlinedButton.icon(
@@ -237,6 +247,64 @@ class _HojaDeFormatoState extends State<_HojaDeFormato> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// La tipografia de confort, que antes no se podia elegir.
+///
+/// Y UN `DropdownButton` Y NO UN `SegmentedButton`, y no por el tamano del widget: son cuatro
+/// opciones con nombre largo y motivo, y `SegmentedButton` con nombres largos **parte las
+/// lineas** y deja la fila con tres alturas. Un desplegable cabe a 360 px y ademas cabe la
+/// explicacion, que es la parte que hace que alguien elija bien en vez de elegir la primera.
+///
+/// Y CADA OPCION ENSEÑA SU MOTIVO, y no solo su nombre. «Atkinson Hyperlegible» no dice a quien
+/// le sirve, y una lista de tres nombres de fuente sin explicacion hace que quien no sepa cual
+/// elegir la elija al azar --que es como se quedan las tres sin usar--.
+///
+/// Y **`wrap` EN VEZ DE `ListTile`**, porque la hoja de formato ya tiene scroll y meter cuatro
+/// `ListTile` mas la harian muy larga. Con `wrap` son cuatro lineas.
+class _Tipografia extends StatelessWidget {
+  const _Tipografia({required this.elegida, required this.alElegir});
+
+  final TipografiaDeLectura elegida;
+  final ValueChanged<TipografiaDeLectura> alElegir;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text('Tipografia de confort', style: t.textTheme.titleMedium),
+        const SizedBox(height: 2),
+        Text(
+          // Y LA EXPLICACION DE LA ELEGIDA, DEBAJO DEL DESPLEGABLE. Con el motivo dentro de
+          // cada opcion hay que abrir el desplegable para leerlo, y la hoja se cierra al
+          // elegir; asi se lee el motivo de la que esta puesta sin abrir nada.
+          elegida.motivo,
+          style: t.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<TipografiaDeLectura>(
+          initialValue: elegida,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            isDense: true,
+            border: OutlineInputBorder(),
+          ),
+          items: <DropdownMenuItem<TipografiaDeLectura>>[
+            for (final v in TipografiaDeLectura.values)
+              DropdownMenuItem<TipografiaDeLectura>(
+                value: v,
+                child: Text(v.rotulo, overflow: TextOverflow.ellipsis),
+              ),
+          ],
+          onChanged: (TipografiaDeLectura? v) {
+            if (v != null) alElegir(v);
+          },
+        ),
+      ],
     );
   }
 }

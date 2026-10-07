@@ -440,6 +440,24 @@ TextStyle estiloDeLectura(TextTheme tema, PreferenciaDeLectura pref) {
     height: pref.altoDeLinea,
     letterSpacing: pref.espaciado,
     color: Colores.de(pref.tema).texto,
+    // ========================================================================
+    // Y LA FUENTE DE CONFORT, Y AQUI, Y NO EN CADA `Text`
+    // ========================================================================
+    //
+    // MEDIDO EL 7 DE OCTUBRE DE 2026: `ab` no tenia ninguna fuente y no habia forma de
+    // elegirla. Se ha anadido `TipografiaDeLectura` con tres familias y la cuarta opcion, que
+    // es **no poner ninguna** y dejar la del sistema.
+    //
+    // Y EL `fontFamily` VA AQUI Y NO EN CADA TEXTO, por dos motivos que ya estan escritos en
+    // este fichero: uno, que el color tiene que ir en el `TextStyle` de cada uno y no en un
+    // `apply` de encima, y dos --y el que importa-- que si el nombre de la fuente se escribiera
+    // en cada sitio, un dia habria dos listas y divergirian. La lista esta en el enum y este
+    // `copyWith` es el unico sitio donde se consulta.
+    //
+    // Y CON `null` PARA LA DEL SISTEMA, y no con una cadena vacia: `fontFamily` a `null` es
+    // «deja la que haya», y una cadena vacia es un nombre de fuente que no existe, con lo que
+    // el motor cae en la de reserva y el texto sale con una letra que nadie ha pedido.
+    fontFamily: pref.tipografia.familia,
   );
 }
 

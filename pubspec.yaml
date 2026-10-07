@@ -83,6 +83,44 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # ========================================================================
+  # LAS TRES TIPOGRAFIAS DE CONFORT
+  # ========================================================================
+  #
+  # MEDIDO EL 7 DE OCTUBRE DE 2026: antes de este change, `ab` **no tenia ninguna fuente**.
+  # Un `grep` de `fontFamily` en `pubspec.yaml` y en `lib/` no devuelve nada, y no hay ni un
+  # `.ttf` en el repositorio: el texto se pinta con la fuente que traiga el sistema, que es
+  # Roboto en Android y la del navegador en web.
+  #
+  # Y ESO NO ES UNA FALTA DE RESPETO A LA DISLEXIA, es solo la falta de una opcion: no se puede
+  # elegir **nada**. Y quien lee con dislexia necesita poder elegir, porque lo que le ajuda es
+  # una fuente y no un tamano.
+  #
+  # Y LAS TRES SON DEL REPO HERMANO, `aletheia-reader`, que las llama «Tipografia de
+  # Accesibilidad Cognitiva», y las tres son **SIL Open Font License 1.1**, que permite
+  # redistribuir. La licencia de cada una esta al lado, en `assets/fuentes/`, y el aviso de
+  # OpenDyslexic tiene nombre reservado: si alguien cambia el nombre de la fuente hay que
+  # volver a mirar, porque la licencia lo prohibe.
+  #
+  # Y **LITERATA ES UNA FUENTE VARIABLE** --tiene ejes `opsz` y `wght`-- y se declara con sus
+  # dos ejes. Sin declararlos, Flutter la pinta siempre en el mismo grosor y el `fontWeight`
+  # de los titulos no hace nada, que es un fallo que sale en pantalla y no en el analizador.
+  fonts:
+    - family: Literata
+      fonts:
+        - asset: assets/fuentes/Literata.ttf
+    - family: Atkinson
+      fonts:
+        - asset: assets/fuentes/Atkinson.ttf
+    - family: OpenDyslexic
+      fonts:
+        - asset: assets/fuentes/OpenDyslexic-Regular.otf
+        - asset: assets/fuentes/OpenDyslexic-Bold.otf
+          weight: 700
+
+  assets:
+    - assets/fuentes/
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

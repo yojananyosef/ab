@@ -48,6 +48,8 @@
 
 import 'dart:convert';
 
+import 'tipografia_de_lectura.dart';
+
 /// El tema de fondo de la lectura.
 enum TemaDeLectura {
   claro('claro'),
@@ -90,6 +92,7 @@ class PreferenciaDeLectura {
     this.tema = TemaDeLectura.claro,
     this.atenuacion = atenuacionPorDefecto,
     this.lineaEnfocada = 0,
+    this.tipografia = TipografiaDeLectura.sistema,
   });
 
   /// El tamano de letra, en puntos logicos, de [tamanoMinimo] a [tamanoMaximo].
@@ -112,6 +115,12 @@ class PreferenciaDeLectura {
   /// --la de dos lineas esta a caballo entre "una" y "tres" y no se lee ni de una forma ni
   /// de la otra-- y un numero libre habria que acotarlo en el guardado y en el boton.
   final int lineaEnfocada;
+
+  /// La tipografia de confort, que es **elegible** y antes no lo era.
+  ///
+  /// Y MEDIDO EL 7 DE OCTUBRE DE 2026: `ab` no tenia **ninguna** fuente ni ninguna forma de
+  /// elegirla. Ver `domain/models/tipografia_de_lectura.dart`, que explica las tres.
+  final TipografiaDeLectura tipografia;
 
   // --- los rangos, en un sitio, y son parte del contrato ---
 
@@ -142,6 +151,7 @@ class PreferenciaDeLectura {
   static const String _cTema = 'f';
   static const String _cAtenuacion = 'n';
   static const String _cLinea = 'l';
+  static const String _cTipografia = 'g';
 
   /// Los ajustes recomendados.
   ///
@@ -187,6 +197,7 @@ class PreferenciaDeLectura {
         _cTema: tema.enElAlmacenamiento,
         _cAtenuacion: atenuacion,
         _cLinea: lineaEnfocada,
+        _cTipografia: tipografia.familia,
       });
 
   /// Lee un texto guardado. Un texto que no se puede leer da los valores recomendados.
@@ -234,6 +245,12 @@ class PreferenciaDeLectura {
         atenuacionPorDefecto,
       ),
       lineaEnfocada: _acotarLinea(datos[_cLinea]),
+      // Y LA FUENTE, Y CON RECUPERACION SUAVE. `desdeFamilia` **devuelve** la del sistema si
+      // el nombre no es conocido, en vez de lanzar. Y el motivo es que este es un fichero de
+      // ajustes de la persona: si una version vieja guardo un nombre que esta version no
+      // conoce, perder los otros cinco ajustes --tamano, alto de linea, espaciado, tema y
+      // atenuacion-- por una fuente seria el fallo que `AGENTS.md` llama el peor posible.
+      tipografia: TipografiaDeLectura.desdeFamilia(datos[_cTipografia] as String?),
     );
   }
 
@@ -268,6 +285,9 @@ class PreferenciaDeLectura {
   PreferenciaDeLectura cambiarLineaEnfocada(int v) =>
       copyWith(lineaEnfocada: _acotarLinea(v));
 
+  PreferenciaDeLectura cambiarTipografia(TipografiaDeLectura v) =>
+      copyWith(tipografia: v);
+
   /// A los recomendados. Lo que toca el boton de "restaurar".
   ///
   /// Y DEVUELVE [porDefecto] Y NO RECONSTRUYE LOS CAMPOS UNO A UNO, porque
@@ -282,6 +302,7 @@ class PreferenciaDeLectura {
     TemaDeLectura? tema,
     double? atenuacion,
     int? lineaEnfocada,
+    TipografiaDeLectura? tipografia,
   }) =>
       PreferenciaDeLectura(
         tamanoDeLetra: tamanoDeLetra ?? this.tamanoDeLetra,
@@ -290,10 +311,12 @@ class PreferenciaDeLectura {
         tema: tema ?? this.tema,
         atenuacion: atenuacion ?? this.atenuacion,
         lineaEnfocada: lineaEnfocada ?? this.lineaEnfocada,
+        tipografia: tipografia ?? this.tipografia,
       );
 
   @override
   String toString() => 'PreferenciaDeLectura(tamano: $tamanoDeLetra, '
       'alto: $altoDeLinea, espaciado: $espaciado, tema: ${tema.name}, '
-      'atenuacion: $atenuacion, lineaEnfocada: $lineaEnfocada)';
+      'atenuacion: $atenuacion, lineaEnfocada: $lineaEnfocada, '
+      'tipografia: ${tipografia.name})';
 }

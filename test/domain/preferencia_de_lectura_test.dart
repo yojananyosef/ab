@@ -32,11 +32,16 @@
 // guardaria fuera de rango y volveria con un `Slider` que dice una cosa y un texto que dice
 // otra. Por eso estan en [PreferenciaDeLectura] y el widget los lee de ahi.
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ab/domain/models/preferencia_de_lectura.dart';
+import 'package:ab/domain/models/tipografia_de_lectura.dart';
 
 void main() {
+  pruebasDeLaTipografia();
+
   group('1. los valores de partida, y de donde salen', () {
     test('son los que estan escritos en el modelo, y estan ahi a proposito', () {
       // Y NO UNOS "REDONDOS" TIPO 18 Y 1,6 Y 0,02 PORQUE SON REDONDOS. Vienen de
@@ -328,6 +333,151 @@ void main() {
       expect(TemaDeLectura.leer('azul'), isNull);
       expect(TemaDeLectura.leer('claro'), TemaDeLectura.claro);
       expect(TemaDeLectura.leer('oscuro'), TemaDeLectura.oscuro);
+    });
+  });
+}
+
+// ============================================================================
+// LA TIPOGRAFIA DE CONFORT
+// ============================================================================
+//
+// MEDIDO EL 7 DE OCTUBRE DE 2026: `ab` no tenia **ninguna** fuente. Un `grep` de `fontFamily`
+// en `pubspec.yaml` y en `lib/` no devuelve nada, y en el repositorio no hay ni un `.ttf`: el
+// texto se pintaba con la fuente que trajiga el sistema. Y hay tres cosas que se podian tocar
+// en la hoja de formato --tamano, alto de linea y espaciado-- y la fuente no estaba, que es la
+// que mas distingue a unas letras de otras.
+
+void pruebasDeLaTipografia() {
+  group('1. guardar y volver a leer', () {
+    test('la tipografia sobrevive a guardar y leer', () {
+      for (final v in TipografiaDeLectura.values) {
+        final guardada = PreferenciaDeLectura.porDefecto.cambiarTipografia(v);
+        final leida = PreferenciaDeLectura.deserializar(guardada.serializar());
+        expect(leida.tipografia, v,
+            reason: 'la tipografia $v no ha sobrevivido al guardado');
+      }
+    });
+
+    test('y por defecto es la del sistema, y no una cualquiera', () {
+      // Y LA DEL SISTEMA, y no una de las tres. Cambiar la letra de alguien que no ha pedido
+      // nada es molestia, y en un movil hay una fuente de accesibilidad ya configurada en el
+      // sistema que esta app no tiene por que pisar.
+      expect(PreferenciaDeLectura.porDefecto.tipografia, TipografiaDeLectura.sistema);
+    });
+
+    test('un nombre de fuente desconocido NO rompe los otros ajustes', () {
+      // Y ESTA ES LA COMPROBACION DE LA GARANTIA DE `AGENTS.md`, y no es teorica: un fichero
+      // de ajustes es **dato de la persona**, y si una version vieja guardo un nombre que esta
+      // version no conoce, perder el tamano de letra, el alto de linea, el espaciado, el tema y
+      // la atenuacion por una fuente seria el fallo que ahi se llama el peor posible.
+      final guardada = PreferenciaDeLectura.porDefecto.copyWith(
+        tipografia: TipografiaDeLectura.literata,
+        tamanoDeLetra: 24,
+        altoDeLinea: 2.0,
+        espaciado: 0.06,
+      );
+      // Y SE CAMBIA EL NOMBRE A MANO, que es lo que haria un fichero editado o una version
+      // vieja. Con `jsonDecode` y sin mas.
+      final alterado = guardada.serializar().replaceAll('Literata', 'UnaFuenteQueNoExiste');
+
+      final leida = PreferenciaDeLectura.deserializar(alterado);
+
+      expect(leida.tipografia, TipografiaDeLectura.sistema,
+          reason: 'una fuente desconocida tiene que caer en la del sistema, no lanzar');
+      expect(leida.tamanoDeLetra, 24, reason: 'y los otros ajustes siguen ahi');
+      expect(leida.altoDeLinea, 2.0);
+      expect(leida.espaciado, 0.06);
+    });
+  });
+
+  group('2. las tres familias', () {
+    test('cada una tiene un nombre de familia que Flutter entiende', () {
+      // Y NO UN NOMBRE VACIO Y NO UNO INVENTADO. La del sistema **no tiene** nombre en Flutter,
+      // y por eso es `null` y no `''`: una cadena vacia es el nombre de una fuente que no
+      // existe, con lo que el motor cae en la de reserva y el texto sale con una letra que
+      // nadie ha pedido.
+      expect(TipografiaDeLectura.sistema.familia, isNull);
+      for (final v in TipografiaDeLectura.values.where((v) => v != TipografiaDeLectura.sistema)) {
+        expect(v.familia, isNotNull, reason: '$v tiene que tener familia');
+        expect(v.familia, isNotEmpty, reason: '$v no puede tener la familia vacia');
+      }
+    });
+
+    test('los nombres de familia no se repiten', () {
+      // Y NO ES COSA ESTA: dos opciones con el mismo `familia` son la misma letra con dos
+      // nombres, y quien las elige no nota la diferencia y cree que ha cambiado algo.
+      final familias = TipografiaDeLectura.values
+          .map((TipografiaDeLectura v) => v.familia)
+          .whereType<String>()
+          .toList();
+      expect(familias.toSet().length, familias.length,
+          reason: 'hay dos tipografias con la misma familia: $familias');
+    });
+
+    test('cada una dice para quien sirve', () {
+      // Y EL MOTIVO NO ESTA VACIO, porque una lista de tres nombres de fuente sin explicacion
+      // hace que quien no sepa cual elegir la elija al azar, que es como se quedan las tres
+      // sin usar.
+      for (final v in TipografiaDeLectura.values) {
+        expect(v.motivo.length, greaterThan(10),
+            reason: 'el motivo de $v es demasiado corto para servir de algo: "${v.motivo}"');
+        expect(v.rotulo, isNot(equals(v.motivo)),
+            reason: '$v repite el rotulo como motivo, que es no decir nada');
+      }
+    });
+
+    test('las tres son las del repo hermano, con el mismo nombre', () {
+      // Y A SABER SI ESTA LA DE FUERA O ESTA ES OTRA. Los nombres tienen que coincidir con los
+      // de `aletheia-reader`, que es de donde salen: cambiar el nombre de una fuente que ya
+      // conoce quien lee es cambiarle el=settings de su pantalla sin avisar.
+      expect(TipografiaDeLectura.values.map((v) => v.familia).toList(),
+          <String?>[null, 'Literata', 'Atkinson', 'OpenDyslexic']);
+    });
+  });
+
+  group('3. el enum y las fuentes de verdad', () {
+    test('cada familia del enum tiene su fichero en pubspec', () {
+      // Y SE COMPRUEBA CONTRA EL FICHERO REAL Y NO CONTRA UNA CONSTANTE. La prueba de que hay
+      // tres fuentes no es que el enum tenga tres: es que los tres `.ttf` estan, con el nombre
+      // que dice el enum, y que Flutter los va a encontrar.
+      final pubspec = File('pubspec.yaml').readAsStringSync();
+      for (final v in TipografiaDeLectura.values) {
+        final familia = v.familia;
+        if (familia == null) continue;
+        expect(pubspec.contains('family: $familia'), isTrue,
+            reason: 'la familia $familia no esta declarada en pubspec.yaml');
+      }
+      expect(pubspec.contains('assets/fuentes/'), isTrue,
+          reason: 'las fuentes no estan declaradas como assets');
+    });
+
+    test('las tres fuentes estan en el disco y no estan vacias', () {
+      for (final f in <String>[
+        'assets/fuentes/Literata.ttf',
+        'assets/fuentes/Atkinson.ttf',
+        'assets/fuentes/OpenDyslexic-Regular.otf',
+      ]) {
+        final archivo = File(f);
+        expect(archivo.existsSync(), isTrue, reason: 'falta $f');
+        expect(archivo.lengthSync(), greaterThan(10000),
+            reason: '$f ocupa ${archivo.lengthSync()} bytes: un 404 guardado como fuente');
+      }
+    });
+
+    test('cada fuente tiene su licencia al lado', () {
+      // Y LAS TRES SON **OFL 1.1**, QUE PERMITE REDISTRIBUIR. Meter una fuente sin su licencia
+      // en un repositorio es un problema legal, y el aviso de OpenDyslexic tiene ademas nombre
+      // reservado: si alguien renombra la fuente, hay que volver a mirar.
+      for (final f in <String>[
+        'assets/fuentes/LICENCIA-Literata.txt',
+        'assets/fuentes/LICENCIA-Atkinson.txt',
+        'assets/fuentes/LICENCIA-OpenDyslexic.txt',
+      ]) {
+        expect(File(f).existsSync(), isTrue, reason: 'falta la licencia $f');
+        expect(File(f).readAsStringSync(),
+            contains('SIL Open Font License'),
+            reason: '$f no es una licencia OFL, y hay que mirar cual es antes de distribuirla');
+      }
     });
   });
 }
