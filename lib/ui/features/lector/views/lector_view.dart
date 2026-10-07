@@ -56,6 +56,7 @@ import '../../busqueda/widgets/columna_de_texto.dart';
 import '../widgets/estilo_de_palabra.dart';
 import '../widgets/hoja_de_versiones.dart';
 import '../widgets/hoja_de_formato.dart';
+import '../widgets/linea_enfocada.dart';
 import '../widgets/hoja_de_resaltado.dart';
 import '../view_models/resaltados_view_model.dart';
 import '../widgets/fila_de_menu.dart';
@@ -514,7 +515,24 @@ class _LectorViewState extends State<LectorView> {
     );
 
 
-    return ColumnaDeTexto(
+    // ================================================================================
+    // Y LA APERTURA DE LA LINEA QUE SE ESTA LEYIENDO, QUE HASTA AHORA NO EXISTIA
+    // ================================================================================
+    //
+    // El conmutador de la hoja de formato se llama «Linea enfocada», ofrece apagada, una,
+    // tres y cinco lineas, **guarda la preferencia** y no lo miraba nadie: ni este view model
+    // sabia que el campo existia, ni la vista. Un boton que promete y no pasa nada, que es la
+    // version con cara de usuario del fallo que `AGENTS.md` ya documenta con
+    // `alCambiarDeVersion` --«una funcion sin llamador no falla nunca»--.
+    //
+    // Y EL ALTO DE LINEA SALE DE `estiloVersiculo`, que **ya** tiene el tamano de letra y el
+    // alto de linea de la preferencia multiplicados. No se vuelven a multiplicar aqui: son las
+    // mismas dos cifras en dos sitios y un dia divergen, que es lo que paso con el margen de
+    // la fila --`14` escrito en un sitio y `margenPara` en otro-- que esta en `AGENTS.md`.
+    return LineaEnfocada(
+      lineas: widget.viewModel.preferenciaDeLectura.lineaEnfocada,
+      altoDeLinea: _altoDeUnaLinea(estiloVersiculo),
+      hijo: ColumnaDeTexto(
       estilo: estiloVersiculo,
       hijo: ListView(
         // `shrinkWrap` con un `ListView` dentro de un `Column` no hace falta: el
@@ -605,7 +623,20 @@ class _LectorViewState extends State<LectorView> {
           ),
         ],
       ),
+      ),
     );
+  }
+
+  /// El alto de **una** linea de lectura, en pixeles.
+  ///
+  /// Y `fontSize` POR `height`, y en ese orden: `TextStyle.height` es un **multiplicador**, no
+  /// un alto en pixeles. Con 18 px de letra y 1,6 de alto de linea el alto real es de 28,8 px, y
+  /// una banda de «tres lineas» son 86,4 px. Tomarse `height` como si fueran pixeles daria una
+  /// banda de 4,8 px, que es mas fina que una linea de texto y no tapa nada.
+  double _altoDeUnaLinea(TextStyle estilo) {
+    final tamano = estilo.fontSize ?? 18;
+    final alto = estilo.height ?? 1.6;
+    return tamano * alto;
   }
 
   // --- el campo ---

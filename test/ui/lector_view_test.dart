@@ -19,6 +19,7 @@
 // dirian cosas distintas. Con el tema de la aplicacion se mide lo que se ve.
 
 import 'package:ab/data/repositories/modulo_repository.dart';
+import 'package:ab/domain/models/preferencia_de_lectura.dart';
 import 'package:ab/domain/models/referencia.dart';
 import 'package:ab/ui/core/tema.dart';
 import 'package:ab/ui/features/lector/view_models/lector_view_model.dart';
@@ -87,6 +88,8 @@ Future<LectorViewModel> montarLector(
   /// que no miran resaltados no tienen que montar un almacen en cada una. Y en la vista es
   /// opcional por el mismo motivo.
   ResaltadosViewModel? resaltados,
+  /// La preferencia de lectura, para las pruebas que cambian el formato.
+  PreferenciaDeLectura? preferenciaDeLectura,
 }) async {
   final apertura = ModuloAbierto.abrir(ruta ?? rutaBibliaReal, id: id);
   if (apertura is! Abierto) {
@@ -96,6 +99,11 @@ Future<LectorViewModel> montarLector(
   final vm = LectorViewModel();
   addTearDown(vm.dispose);
   vm.abrir(apertura.modulo, licenciaDelManifiesto: licenciaDelManifiesto);
+
+  // Y LA PREFERENCIA SE PONE **DESPUES** DE ABRIR y antes de montar, porque `cambiarPreferencia`
+  // es lo que la aplicacion llama cuando alguien toca un deslizador, y es el camino real.
+  // Ponerla antes de abrir no haria nada: `abrir` pinta con la que hay.
+  if (preferenciaDeLectura != null) vm.cambiarPreferencia(preferenciaDeLectura);
 
   t.view.physicalSize = tamano;
   t.view.devicePixelRatio = 1.0;
