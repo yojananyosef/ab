@@ -1,0 +1,4 @@
+GitHub Pages sirve este directorio con Jekyll si encuentra un `_config.yml` o cualquier
+fichero que empiece por `_`. Los ficheros de Flutter --`assets/`, `main.dart.js`,
+`sqlite3.wasm`-- no tienen por que empezar asi, pero el dia que uno se llame `_algo` el
+sitio dejaria de servirlo sin avisar. Este fichero, que esta vacio, apaga Jekyll.

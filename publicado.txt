@@ -1,0 +1,5 @@
+publicado desde local
+commit  58511013f2a3fe081f293fc203d95a6ef73a1578
+corto   5851101
+cuando  2026-10-07T10:22:08Z
+rama    gh-pages
